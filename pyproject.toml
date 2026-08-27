@@ -24,7 +24,14 @@ build-backend = "uv_build"
 dev = [
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
+    # Only so the optional render() path is exercised; src/ never imports it.
+    "matplotlib>=3.9",
 ]
+
+[project.optional-dependencies]
+# For clvtools.diagnostics.render(). The frames the diagnostics return are
+# useful without it, so it stays out of the core.
+plot = ["matplotlib>=3.9"]
 
 [tool.pytest.ini_options]
 testpaths = ["src", "tests", "docs"]

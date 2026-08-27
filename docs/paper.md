@@ -28,6 +28,7 @@ Source: [`arXiv-2602.09845v1/jss5634.tex`](../arXiv-2602.09845v1/jss5634.tex).
 | [6.2](#62-model-estimation) | Model estimation | `clvtools.pnbd`, `clvtools.gg` |
 | [6.3](#63-predicting-customer-lifetime-value) | Predicting CLV | `clvtools.predict` |
 | [6.4](#64-covariates) | Covariates | `clvtools.pnbd.staticcov`, `.dyncov` |
+| [—](#diagnostics) | Diagnostics and intervals | `clvtools.diagnostics`, `.bootstrap` |
 | [6.5](#65-advanced-modelling-techniques) | Advanced techniques | `clvtools.pnbd.correlation` |
 | [—](#the-other-two-families) | BG/NBD and GGom/NBD | `clvtools.bgnbd`, `clvtools.ggomnbd` |
 
@@ -250,6 +251,102 @@ in the Pareto/NBD fit.
 ```python
 
 ```
+
+### Diagnostics
+
+> "The key diagnostics for a latent attrition model are two plots: (1) the
+> tracking plot and (2) the probability mass function (PMF) plot."
+
+Each returns the data a plot would be drawn from, in the long form CLVTools'
+`plot(..., plot = FALSE)` produces. Rendering is separate, and optional.
+
+```python
+>>> from clvtools import diagnostics
+>>> from clvtools.pnbd import expectation, pmf
+>>> tracking = diagnostics.tracking_data(
+...     data, lambda t: expectation(t, **pnbd.as_dict()), model_name="Pareto/NBD")
+>>> list(tracking.columns)
+['period.until', 'variable', 'value']
+
+```
+
+The model series opens at zero — §6.2.2: "this fact gives the plot its
+characteristic shape" — and slopes gently down as customers drop out:
+
+```python
+>>> model = tracking[tracking["variable"] == "Pareto/NBD"]["value"].to_numpy()
+>>> bool(model[0] == 0.0 and np.all(np.diff(model[1:]) < 0))
+True
+
+```
+
+The observed count for the final, partly covered period is left missing rather
+than reported low:
+
+```python
+>>> observed = tracking[tracking["variable"] == "Actual"]["value"]
+>>> int(observed.isna().sum())
+1
+
+```
+
+The PMF plot compares customer counts by repeat-transaction count. §6.2.2: "the
+results illustrate that the model fits the data well".
+
+```python
+>>> bins = diagnostics.pmf_data(
+...     data, lambda k, T: pmf(k, T, **pnbd.as_dict()), model_name="Pareto/NBD")
+>>> wide = bins.pivot(index="num.transactions", columns="variable", values="value")
+>>> int(wide.loc["0", "Actual"])
+213
+>>> bool(abs(wide["Actual"] - wide["Pareto/NBD"]).max() < 30)
+True
+
+```
+
+`diagnostics.render(frame)` will draw any of these with matplotlib, which is an
+optional extra (`clvtools[plot]`).
+
+### Confidence intervals
+
+> "Customers, together with their entire purchasing history, are sampled with
+> replacement. A new model is estimated on the sampled data with the same
+> specification and optimization options as the given fitted model."
+
+Two details of §6.3.3 shape this. A customer drawn twice counts as two
+customers, and the estimation and holdout periods are pinned — otherwise
+resampling would move them, since "the end of the data is determined by the last
+order".
+
+```python
+>>> from clvtools import bootstrap
+>>> resampled = bootstrap.bootstrap_data(data, ["1", "1", "10"])
+>>> len(resampled.customer_summary())
+3
+>>> bool(resampled.estimation_end == data.estimation_end)
+True
+
+```
+
+```python
+>>> def refit(sample):
+...     cbs, spend = sample.customer_summary(), sample.spending_summary()
+...     return predict(
+...         sample,
+...         fit_pnbd(cbs["x"], cbs["t_x"], cbs["T"], hessian=False),
+...         fit_gg(spend["x"], spend["Spending"]))
+>>> intervals = bootstrap.predict_intervals(
+...     data, refit, num_boots=5, level=0.9, columns=["CET"], seed=1)
+>>> list(intervals.columns)
+['CET.CI.5', 'CET.CI.95']
+>>> bool((intervals["CET.CI.5"] <= intervals["CET.CI.95"]).all())
+True
+
+```
+
+What these cover is worth keeping in view. §6.3.3: "bootstrapping only accounts
+for uncertainty in model parameters (epistemic uncertainty), and not sampling
+variability in the actual outcomes (aleatoric uncertainty)."
 
 ## 6.4 Covariates
 

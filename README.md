@@ -25,6 +25,13 @@ The numbers in the documentation cannot drift from what the code returns.
 | Table 3 | GGom/NBD | `clvtools.ggomnbd` |
 | §6.1 | `clvdata()` — the data layer | `clvtools.data` |
 | §6.3 | `predict()` — PAlive, CET, DERT, CLV | `clvtools.predict` |
+| §6.2.2, §6.2.4 | Tracking, PMF and spending diagnostics | `clvtools.diagnostics` |
+| §6.3.3 | Bootstrap confidence intervals | `clvtools.bootstrap` |
+| §5 | Time units, including calendar months and years | `clvtools.timeunit` |
+
+Time-invariant covariates, equality constraints and regularization are
+available for all three latent attrition families, as Table 3 marks them.
+Time-varying covariates and process correlation are Pareto/NBD only, likewise.
 
 ## Usage
 
@@ -93,6 +100,9 @@ ordering slip cannot ship as a plausible-looking expectation.
 | New-customer transactions / spend | 2.218635 / 39.1372 | identical |
 | Static-cov coefficients, §6.4.1 | −0.6430, 0.7907, 0.2859, 0.6241 | −0.64, 0.79, 0.29, 0.62 |
 | Static-cov log-likelihood / AIC | −5821.0627 / 11658.1254 | −5821.0627 / 11658.13 |
+| Tracking plot data, §6.2.2 | 626 rows × 2 series | to 6e-11 |
+| PMF plot data, §6.2.2 | 22 bins | to 3e-12 |
+| Time arithmetic, §5 | 840 spans, 280 additions | to 5e-15 |
 
 Given the *published* parameters rather than its own fit, every expression
 matches the oracle to between 1e-9 and 1e-14. Where this package's own optimiser
@@ -146,6 +156,29 @@ applied to the summed likelihood; the implementation divides by `n`, so
 `logLik()` on a regularized fit reports about −9.7 rather than −5821.
 `unpenalised_log_likelihood` is provided for anything comparable across models.
 
+**The BG/NBD's beta parameters are barely identified with covariates.** `a_i`
+and `b_i` are scaled by the *same* `exp(γ'x)`, so the data pins their ratio far
+better than their size. CLVTools stops at `a + b ≈ 38,600`; a derivative-free
+polish climbs to about 2.5 million for a gain of 3e-4 in the log-likelihood.
+Neither is wrong — the direction is nearly flat.
+
+**Warm-starting a regularized fit is not universally right.** It is necessary on
+the Pareto/NBD, where a cold start converges in a clearly worse basin. It is
+harmful on the BG/NBD, whose unpenalised optimum sits far out on that same
+ridge while the penalised one is back near `a + b = 10`. Regularized fits now
+run from both starting points and keep the better.
+
+**lubridate returns `NA` for a leap day plus n years.** So CLVTools cannot
+express an estimation split in years from a 29 February start. Its own
+`time_length` is more forgiving and treats the anniversary as 1 March, which is
+the convention taken here in both directions, so `add` and `elapsed` stay
+mutually inverse.
+
+**A partly covered period gets no observed count.** The tracking plot's grid
+runs one period past the data so the last period is shown whole; CLVTools
+reports `NA` for its observed value rather than the fraction it has, and so does
+this.
+
 Two defects in this package's own code were caught the same way. The `hyp2f1`
 fallback summed its series in a Python loop, costing over a second per call as
 `z → 1`, which made a degenerate fit appear to hang. And SciPy's Nelder-Mead
@@ -156,16 +189,16 @@ which it reported successful convergence on the Gamma-Gamma at a local optimum
 ## Testing
 
 ```bash
-uv run pytest                  # 492 tests, including doctests in src/ and docs/
+uv run pytest                  # 622 tests, including doctests in src/ and docs/
 uv run pytest -m paper         # 19 published-number checks
-uv run pytest -m oracle        # 113 checks against R CLVTools fixtures
-uv run pytest -m slow          # 60 full-dataset MLE fits
+uv run pytest -m oracle        # 137 checks against R CLVTools fixtures
+uv run pytest -m slow          # 86 full-dataset MLE fits
 uv run pytest -m dyncov_fit    # the time-varying covariate MLE; ~17 minutes
 uv run pytest --cov=clvtools --cov-report=term-missing
 ```
 
 100% line coverage of `src/`. The time-varying covariate fit is deselected by
-default; everything else runs in under a minute.
+default; everything else runs in about two minutes.
 
 The suite is layered: published numbers, agreement with the reference
 implementation expression by expression, internal cross-checks between
@@ -178,6 +211,10 @@ independence), and every worked example in the docs.
 
 NumPy, SciPy and pandas — nothing else. The R package is a test-time oracle
 invoked out-of-process; nothing in `src/` depends on it.
+
+`clvtools.diagnostics.render()` will draw the diagnostic frames with matplotlib
+if you install the `plot` extra, but the frames those functions return are
+useful on their own, so it stays out of the core.
 
 ## Data
 

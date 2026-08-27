@@ -1,0 +1,23 @@
+num.transactions,variable,value
+0,Actual,213
+1,Actual,116
+2,Actual,82
+3,Actual,63
+4,Actual,37
+5,Actual,27
+6,Actual,19
+7,Actual,17
+8,Actual,5
+9,Actual,5
+10+,Actual,16
+0,Pareto/NBD Standard,213.189442162479
+1,Pareto/NBD Standard,120.889975230501
+2,Pareto/NBD Standard,79.7768493250877
+3,Pareto/NBD Standard,55.1262711005887
+4,Pareto/NBD Standard,38.6965059445569
+5,Pareto/NBD Standard,27.3035545397796
+6,Pareto/NBD Standard,19.2844326653556
+7,Pareto/NBD Standard,13.6112441717685
+8,Pareto/NBD Standard,9.59386542766154
+9,Pareto/NBD Standard,6.75132821042708
+10+,Pareto/NBD Standard,15.7765312217951

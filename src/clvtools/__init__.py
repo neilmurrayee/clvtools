@@ -24,11 +24,15 @@ Modules mirror the paper's structure:
     years need.
 ``predict``
     S6.3 - combining the two into predicted transactions, spending and CLV.
+``diagnostics``
+    S6.2.2 and S6.2.4 - the tracking, PMF and spending plots, as data.
+``bootstrap``
+    S6.3.3 - confidence intervals by resampling customers.
 """
 
 from __future__ import annotations
 
-from clvtools import bgnbd, gg, ggomnbd, pnbd
+from clvtools import bgnbd, bootstrap, diagnostics, gg, ggomnbd, pnbd
 from clvtools.predict import discount_factor, predict
 from clvtools.data import (
     ClvData,
@@ -43,6 +47,8 @@ from clvtools.data import (
 __all__ = [
     "ClvData",
     "bgnbd",
+    "bootstrap",
+    "diagnostics",
     "gg",
     "ggomnbd",
     "pnbd",
