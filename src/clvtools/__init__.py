@@ -8,6 +8,12 @@ Modules mirror the paper's structure:
 
 ``data``
     S6.1 - preparing and inspecting transaction data; the `clvdata()` analogue.
+``special``
+    The hypergeometric functions the Pareto/NBD expressions are built from.
+``pnbd``
+    S3.2 and Appendix A - the Pareto/NBD latent attrition model.
+``gg``
+    S3.5 - the Gamma-Gamma model of customer spending.
 """
 
 from __future__ import annotations

@@ -25,6 +25,7 @@ import numpy as np
 from numpy.typing import ArrayLike
 from scipy import optimize
 
+from clvtools._optimize import options_for
 from clvtools.pnbd.aggregate import log_likelihood
 
 __all__ = ["PnbdParams", "fit_pnbd"]
@@ -34,26 +35,6 @@ __all__ = ["PnbdParams", "fit_pnbd"]
 _DEFAULT_START = (1.0, 1.0, 1.0, 1.0)
 
 _NAMES = ("r", "alpha", "s", "beta")
-
-#: Convergence tolerances well inside the defaults. The Pareto/NBD likelihood
-#: traces a long flat ridge near its optimum -- moving 3e-5 along it changes the
-#: log-likelihood by under 1e-10 -- so SciPy's default ``ftol`` stops early
-#: enough to shift the third decimal of the estimates.
-_METHOD_OPTIONS = {
-    "L-BFGS-B": {"ftol": 1e-16, "gtol": 1e-14, "maxfun": 100_000},
-    "Nelder-Mead": {"xatol": 1e-12, "fatol": 1e-12, "maxfev": 100_000},
-}
-
-
-def _options_for(
-    method: str, maxiter: int, overrides: dict | None
-) -> dict:
-    opts = {"maxiter": maxiter}
-    opts.update(_METHOD_OPTIONS.get(method, {}))
-    if overrides:
-        opts.update(overrides)
-    return opts
-
 
 
 @dataclass(frozen=True)
@@ -281,7 +262,7 @@ def fit_pnbd(
         negative_ll,
         x0=np.log(start_arr),
         method=method,
-        options=_options_for(method, maxiter, options),
+        options=options_for(method, maxiter, np.log(start_arr), options),
     )
 
     hess = None
