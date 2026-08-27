@@ -1,0 +1,21 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# macOS
+.DS_Store
+
+# Local R oracle library (recreate with tools/setup_oracle.sh)
+.Rlib/
+.oracle-cache/
+
+# Coverage
+.coverage
+htmlcov/
