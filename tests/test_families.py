@@ -501,3 +501,370 @@ class TestFamiliesCompared:
         )
         np.testing.assert_array_equal(summary["x"], cbs["x"])
         np.testing.assert_allclose(summary["T"], cbs["T.cal"])
+
+
+# -- covariates for the other two families ------------------------------------
+
+
+@pytest.fixture(scope="module")
+def static_data():
+    from clvtools import ClvData, ClvDataStaticCov
+    from clvtools import load_apparel_static_cov, load_apparel_trans
+
+    return ClvDataStaticCov(
+        ClvData(load_apparel_trans(), time_unit="week", estimation_split=104),
+        load_apparel_static_cov(),
+        names_cov_life=["Gender", "Channel"],
+        names_cov_trans=["Gender", "Channel"],
+    )
+
+
+@pytest.mark.oracle
+class TestGgomnbdStaticCovariates:
+    r"""Table 3 marks the GGom/NBD as taking time-invariant covariates."""
+
+    @pytest.fixture(scope="class")
+    def published(self):
+        return fixture_json("ggomnbd_staticcov_fit")["coefficients"]
+
+    def test_rate_builders_match(self, static_data, published, cbs):
+        want = _aligned("ggomnbd_staticcov_mle", cbs)
+        g_life = np.array([published["life.Gender"], published["life.Channel"]])
+        g_trans = np.array([published["trans.Gender"], published["trans.Channel"]])
+        np.testing.assert_allclose(
+            ggomnbd.alpha_i(published["alpha"], g_trans, static_data.design_trans()),
+            want["alpha.i"], rtol=1e-12,
+        )
+        np.testing.assert_allclose(
+            ggomnbd.beta_i(published["beta"], g_life, static_data.design_life()),
+            want["beta.i"], rtol=1e-11,
+        )
+
+    def test_individual_log_likelihood_matches(self, static_data, published, cbs, xtt):
+        want = _aligned("ggomnbd_staticcov_mle", cbs)
+        g_life = np.array([published["life.Gender"], published["life.Channel"]])
+        g_trans = np.array([published["trans.Gender"], published["trans.Channel"]])
+        got = ggomnbd.log_likelihood_ind(
+            *xtt,
+            r=published["r"],
+            alpha=ggomnbd.alpha_i(
+                published["alpha"], g_trans, static_data.design_trans()
+            ),
+            b=published["b"], s=published["s"],
+            beta=ggomnbd.beta_i(
+                published["beta"], g_life, static_data.design_life()
+            ),
+        )
+        np.testing.assert_allclose(got, want["LL.ind"], rtol=1e-9)
+
+    def test_sample_log_likelihood_matches(self, static_data, published):
+        want = fixture_json("ggomnbd_staticcov_fit")["logLik"]
+        cbs = static_data.customer_summary()
+        got = ggomnbd.log_likelihood_staticcov(
+            cbs["x"], cbs["t_x"], cbs["T"],
+            published["r"], published["alpha"], published["b"],
+            published["s"], published["beta"],
+            [published["life.Gender"], published["life.Channel"]],
+            [published["trans.Gender"], published["trans.Channel"]],
+            static_data.design_life(), static_data.design_trans(),
+        )
+        assert got == pytest.approx(want, abs=1e-6)
+
+    def test_it_collapses_onto_the_pareto_nbd_here_too(self):
+        r"""As without covariates: fitted ``b`` is negligible.
+
+        The covariate model reaches -5821.06296 against the Pareto/NBD's
+        -5821.06271 with two parameters fewer, so the Gompertz hazard is again
+        buying nothing on this data.
+        """
+        fitted = fixture_json("ggomnbd_staticcov_fit")
+        assert fitted["coefficients"]["b"] < 1e-4
+        assert fitted["logLik"] == pytest.approx(-5821.062709, abs=1e-3)
+
+
+@pytest.mark.slow
+class TestBgnbdStaticCovariateFit:
+    @pytest.fixture(scope="class")
+    def fitted(self, static_data):
+        return bgnbd.fit_bgnbd_staticcov(static_data, hessian=False)
+
+    @pytest.mark.oracle
+    def test_reaches_at_least_the_oracles_optimum(self, fitted):
+        r"""One-sided, and for an unusually clear reason.
+
+        The BG/NBD's two beta parameters are barely identified once covariates
+        scale them: ``a_i`` and ``b_i`` are both multiplied by the *same*
+        ``exp(gamma'x)``, so the data pins their ratio far better than their
+        common size. CLVTools stops at ``a + b`` around 38,600; this
+        implementation climbs to about 2.5 million for a gain of 3e-4 in the
+        log-likelihood. Neither is wrong -- the direction is nearly flat.
+        """
+        want = fixture_json("bgnbd_staticcov_fit")["logLik"]
+        assert fitted.log_likelihood >= want - 1e-6
+
+    def test_covariates_improve_on_the_model_without_them(self, fitted):
+        plain = fixture_json("bgnbd_fit")["logLik"]
+        assert fitted.log_likelihood > plain
+        assert fitted.n_parameters == 8
+
+    def test_the_barely_identified_direction_is_the_common_scale(self, fitted):
+        """Its ratio is pinned; its size is not."""
+        published = fixture_json("bgnbd_staticcov_fit")["coefficients"]
+        published_ratio = published["a"] / (published["a"] + published["b"])
+        got_ratio = fitted.a / (fitted.a + fitted.b)
+        assert got_ratio == pytest.approx(published_ratio, rel=5e-3)
+        assert fitted.a + fitted.b > 10 * (published["a"] + published["b"])
+
+    def test_names_follow_clvtools_convention(self, fitted):
+        assert fitted.names == [
+            "r", "alpha", "a", "b",
+            "life.Gender", "life.Channel", "trans.Gender", "trans.Channel",
+        ]
+
+    def test_polish_is_what_climbs_the_ridge(self, static_data):
+        r"""A regression guard for the derivative-free follow-up pass.
+
+        Without it L-BFGS-B reports successful convergence with ``a + b`` around
+        1,200, where the likelihood is still rising.
+        """
+        unpolished = bgnbd.fit_bgnbd_staticcov(
+            static_data, hessian=False, polish=False
+        )
+        polished = bgnbd.fit_bgnbd_staticcov(static_data, hessian=False)
+        assert polished.log_likelihood > unpolished.log_likelihood
+        assert polished.a + polished.b > 100 * (unpolished.a + unpolished.b)
+
+    def test_standard_errors_require_a_hessian(self, fitted):
+        with pytest.raises(ValueError, match="hessian=True"):
+            fitted.standard_errors()
+
+
+@pytest.mark.slow
+class TestFamilyConstraintsAndRegularization:
+    r"""Table 3 marks both as available for all three families."""
+
+    @pytest.mark.oracle
+    def test_bgnbd_equality_constraint(self, static_data):
+        want = fixture_json("bgnbd_staticcov_constrained_fit")
+        got = bgnbd.fit_bgnbd_staticcov(
+            static_data, names_cov_constr=["Gender"], hessian=False
+        )
+        assert got.names == [
+            "r", "alpha", "a", "b",
+            "life.Channel", "trans.Channel", "constr.Gender",
+        ]
+        assert got.n_parameters == 7
+        assert got.log_likelihood >= want["logLik"] - 1e-3
+
+        index_life = got.covariates.names_cov_life.index("Gender")
+        index_trans = got.covariates.names_cov_trans.index("Gender")
+        assert got.gamma_life[index_life] == pytest.approx(
+            got.gamma_trans[index_trans]
+        )
+
+    @pytest.mark.oracle
+    def test_bgnbd_regularization(self, static_data):
+        want = fixture_json("bgnbd_staticcov_regularized_0_1")
+        got = bgnbd.fit_bgnbd_staticcov(
+            static_data, reg_lambdas=(0.1, 0.1), hessian=False
+        )
+        assert got.log_likelihood >= want["logLik"] - 1e-4
+        # The reported value is the penalised mean, as CLVTools reports it.
+        assert -20 < got.log_likelihood < 0
+        assert got.unpenalised_log_likelihood < -5000
+
+    def test_a_heavier_penalty_shrinks_the_coefficients(self, static_data):
+        light = bgnbd.fit_bgnbd_staticcov(
+            static_data, reg_lambdas=(0.01, 0.01), hessian=False
+        )
+        heavy = bgnbd.fit_bgnbd_staticcov(
+            static_data, reg_lambdas=(100.0, 100.0), hessian=False
+        )
+
+        def size(fit):
+            return float(
+                np.sum(fit.gamma_life**2) + np.sum(fit.gamma_trans**2)
+            )
+
+        assert size(heavy) < size(light)
+
+    def test_information_criteria_use_the_true_likelihood(self, static_data):
+        got = bgnbd.fit_bgnbd_staticcov(
+            static_data, reg_lambdas=(0.1, 0.1), hessian=False
+        )
+        assert got.aic == pytest.approx(
+            2 * got.n_parameters - 2 * got.unpenalised_log_likelihood
+        )
+        assert got.bic == pytest.approx(
+            got.n_parameters * np.log(600) - 2 * got.unpenalised_log_likelihood
+        )
+
+    def test_constraining_a_covariate_absent_from_a_process_is_rejected(self):
+        from clvtools import ClvData, ClvDataStaticCov
+        from clvtools import load_apparel_static_cov, load_apparel_trans
+
+        data = ClvDataStaticCov(
+            ClvData(load_apparel_trans(), time_unit="week", estimation_split=104),
+            load_apparel_static_cov(),
+            names_cov_life=["Gender"], names_cov_trans=["Channel"],
+        )
+        with pytest.raises(ValueError, match="covariate of both"):
+            bgnbd.fit_bgnbd_staticcov(
+                data, names_cov_constr=["Gender"], hessian=False
+            )
+
+    def test_rejects_bad_inputs(self, static_data):
+        with pytest.raises(ValueError, match="4 model parameters"):
+            bgnbd.fit_bgnbd_staticcov(static_data, start=(1.0, 1.0))
+        with pytest.raises(ValueError, match="strictly positive"):
+            bgnbd.fit_bgnbd_staticcov(static_data, start=(1.0, -1.0, 1.0, 1.0))
+        with pytest.raises(ValueError, match="two values"):
+            bgnbd.fit_bgnbd_staticcov(static_data, reg_lambdas=(0.1,))
+        with pytest.raises(ValueError, match="non-negative"):
+            bgnbd.fit_bgnbd_staticcov(static_data, reg_lambdas=(-1.0, 0.1))
+
+
+@pytest.mark.slow
+class TestGgomnbdStaticCovariateFit:
+    """Slow even by this model's standards: an integral per customer per step."""
+
+    @pytest.mark.oracle
+    def test_a_short_fit_runs_and_reports_its_shape(self, static_data):
+        got = ggomnbd.fit_ggomnbd_staticcov(
+            static_data, polish=False, options={"maxiter": 2, "maxfun": 24}
+        )
+        assert got.names == [
+            "r", "alpha", "b", "s", "beta",
+            "life.Gender", "life.Channel", "trans.Gender", "trans.Channel",
+        ]
+        assert got.n_parameters == 9
+        assert np.isfinite(got.log_likelihood)
+        assert got.n_customers == 600
+
+    def test_constraints_reduce_the_parameter_count(self, static_data):
+        got = ggomnbd.fit_ggomnbd_staticcov(
+            static_data, names_cov_constr=["Gender"],
+            polish=False, options={"maxiter": 2, "maxfun": 24},
+        )
+        assert "constr.Gender" in got.names
+        assert got.n_parameters == 8
+
+
+@pytest.mark.slow
+class TestCovariateParamsObjects:
+    """The accessors both covariate result types expose."""
+
+    @pytest.fixture(scope="class")
+    def bg(self, static_data):
+        return bgnbd.fit_bgnbd_staticcov(static_data, polish=False)
+
+    @pytest.fixture(scope="class")
+    def gg(self, static_data):
+        return ggomnbd.fit_ggomnbd_staticcov(
+            static_data, polish=False, options={"maxiter": 2, "maxfun": 24}
+        )
+
+    def test_coefficients_align_names_with_values(self, bg, gg):
+        for fit, n_model in ((bg, 4), (gg, 5)):
+            coefficients = fit.coefficients()
+            assert list(coefficients) == fit.names
+            assert len(coefficients) == n_model + 4
+            assert list(coefficients.values()) == list(fit)
+
+    def test_a_constrained_coefficient_is_reported_once(self, static_data):
+        r"""And carries the value both processes share, eq. (14)."""
+        fit = bgnbd.fit_bgnbd_staticcov(
+            static_data, names_cov_constr=["Gender"], polish=False, hessian=False
+        )
+        coefficients = fit.coefficients()
+        assert "constr.Gender" in coefficients
+        assert "life.Gender" not in coefficients
+        assert "trans.Gender" not in coefficients
+
+        index_life = fit.covariates.names_cov_life.index("Gender")
+        assert coefficients["constr.Gender"] == pytest.approx(
+            float(fit.gamma_life[index_life])
+        )
+
+    def test_the_delegating_properties_reach_through(self, bg, gg):
+        for fit in (bg, gg):
+            assert fit.n_customers == 600
+            assert isinstance(fit.converged, bool)
+            assert fit.log_likelihood == fit.covariates.log_likelihood
+            assert (
+                fit.unpenalised_log_likelihood
+                == fit.covariates.unpenalised_log_likelihood
+            )
+            assert len(fit.gamma_life) == 2
+            assert len(fit.gamma_trans) == 2
+            assert fit.aic == pytest.approx(
+                2 * fit.n_parameters - 2 * fit.unpenalised_log_likelihood
+            )
+            assert fit.bic > fit.aic
+
+    def test_standard_errors_are_reported_per_name(self, bg):
+        errors = bg.standard_errors()
+        assert list(errors) == bg.names
+        assert all(np.isfinite(v) for v in errors.values())
+
+    def test_standard_errors_report_a_constrained_coefficient_once(
+        self, static_data
+    ):
+        fit = bgnbd.fit_bgnbd_staticcov(
+            static_data, names_cov_constr=["Gender"], polish=False
+        )
+        errors = fit.standard_errors()
+        assert list(errors) == fit.names
+        assert "constr.Gender" in errors
+
+    def test_weights_are_accepted_by_the_covariate_likelihoods(self, static_data):
+        cbs = static_data.customer_summary()
+        args = (cbs["x"][:2], cbs["t_x"][:2], cbs["T"][:2])
+        design_life = static_data.design_life()[:2]
+        design_trans = static_data.design_trans()[:2]
+
+        plain = bgnbd.log_likelihood_staticcov(
+            *args, 0.6, 20.0, 1.3, 8.9, [0.1, 0.2], [0.3, 0.4],
+            design_life, design_trans,
+        )
+        doubled = bgnbd.log_likelihood_staticcov(
+            *args, 0.6, 20.0, 1.3, 8.9, [0.1, 0.2], [0.3, 0.4],
+            design_life, design_trans, weights=[2.0, 2.0],
+        )
+        assert doubled == pytest.approx(2 * plain)
+
+        plain = ggomnbd.log_likelihood_staticcov(
+            *args, 1.4, 48.0, 1e-6, 0.56, 4e-5, [0.1, 0.2], [0.3, 0.4],
+            design_life, design_trans,
+        )
+        doubled = ggomnbd.log_likelihood_staticcov(
+            *args, 1.4, 48.0, 1e-6, 0.56, 4e-5, [0.1, 0.2], [0.3, 0.4],
+            design_life, design_trans, weights=[2.0, 2.0],
+        )
+        assert doubled == pytest.approx(2 * plain)
+
+
+class TestSharedCovariateMachineryValidation:
+    def test_rejects_mismatched_shapes(self):
+        from clvtools._staticcov import fit_static_covariates
+
+        with pytest.raises(ValueError, match="same shape"):
+            fit_static_covariates(
+                x=[0, 1], t_x=[0.0], T=[104.0, 104.0],
+                cov_life=np.zeros((2, 1)), cov_trans=np.zeros((2, 1)),
+                names_cov_life=["a"], names_cov_trans=["a"],
+                log_likelihood=lambda *args: 0.0,
+                n_model_params=4, model_start=(1.0, 1.0, 1.0, 1.0),
+            )
+
+    def test_rejects_empty_input(self):
+        from clvtools._staticcov import fit_static_covariates
+
+        with pytest.raises(ValueError, match="no customers"):
+            fit_static_covariates(
+                x=[], t_x=[], T=[],
+                cov_life=np.zeros((0, 1)), cov_trans=np.zeros((0, 1)),
+                names_cov_life=["a"], names_cov_trans=["a"],
+                log_likelihood=lambda *args: 0.0,
+                n_model_params=4, model_start=(1.0, 1.0, 1.0, 1.0),
+            )

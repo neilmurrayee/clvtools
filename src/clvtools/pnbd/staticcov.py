@@ -324,6 +324,7 @@ def fit_pnbd_staticcov(
     method: str = "L-BFGS-B",
     maxiter: int = 10_000,
     hessian: bool = True,
+    polish: bool = True,
     options: dict | None = None,
 ) -> PnbdStaticCovParams:
     r"""Estimate the model of S6.4.1 from a covariate-bearing data object.
@@ -401,155 +402,41 @@ def fit_pnbd_staticcov(
     (``trans.Channel = 0.6241``) but drop out more quickly
     (``life.Channel = 0.7907``)."
     """
+    from clvtools._staticcov import fit_static_covariates
+
     cbs = data.customer_summary()
-    x = cbs["x"].to_numpy(dtype=float)
-    t_x = cbs["t_x"].to_numpy(dtype=float)
-    T = cbs["T"].to_numpy(dtype=float)
-    cov_life = data.design_life()
-    cov_trans = data.design_trans()
 
-    names_life = list(data.names_cov_life)
-    names_trans = list(data.names_cov_trans)
-    constrained = list(names_cov_constr or [])
-    for name in constrained:
-        if name not in names_life or name not in names_trans:
-            raise ValueError(
-                f"cannot constrain {name!r}: it must be a covariate of both "
-                "processes"
-            )
-    free_life = [n for n in names_life if n not in constrained]
-    free_trans = [n for n in names_trans if n not in constrained]
+    def objective(model, g_life, g_trans, cov_life, cov_trans):
+        return log_likelihood(
+            cbs["x"], cbs["t_x"], cbs["T"],
+            model[0], model[1], model[2], model[3],
+            g_life, g_trans, cov_life, cov_trans,
+        )
 
-    n_life, n_trans = len(free_life), len(free_trans)
-    n_constr = len(constrained)
-
-    # Column positions, so a constrained coefficient can be written into both
-    # design matrices from one search coordinate.
-    idx_life = [names_life.index(n) for n in free_life]
-    idx_trans = [names_trans.index(n) for n in free_trans]
-    idx_constr_life = [names_life.index(n) for n in constrained]
-    idx_constr_trans = [names_trans.index(n) for n in constrained]
-
-    if start is not None:
-        start_arr = np.asarray(start, dtype=float)
-        if start_arr.shape != (4,):
-            raise ValueError("start must give four values (r, alpha, s, beta)")
-        if np.any(start_arr <= 0):
-            raise ValueError("start values must be strictly positive")
-
-    if reg_lambdas is not None:
-        reg_lambdas = tuple(float(v) for v in reg_lambdas)
-        if len(reg_lambdas) != 2:
-            raise ValueError("reg_lambdas must give two values (life, trans)")
-        if any(v < 0 for v in reg_lambdas):
-            raise ValueError("regularization weights must be non-negative")
-
-    if start is None:
-        if reg_lambdas is None:
-            start_arr = np.ones(4)
-        else:
-            # Warm start. Dividing the likelihood by n to form the penalised
-            # objective flattens it by three orders of magnitude in the four
-            # model parameters, and from an all-ones start L-BFGS-B then
-            # reports successful convergence in a distinctly worse basin: at
-            # lambda = 10 on the apparel data it settles at s = 0.069,
-            # beta = 2.6, well away from the s = 0.56, beta = 47 the problem
-            # actually wants. Starting from the unregularized solution avoids
-            # it, and is the usual way regularization paths are traced anyway.
-            baseline = fit_pnbd_staticcov(
-                data,
-                names_cov_constr=names_cov_constr,
-                method=method,
-                maxiter=maxiter,
-                hessian=False,
-                options=options,
-            )
-            start_arr = np.array([baseline.r, baseline.alpha, baseline.s, baseline.beta])
-            if start_cov is None:
-                start_cov = 0.0
-
-    if start_cov is None:
-        start_cov = _DEFAULT_COV_START
-
-    x0 = np.concatenate(
-        [np.log(start_arr), np.full(n_life + n_trans + n_constr, float(start_cov))]
+    result = fit_static_covariates(
+        x=cbs["x"], t_x=cbs["t_x"], T=cbs["T"],
+        cov_life=data.design_life(), cov_trans=data.design_trans(),
+        names_cov_life=data.names_cov_life,
+        names_cov_trans=data.names_cov_trans,
+        log_likelihood=objective,
+        n_model_params=4, model_start=(1.0, 1.0, 1.0, 1.0),
+        names_cov_constr=names_cov_constr, reg_lambdas=reg_lambdas,
+        start=start, start_cov=start_cov,
+        method=method, maxiter=maxiter, hessian=hessian,
+        polish=polish, options=options,
     )
-
-    def unpack(v: np.ndarray):
-        """Expand the search vector into full per-process coefficient vectors.
-
-        A constrained covariate occupies one coordinate but is written into
-        both processes, which is eq. (14) implemented directly.
-        """
-        r, alpha, s, beta = np.exp(v[:4])
-        free_l = v[4 : 4 + n_life]
-        free_t = v[4 + n_life : 4 + n_life + n_trans]
-        shared = v[4 + n_life + n_trans :]
-
-        g_life = np.zeros(len(names_life))
-        g_trans = np.zeros(len(names_trans))
-        g_life[idx_life] = free_l
-        g_trans[idx_trans] = free_t
-        g_life[idx_constr_life] = shared
-        g_trans[idx_constr_trans] = shared
-        return r, alpha, s, beta, g_life, g_trans
-
-    def negative_ll(v: np.ndarray) -> float:
-        r, alpha, s, beta, g_life, g_trans = unpack(v)
-        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
-            value = log_likelihood(
-                x, t_x, T, r, alpha, s, beta, g_life, g_trans, cov_life, cov_trans
-            )
-        if not np.isfinite(value):
-            return np.inf
-        if reg_lambdas is None:
-            return -value
-        # Eq. (13). CLVTools penalises the *mean* log-likelihood, so the
-        # penalty weight means the same thing whatever the sample size.
-        lam_life, lam_trans = reg_lambdas
-        penalty = lam_life * np.sum(g_life**2) + lam_trans * np.sum(g_trans**2)
-        return -value / x.size + penalty
-
-    result = optimize.minimize(
-        negative_ll,
-        x0=x0,
-        method=method,
-        options=options_for(method, maxiter, x0, options),
-    )
-    r, alpha, s, beta, g_life, g_trans = unpack(result.x)
-    unpenalised = log_likelihood(
-        x, t_x, T, r, alpha, s, beta, g_life, g_trans, cov_life, cov_trans
-    )
-
-    hess = None
-    if hessian:
-        from clvtools.pnbd.fit import _numerical_hessian
-
-        natural = np.concatenate([[r, alpha, s, beta], g_life, g_trans])
-
-        def natural_nll(v: np.ndarray) -> float:
-            return -log_likelihood(
-                x, t_x, T, v[0], v[1], v[2], v[3],
-                v[4 : 4 + n_life], v[4 + n_life :], cov_life, cov_trans,
-            )
-
-        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
-            hess = _numerical_hessian(natural_nll, natural)
-
+    r, alpha, s, beta = (float(v) for v in result.model)
     return PnbdStaticCovParams(
-        r=float(r),
-        alpha=float(alpha),
-        s=float(s),
-        beta=float(beta),
-        gamma_life=np.asarray(g_life, dtype=float),
-        gamma_trans=np.asarray(g_trans, dtype=float),
-        names_cov_life=names_life,
-        names_cov_trans=names_trans,
-        log_likelihood=float(-result.fun),
-        unpenalised_log_likelihood=float(unpenalised),
-        converged=bool(result.success),
-        n_customers=int(x.size),
-        names_cov_constr=constrained,
-        reg_lambdas=reg_lambdas,
-        hessian=hess,
+        r=r, alpha=alpha, s=s, beta=beta,
+        gamma_life=result.gamma_life,
+        gamma_trans=result.gamma_trans,
+        names_cov_life=result.names_cov_life,
+        names_cov_trans=result.names_cov_trans,
+        log_likelihood=result.log_likelihood,
+        unpenalised_log_likelihood=result.unpenalised_log_likelihood,
+        converged=result.converged,
+        n_customers=result.n_customers,
+        names_cov_constr=result.names_cov_constr,
+        reg_lambdas=result.reg_lambdas,
+        hessian=result.hessian,
     )

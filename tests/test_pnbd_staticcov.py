@@ -395,7 +395,7 @@ class TestFitting:
         ]
 
     def test_rejects_bad_start_values(self, data):
-        with pytest.raises(ValueError, match="four values"):
+        with pytest.raises(ValueError, match="4 model parameters"):
             fit_pnbd_staticcov(data, start=(1.0, 1.0))
         with pytest.raises(ValueError, match="strictly positive"):
             fit_pnbd_staticcov(data, start=(1.0, -1.0, 1.0, 1.0))

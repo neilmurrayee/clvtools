@@ -17,7 +17,11 @@ Modules mirror the paper's structure:
 ``bgnbd``
     The BG/NBD, one of Table 3's alternative latent attrition models.
 ``ggomnbd``
-    The GGom/NBD, the other.
+    The GGom/NBD, the other. Both take time-invariant covariates,
+    equality constraints and regularization, per Table 3.
+``timeunit``
+    S5 - the unit of time, including the calendar arithmetic months and
+    years need.
 ``predict``
     S6.3 - combining the two into predicted transactions, spending and CLV.
 """

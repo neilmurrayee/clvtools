@@ -33,14 +33,17 @@ from clvtools._optimize import options_for
 
 __all__ = [
     "BgnbdParams",
+    "BgnbdStaticCovParams",
     "a_i",
     "alpha_i",
     "b_i",
     "conditional_expected_transactions",
     "expectation",
     "fit_bgnbd",
+    "fit_bgnbd_staticcov",
     "log_likelihood",
     "log_likelihood_ind",
+    "log_likelihood_staticcov",
     "pmf",
     "probability_alive",
 ]
@@ -418,4 +421,181 @@ def fit_bgnbd(
         log_likelihood=float(-result.fun),
         converged=bool(result.success),
         n_customers=int(x.size if w is None else w.sum()),
+    )
+
+
+# -- estimation with time-invariant covariates --------------------------------
+
+
+def log_likelihood_staticcov(
+    x: ArrayLike, t_x: ArrayLike, T: ArrayLike,
+    r: float, alpha: float, a: float, b: float,
+    gamma_life: ArrayLike, gamma_trans: ArrayLike,
+    cov_life: ArrayLike, cov_trans: ArrayLike,
+    weights: ArrayLike | None = None,
+) -> float:
+    r"""The sample log-likelihood with time-invariant covariates.
+
+    Table 3 marks the BG/NBD as supporting them. The rates are built by
+    :func:`alpha_i`, :func:`a_i` and :func:`b_i` -- note that the two attrition
+    parameters take a *positive* exponent where the transaction parameter takes
+    a negative one.
+    """
+    ll = log_likelihood_ind(
+        x, t_x, T,
+        r=r,
+        alpha=alpha_i(alpha, gamma_trans, cov_trans),
+        a=a_i(a, gamma_life, cov_life),
+        b=b_i(b, gamma_life, cov_life),
+    )
+    if weights is None:
+        return float(np.sum(ll))
+    return float(np.sum(ll * np.asarray(weights, dtype=float)))
+
+
+@dataclass(frozen=True)
+class BgnbdStaticCovParams:
+    r"""A fitted BG/NBD with time-invariant covariates."""
+
+    r: float
+    alpha: float
+    a: float
+    b: float
+    covariates: "StaticCovResult"  # noqa: F821
+
+    def __iter__(self) -> Iterator[float]:
+        yield from (self.r, self.alpha, self.a, self.b)
+        yield from self.covariates.covariate_values()
+
+    @property
+    def names(self) -> list[str]:
+        return ["r", "alpha", "a", "b"] + self.covariates.names
+
+    def coefficients(self) -> dict[str, float]:
+        return dict(zip(self.names, list(self)))
+
+    @property
+    def gamma_life(self):
+        return self.covariates.gamma_life
+
+    @property
+    def gamma_trans(self):
+        return self.covariates.gamma_trans
+
+    @property
+    def log_likelihood(self) -> float:
+        return self.covariates.log_likelihood
+
+    @property
+    def unpenalised_log_likelihood(self) -> float:
+        return self.covariates.unpenalised_log_likelihood
+
+    @property
+    def converged(self) -> bool:
+        return self.covariates.converged
+
+    @property
+    def n_customers(self) -> int:
+        return self.covariates.n_customers
+
+    @property
+    def n_parameters(self) -> int:
+        return len(self.names)
+
+    @property
+    def aic(self) -> float:
+        return 2 * self.n_parameters - 2 * self.unpenalised_log_likelihood
+
+    @property
+    def bic(self) -> float:
+        return (
+            self.n_parameters * np.log(self.n_customers)
+            - 2 * self.unpenalised_log_likelihood
+        )
+
+    def standard_errors(self) -> dict[str, float]:
+        """Standard errors from the inverse Hessian, in :attr:`names` order."""
+        if self.covariates.hessian is None:
+            raise ValueError("fit with hessian=True to obtain standard errors")
+        errors = np.sqrt(np.diag(np.linalg.inv(self.covariates.hessian)))
+        # The Hessian is over the full (unconstrained) parameter vector; map it
+        # back onto the reported names.
+        full = ["r", "alpha", "a", "b"]
+        full += [f"life.{n}" for n in self.covariates.names_cov_life]
+        full += [f"trans.{n}" for n in self.covariates.names_cov_trans]
+        by_name = dict(zip(full, errors))
+        out = {}
+        for name in self.names:
+            if name.startswith("constr."):
+                out[name] = by_name[f"life.{name.removeprefix('constr.')}"]
+            else:
+                out[name] = by_name[name]
+        return out
+
+
+def fit_bgnbd_staticcov(
+    data: "ClvDataStaticCov",  # noqa: F821
+    names_cov_constr: list[str] | None = None,
+    reg_lambdas: tuple[float, float] | None = None,
+    start: tuple[float, float, float, float] | None = None,
+    start_cov: float | None = None,
+    method: str = "L-BFGS-B",
+    maxiter: int = 10_000,
+    hessian: bool = True,
+    polish: bool = True,
+    options: dict | None = None,
+) -> BgnbdStaticCovParams:
+    r"""Estimate the BG/NBD with time-invariant covariates.
+
+    Table 3 marks the BG/NBD as taking time-invariant covariates, equality
+    constraints and regularization -- but not time-varying covariates or
+    process correlation, both of which are Pareto/NBD only.
+
+    Examples
+    --------
+    >>> from clvtools import ClvData, ClvDataStaticCov
+    >>> from clvtools import load_apparel_static_cov, load_apparel_trans
+    >>> data = ClvDataStaticCov(
+    ...     ClvData(load_apparel_trans(), estimation_split=104),
+    ...     load_apparel_static_cov(),
+    ...     names_cov_life=["Gender", "Channel"],
+    ...     names_cov_trans=["Gender", "Channel"])
+    >>> fit = fit_bgnbd_staticcov(data, hessian=False)
+    >>> fit.names
+    ['r', 'alpha', 'a', 'b', 'life.Gender', 'life.Channel',
+     'trans.Gender', 'trans.Channel']
+    >>> round(fit.log_likelihood, 3)
+    -5839.862
+
+    Covariates improve on the BG/NBD without them, which reached -5857.020:
+
+    >>> bool(fit.log_likelihood > -5857.02)
+    True
+    """
+    from clvtools._staticcov import fit_static_covariates
+
+    cbs = data.customer_summary()
+
+    def objective(model, g_life, g_trans, cov_life, cov_trans):
+        return log_likelihood_staticcov(
+            cbs["x"], cbs["t_x"], cbs["T"],
+            model[0], model[1], model[2], model[3],
+            g_life, g_trans, cov_life, cov_trans,
+        )
+
+    result = fit_static_covariates(
+        x=cbs["x"], t_x=cbs["t_x"], T=cbs["T"],
+        cov_life=data.design_life(), cov_trans=data.design_trans(),
+        names_cov_life=data.names_cov_life,
+        names_cov_trans=data.names_cov_trans,
+        log_likelihood=objective,
+        n_model_params=4, model_start=(1.0, 1.0, 1.0, 1.0),
+        names_cov_constr=names_cov_constr, reg_lambdas=reg_lambdas,
+        start=start, start_cov=start_cov,
+        method=method, maxiter=maxiter, hessian=hessian,
+        polish=polish, options=options,
+    )
+    r_, alpha_, a_, b_ = (float(v) for v in result.model)
+    return BgnbdStaticCovParams(
+        r=r_, alpha=alpha_, a=a_, b=b_, covariates=result
     )

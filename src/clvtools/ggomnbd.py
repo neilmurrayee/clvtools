@@ -37,13 +37,16 @@ from clvtools._optimize import options_for
 
 __all__ = [
     "GgomnbdParams",
+    "GgomnbdStaticCovParams",
     "alpha_i",
     "beta_i",
     "conditional_expected_transactions",
     "expectation",
     "fit_ggomnbd",
+    "fit_ggomnbd_staticcov",
     "log_likelihood",
     "log_likelihood_ind",
+    "log_likelihood_staticcov",
     "pmf",
     "probability_alive",
 ]
@@ -438,4 +441,157 @@ def fit_ggomnbd(
         log_likelihood=float(-result.fun),
         converged=bool(result.success),
         n_customers=int(x.size if w is None else w.sum()),
+    )
+
+
+# -- estimation with time-invariant covariates --------------------------------
+
+
+def log_likelihood_staticcov(
+    x: ArrayLike, t_x: ArrayLike, T: ArrayLike,
+    r: float, alpha: float, b: float, s: float, beta: float,
+    gamma_life: ArrayLike, gamma_trans: ArrayLike,
+    cov_life: ArrayLike, cov_trans: ArrayLike,
+    weights: ArrayLike | None = None,
+) -> float:
+    r"""The sample log-likelihood with time-invariant covariates.
+
+    Both rate parameters take a negative exponent, as in the Pareto/NBD -- see
+    :func:`beta_i`. Only the BG/NBD differs, because its attrition parameters
+    are beta shapes rather than rates.
+    """
+    ll = log_likelihood_ind(
+        x, t_x, T,
+        r=r,
+        alpha=alpha_i(alpha, gamma_trans, cov_trans),
+        b=b, s=s,
+        beta=beta_i(beta, gamma_life, cov_life),
+    )
+    if weights is None:
+        return float(np.sum(ll))
+    return float(np.sum(ll * np.asarray(weights, dtype=float)))
+
+
+@dataclass(frozen=True)
+class GgomnbdStaticCovParams:
+    r"""A fitted GGom/NBD with time-invariant covariates."""
+
+    r: float
+    alpha: float
+    b: float
+    s: float
+    beta: float
+    covariates: "StaticCovResult"  # noqa: F821
+
+    def __iter__(self) -> Iterator[float]:
+        yield from (self.r, self.alpha, self.b, self.s, self.beta)
+        yield from self.covariates.covariate_values()
+
+    @property
+    def names(self) -> list[str]:
+        return ["r", "alpha", "b", "s", "beta"] + self.covariates.names
+
+    def coefficients(self) -> dict[str, float]:
+        return dict(zip(self.names, list(self)))
+
+    @property
+    def gamma_life(self):
+        return self.covariates.gamma_life
+
+    @property
+    def gamma_trans(self):
+        return self.covariates.gamma_trans
+
+    @property
+    def log_likelihood(self) -> float:
+        return self.covariates.log_likelihood
+
+    @property
+    def unpenalised_log_likelihood(self) -> float:
+        return self.covariates.unpenalised_log_likelihood
+
+    @property
+    def converged(self) -> bool:
+        return self.covariates.converged
+
+    @property
+    def n_customers(self) -> int:
+        return self.covariates.n_customers
+
+    @property
+    def n_parameters(self) -> int:
+        return len(self.names)
+
+    @property
+    def aic(self) -> float:
+        return 2 * self.n_parameters - 2 * self.unpenalised_log_likelihood
+
+    @property
+    def bic(self) -> float:
+        return (
+            self.n_parameters * np.log(self.n_customers)
+            - 2 * self.unpenalised_log_likelihood
+        )
+
+
+def fit_ggomnbd_staticcov(
+    data: "ClvDataStaticCov",  # noqa: F821
+    names_cov_constr: list[str] | None = None,
+    reg_lambdas: tuple[float, float] | None = None,
+    start: tuple[float, float, float, float, float] | None = None,
+    start_cov: float | None = None,
+    method: str = "L-BFGS-B",
+    maxiter: int = 10_000,
+    polish: bool = True,
+    options: dict | None = None,
+) -> GgomnbdStaticCovParams:
+    r"""Estimate the GGom/NBD with time-invariant covariates.
+
+    Slow: every likelihood evaluation takes one numerical integral per customer,
+    and a covariate fit needs several hundred of them.
+
+    Examples
+    --------
+    >>> from clvtools import ClvData, ClvDataStaticCov
+    >>> from clvtools import load_apparel_static_cov, load_apparel_trans
+    >>> data = ClvDataStaticCov(
+    ...     ClvData(load_apparel_trans(), estimation_split=104),
+    ...     load_apparel_static_cov(),
+    ...     names_cov_life=["Gender", "Channel"],
+    ...     names_cov_trans=["Gender", "Channel"])
+    >>> from clvtools.ggomnbd import log_likelihood_staticcov
+    >>> cbs = data.customer_summary()
+    >>> round(log_likelihood_staticcov(
+    ...     cbs["x"], cbs["t_x"], cbs["T"],
+    ...     r=1.8378, alpha=92.9124, b=1e-06, s=0.5920, beta=4.9e-05,
+    ...     gamma_life=[-0.6430, 0.7907], gamma_trans=[0.2859, 0.6241],
+    ...     cov_life=data.design_life(), cov_trans=data.design_trans()), 3)
+    -5821.067
+    """
+    from clvtools._staticcov import fit_static_covariates
+
+    cbs = data.customer_summary()
+
+    def objective(model, g_life, g_trans, cov_life, cov_trans):
+        return log_likelihood_staticcov(
+            cbs["x"], cbs["t_x"], cbs["T"],
+            model[0], model[1], model[2], model[3], model[4],
+            g_life, g_trans, cov_life, cov_trans,
+        )
+
+    result = fit_static_covariates(
+        x=cbs["x"], t_x=cbs["t_x"], T=cbs["T"],
+        cov_life=data.design_life(), cov_trans=data.design_trans(),
+        names_cov_life=data.names_cov_life,
+        names_cov_trans=data.names_cov_trans,
+        log_likelihood=objective,
+        n_model_params=5, model_start=(1.0, 1.0, 1.0, 1.0, 1.0),
+        names_cov_constr=names_cov_constr, reg_lambdas=reg_lambdas,
+        start=start, start_cov=start_cov,
+        method=method, maxiter=maxiter, hessian=False,
+        polish=polish, options=options,
+    )
+    r_, alpha_, b_, s_, beta_ = (float(v) for v in result.model)
+    return GgomnbdStaticCovParams(
+        r=r_, alpha=alpha_, b=b_, s=s_, beta=beta_, covariates=result
     )
