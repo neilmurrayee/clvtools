@@ -30,7 +30,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from clvtools.data import ClvData
+from clvtools.data import ClvData, ClvDataStaticCov
 from clvtools.gg import GgParams, expected_mean_spending
 from clvtools.pnbd.aggregate import (
     conditional_expected_transactions,
@@ -38,6 +38,7 @@ from clvtools.pnbd.aggregate import (
     probability_alive,
 )
 from clvtools.pnbd.fit import PnbdParams
+from clvtools.pnbd.staticcov import PnbdStaticCovParams, alpha_i, beta_i
 
 __all__ = ["DEFAULT_DISCOUNT_FACTOR", "discount_factor", "predict"]
 
@@ -129,6 +130,35 @@ def _actuals(clv_data: ClvData, first: pd.Timestamp, last: pd.Timestamp,
     return out
 
 
+
+def _model_rates(clv_data: ClvData, params) -> dict:
+    r"""``(r, alpha, s, beta)`` for the expressions, per customer if needed.
+
+    With covariates each customer has their own :math:`\alpha_i, \beta_i`
+    (S3.3), built from the design matrices on the data object. The rest of the
+    prediction is then identical, which is the point of the extension.
+    """
+    if isinstance(params, PnbdStaticCovParams):
+        if not isinstance(clv_data, ClvDataStaticCov):
+            raise ValueError(
+                "a covariate model needs covariate data: build the data with "
+                "ClvDataStaticCov before predicting"
+            )
+        return {
+            "r": params.r,
+            "alpha": alpha_i(
+                params.alpha, params.gamma_trans,
+                clv_data.design_trans(params.names_cov_trans),
+            ),
+            "s": params.s,
+            "beta": beta_i(
+                params.beta, params.gamma_life,
+                clv_data.design_life(params.names_cov_life),
+            ),
+        }
+    return params.as_dict()
+
+
 def predict(
     clv_data: ClvData,
     params: PnbdParams,
@@ -145,7 +175,9 @@ def predict(
         ``newdata`` argument allows -- another set of customers to apply the
         fitted parameters to.
     params
-        A fitted Pareto/NBD.
+        A fitted Pareto/NBD, with or without time-invariant covariates. A
+        covariate model requires ``clv_data`` to be a
+        :class:`~clvtools.data.ClvDataStaticCov`.
     spending_params
         A fitted Gamma-Gamma. Without it the spending columns are omitted, as
         ``predict.spending = FALSE`` does in S6.3.1.
@@ -224,7 +256,7 @@ def predict(
 
     cbs = clv_data.customer_summary().set_index("Id")
     x, t_x, T = cbs["x"].to_numpy(), cbs["t_x"].to_numpy(), cbs["T"].to_numpy()
-    model = params.as_dict()
+    model = _model_rates(clv_data, params)
 
     table = pd.DataFrame(
         {

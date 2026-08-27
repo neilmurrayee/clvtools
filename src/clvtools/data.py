@@ -26,6 +26,7 @@ import pandas as pd
 
 __all__ = [
     "ClvData",
+    "ClvDataStaticCov",
     "TIME_UNITS",
     "load_apparel_dyn_cov",
     "load_apparel_static_cov",
@@ -350,3 +351,107 @@ class ClvData:
             f"estimation {self.estimation_start.date()}"
             f"..{self.estimation_end.date()}, {span})"
         )
+
+
+class ClvDataStaticCov(ClvData):
+    """Transaction data with time-invariant covariates. Cf. ``SetStaticCovariates()``.
+
+    S6.4: "The arguments ``data.cov.life`` and ``data.cov.trans`` are the
+    ``data.frame`` or ``data.table`` that contain the covariate data for the
+    attrition and the transaction process, respectively. If a covariate can
+    affect both processes it has to be added in both arguments."
+
+    The two processes need not share covariates, so the design matrices are
+    built and stored separately.
+
+    Examples
+    --------
+    S6.4 adds gender and acquisition channel to both processes:
+
+    >>> clv = ClvData(load_apparel_trans(), time_unit="week", estimation_split=104)
+    >>> static = ClvDataStaticCov(
+    ...     clv, load_apparel_static_cov(),
+    ...     names_cov_life=["Gender", "Channel"],
+    ...     names_cov_trans=["Gender", "Channel"],
+    ... )
+    >>> static.names_cov_life
+    ['Gender', 'Channel']
+    >>> static.design_life().shape
+    (600, 2)
+    """
+
+    def __init__(
+        self,
+        clv_data: ClvData,
+        data_cov_life: pd.DataFrame,
+        data_cov_trans: pd.DataFrame | None = None,
+        names_cov_life: list[str] | None = None,
+        names_cov_trans: list[str] | None = None,
+        name_id: str = "Id",
+    ) -> None:
+        # Copy the parent's state rather than re-deriving it, so the covariate
+        # object and the plain one always agree on (x, t_x, T).
+        self.__dict__.update(clv_data.__dict__)
+
+        if data_cov_trans is None:
+            data_cov_trans = data_cov_life
+
+        customers = pd.Index(sorted(self.transactions["Id"].unique()), name="Id")
+        self._cov_life = self._prepare(data_cov_life, name_id, customers, "life")
+        self._cov_trans = self._prepare(data_cov_trans, name_id, customers, "trans")
+
+        self.names_cov_life = list(
+            names_cov_life
+            if names_cov_life is not None
+            else self._cov_life.columns
+        )
+        self.names_cov_trans = list(
+            names_cov_trans
+            if names_cov_trans is not None
+            else self._cov_trans.columns
+        )
+        for names, frame, which in (
+            (self.names_cov_life, self._cov_life, "life"),
+            (self.names_cov_trans, self._cov_trans, "trans"),
+        ):
+            missing = [n for n in names if n not in frame.columns]
+            if missing:
+                raise ValueError(f"{which} covariates not in the data: {missing}")
+
+        self.customers = customers
+
+    @staticmethod
+    def _prepare(
+        frame: pd.DataFrame, name_id: str, customers: pd.Index, which: str
+    ) -> pd.DataFrame:
+        """One row per customer, in the order the customer summary uses.
+
+        S6.4: "Categorical data (``factor`` and ``character``) is turned into
+        k-1 dummy variables."
+        """
+        if name_id not in frame.columns:
+            raise ValueError(f"{which} covariate data has no {name_id!r} column")
+        out = frame.copy()
+        out[name_id] = out[name_id].astype(str)
+        out = out.set_index(name_id)
+
+        missing = customers.difference(out.index)
+        if len(missing):
+            raise ValueError(
+                f"{which} covariate data is missing {len(missing)} customers, "
+                f"e.g. {list(missing[:3])}"
+            )
+        out = out.loc[customers]
+
+        categorical = out.select_dtypes(include=["object", "category", "bool"]).columns
+        if len(categorical):
+            out = pd.get_dummies(out, columns=list(categorical), drop_first=True)
+        return out.astype(float)
+
+    def design_life(self, names: list[str] | None = None) -> np.ndarray:
+        r"""The attrition process's covariate matrix, customers in summary order."""
+        return self._cov_life[names or self.names_cov_life].to_numpy(dtype=float)
+
+    def design_trans(self, names: list[str] | None = None) -> np.ndarray:
+        r"""The transaction process's covariate matrix."""
+        return self._cov_trans[names or self.names_cov_trans].to_numpy(dtype=float)

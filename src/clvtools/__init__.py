@@ -23,6 +23,7 @@ from __future__ import annotations
 from clvtools.predict import discount_factor, predict
 from clvtools.data import (
     ClvData,
+    ClvDataStaticCov,
     load_apparel_dyn_cov,
     load_apparel_static_cov,
     load_apparel_trans,
@@ -31,6 +32,7 @@ from clvtools.data import (
 
 __all__ = [
     "ClvData",
+    "ClvDataStaticCov",
     "discount_factor",
     "load_apparel_dyn_cov",
     "load_apparel_static_cov",

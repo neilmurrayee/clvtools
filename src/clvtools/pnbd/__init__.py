@@ -11,6 +11,8 @@ Modules mirror the paper:
     managerial expressions PAlive, CET and DERT.
 ``fit``
     S3.2 - maximum likelihood estimation of (r, alpha, s, beta).
+``staticcov``
+    S3.3 and S6.4.1 - the extension for time-invariant covariates.
 """
 
 from __future__ import annotations
@@ -26,6 +28,12 @@ from clvtools.pnbd.aggregate import (
     probability_alive,
 )
 from clvtools.pnbd.fit import PnbdParams, fit_pnbd
+from clvtools.pnbd.staticcov import (
+    PnbdStaticCovParams,
+    alpha_i,
+    beta_i,
+    fit_pnbd_staticcov,
+)
 from clvtools.pnbd.individual import (
     gamma_pdf_lambda,
     gamma_pdf_mu,
@@ -41,10 +49,14 @@ from clvtools.pnbd.individual import (
 
 __all__ = [
     "PnbdParams",
+    "PnbdStaticCovParams",
+    "alpha_i",
+    "beta_i",
     "conditional_expected_transactions",
     "discounted_expected_residual_transactions",
     "expectation",
     "fit_pnbd",
+    "fit_pnbd_staticcov",
     "gamma_pdf_lambda",
     "gamma_pdf_mu",
     "individual_likelihood",
