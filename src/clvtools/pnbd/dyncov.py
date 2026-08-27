@@ -62,6 +62,7 @@ per-customer output in ``tests/test_pnbd_dyncov.py``.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import numpy as np
@@ -699,7 +700,7 @@ def _interval_index(grid: NDArray[np.int64], when: NDArray[np.int64]) -> NDArray
 
 
 def _distance_to_interval_end(
-    grid: NDArray[np.int64], when: np.int64, unit_days: float
+    grid: NDArray[np.int64], when: int, span: "Callable[[int, int], float]"
 ) -> float:
     r"""``d`` -- from a timepoint to the end of the covariate interval it is in.
 
@@ -707,11 +708,14 @@ def _distance_to_interval_end(
     zero: CLVTools' comment is "d shall be 1 if it is exactly on the time unit
     lower boundary". Without that, a transaction on a boundary would contribute
     nothing to its own interval and the walk arithmetic would double-count.
+
+    ``span`` measures a gap between two grid days in time units, so this works
+    for a calendar unit as well as a fixed one.
     """
     k = int(np.searchsorted(grid, when, side="right") - 1)
     if grid[k] == when:
         return 1.0
-    return float((grid[k + 1] - when) / unit_days)
+    return span(when, int(grid[k + 1]))
 
 
 @dataclass(frozen=True)
@@ -760,7 +764,7 @@ def build_walks(
     interval containing the last transaction belongs to the auxiliary walk
     alone, which is what lets :func:`d_i` treat the pair as one continuous span.
 
-    All arithmetic is done in whole days and divided by the time unit only at
+    All arithmetic is done in whole days and converted to time units only at
     the end. Working in nanoseconds instead leaves ``d1`` and ``tjk`` off by
     around 4e-13, which is enough to break the exact cancellation that makes
     ``F2.2`` vanish.
@@ -773,7 +777,7 @@ def build_walks(
     if trans.empty:
         raise ValueError("no transactions fall within the estimation period")
 
-    unit_days = clv_data._unit_days
+    unit = clv_data.time
     ids = sorted(trans["Id"].unique())
     index_of = {cid: i for i, cid in enumerate(ids)}
 
@@ -783,6 +787,12 @@ def build_walks(
             pd.to_datetime(pd.Series(values))
             .to_numpy(dtype="datetime64[D]")
             .astype("int64")
+        )
+
+    def span(day_a: int, day_b: int) -> float:
+        """The gap between two epoch-days, in time units."""
+        return unit.elapsed(
+            pd.Timestamp(day_a, unit="D"), pd.Timestamp(day_b, unit="D")
         )
 
     def prepare(frame: pd.DataFrame, names: list[str] | None) -> tuple:
@@ -834,9 +844,9 @@ def build_walks(
         first, last = int(dates[0]), int(dates[-1])
 
         x[i] = len(dates) - 1
-        t_x[i] = (last - first) / unit_days
-        T_cal[i] = (end - first) / unit_days
-        d_omega[i] = _distance_to_interval_end(grid, first, unit_days)
+        t_x[i] = span(first, last)
+        T_cal[i] = span(first, end)
+        d_omega[i] = _distance_to_interval_end(grid, first, span)
 
         k_first = int(_interval_index(grid, np.array([first]))[0])
         k_last = int(_interval_index(grid, np.array([last]))[0])
@@ -846,8 +856,8 @@ def build_walks(
         aux_life_specs.append(_WalkSpec(i, k_last, k_end))
         aux_trans_specs.append(_WalkSpec(
             i, k_last, k_end,
-            d1=_distance_to_interval_end(grid, last, unit_days),
-            tjk=(end - last) / unit_days,
+            d1=_distance_to_interval_end(grid, last, span),
+            tjk=span(last, end),
         ))
 
         # The real lifetime walk stops short of the auxiliary walk's first
@@ -862,8 +872,8 @@ def build_walks(
                 i,
                 int(_interval_index(grid, np.array([previous]))[0]),
                 int(_interval_index(grid, np.array([this]))[0]),
-                d1=_distance_to_interval_end(grid, int(previous), unit_days),
-                tjk=(int(this) - int(previous)) / unit_days,
+                d1=_distance_to_interval_end(grid, int(previous), span),
+                tjk=span(int(previous), int(this)),
             ))
 
     def stack(specs: list[_WalkSpec], rows: dict[str, NDArray[np.float64]]):

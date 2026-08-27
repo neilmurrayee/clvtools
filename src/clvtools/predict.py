@@ -30,6 +30,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from clvtools import timeunit
 from clvtools.data import ClvData, ClvDataStaticCov
 from clvtools.gg import GgParams, expected_mean_spending
 from clvtools.pnbd.aggregate import (
@@ -54,8 +55,7 @@ __all__ = ["DEFAULT_DISCOUNT_FACTOR", "discount_factor", "predict"]
 #:    unless you are deliberately matching CLVTools' default.
 DEFAULT_DISCOUNT_FACTOR = float(np.log(1 + 0.10))
 
-#: Periods per year, for :func:`discount_factor`.
-_PERIODS_PER_YEAR = {"hour": 8760.0, "day": 365.0, "week": 52.0}
+
 
 
 def discount_factor(annual_rate: float, time_unit: str = "week") -> float:
@@ -78,13 +78,10 @@ def discount_factor(annual_rate: float, time_unit: str = "week") -> float:
     >>> bool(np.isclose(discount_factor(0.075), np.log(1.075) / 52))
     True
     """
-    if time_unit not in _PERIODS_PER_YEAR:
-        raise ValueError(
-            f"time_unit must be one of {sorted(_PERIODS_PER_YEAR)}, got {time_unit!r}"
-        )
+    periods = timeunit.get(time_unit).periods_per_year
     if annual_rate <= -1:
         raise ValueError("annual_rate must exceed -1")
-    return float(np.log1p(annual_rate) / _PERIODS_PER_YEAR[time_unit])
+    return float(np.log1p(annual_rate) / periods)
 
 
 def _resolve_prediction_end(
@@ -106,8 +103,7 @@ def _resolve_prediction_end(
     if isinstance(prediction_end, (int, float, np.integer, np.floating)):
         if prediction_end <= 0:
             raise ValueError("prediction_end must be a positive number of periods")
-        days = float(prediction_end) * clv_data._unit_days
-        return clv_data.estimation_end + pd.Timedelta(days=days)
+        return clv_data.time.add(clv_data.estimation_end, float(prediction_end))
     return pd.Timestamp(prediction_end)
 
 
@@ -250,9 +246,7 @@ def predict(
             f"estimation period ends {clv_data.estimation_end.date()}"
         )
     first = clv_data.estimation_end + pd.Timedelta(days=1)
-    length = (last - clv_data.estimation_end).total_seconds() / (
-        86400.0 * clv_data._unit_days
-    )
+    length = clv_data.time.elapsed(clv_data.estimation_end, last)
 
     cbs = clv_data.customer_summary().set_index("Id")
     x, t_x, T = cbs["x"].to_numpy(), cbs["t_x"].to_numpy(), cbs["T"].to_numpy()

@@ -24,6 +24,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from clvtools import timeunit
+from clvtools.timeunit import TIME_UNITS
+
 __all__ = [
     "ClvData",
     "ClvDataDynCov",
@@ -37,13 +40,8 @@ __all__ = [
 
 DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 
-#: Length of each supported time unit, in days.
-#:
-#: S5: "the business context also determines the choice of the relevant unit of
-#: time [...] In most settings, this means choosing ``"weeks"`` as time unit."
-#: Months and years are deliberately absent: they are not a fixed number of
-#: days, so they need calendar arithmetic rather than a scale factor.
-TIME_UNITS = {"hour": 1.0 / 24.0, "day": 1.0, "week": 7.0}
+#: Every unit :class:`ClvData` accepts. See :mod:`clvtools.timeunit` for the
+#: calendar arithmetic the month and year units need.
 
 
 def load_apparel_trans() -> pd.DataFrame:
@@ -119,6 +117,8 @@ class ClvData:
         be included."
     time_unit
         The unit in which all time spans are measured; one of ``TIME_UNITS``.
+        ``"month"`` and ``"year"`` count calendar anniversaries rather than
+        dividing by a fixed number of days -- see :mod:`clvtools.timeunit`.
     estimation_split
         Length of the estimation period in ``time_unit`` units, or a date, or
         ``None`` for no holdout period.
@@ -156,12 +156,8 @@ class ClvData:
         name_date: str = "Date",
         name_price: str | None = "Price",
     ) -> None:
-        if time_unit not in TIME_UNITS:
-            raise ValueError(
-                f"time_unit must be one of {sorted(TIME_UNITS)}, got {time_unit!r}"
-            )
+        self.time = timeunit.get(time_unit)
         self.time_unit = time_unit
-        self._unit_days = TIME_UNITS[time_unit]
 
         cols = {name_id: "Id", name_date: "Date"}
         has_price = name_price is not None and name_price in transactions.columns
@@ -208,7 +204,7 @@ class ClvData:
         independent events [...] The Poisson process explicitly assumes that the
         events are independent."
         """
-        floor = "h" if self.time_unit == "hour" else "D"
+        floor = "h" if self.time_unit == "hour" else "D"  # S6.1
         df = df.copy()
         df["Date"] = df["Date"].dt.floor(floor)
         out = (
@@ -231,8 +227,7 @@ class ClvData:
         if split is None:
             return self.data_end
         if isinstance(split, (int, float, np.integer, np.floating)):
-            offset = pd.Timedelta(days=float(split) * self._unit_days)
-            end = self.estimation_start + offset
+            end = self.time.add(self.estimation_start, float(split))
         else:
             end = pd.Timestamp(split)
         if end > self.data_end:
@@ -245,8 +240,15 @@ class ClvData:
         return end
 
     def _elapsed(self, start: pd.Series, end) -> pd.Series:
-        """A span between dates, expressed in ``time_unit`` units."""
-        return (end - start).dt.total_seconds() / (86400.0 * self._unit_days)
+        """A span between dates, expressed in ``time_unit`` units.
+
+        Delegated to the unit because a calendar unit cannot be a division:
+        see :mod:`clvtools.timeunit`.
+        """
+        end = pd.Series([end] * len(start), index=start.index) if not hasattr(end, "__len__") else end
+        return pd.Series(
+            [self.time.elapsed(a, b) for a, b in zip(start, end)], index=start.index
+        )
 
     # -- model inputs ---------------------------------------------------------
 
