@@ -14,10 +14,13 @@ Modules mirror the paper's structure:
     S3.2 and Appendix A - the Pareto/NBD latent attrition model.
 ``gg``
     S3.5 - the Gamma-Gamma model of customer spending.
+``predict``
+    S6.3 - combining the two into predicted transactions, spending and CLV.
 """
 
 from __future__ import annotations
 
+from clvtools.predict import discount_factor, predict
 from clvtools.data import (
     ClvData,
     load_apparel_dyn_cov,
@@ -28,8 +31,10 @@ from clvtools.data import (
 
 __all__ = [
     "ClvData",
+    "discount_factor",
     "load_apparel_dyn_cov",
     "load_apparel_static_cov",
     "load_apparel_trans",
     "load_cdnow",
+    "predict",
 ]
