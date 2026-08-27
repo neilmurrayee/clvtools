@@ -413,4 +413,63 @@ check("pnbd staticcov LL at MLE",
                                        m.life, m.trans)),
       logLik(est.static), tol = 1e-3)
 
+# -- Advanced modelling techniques, S3.4 and S6.5 -----------------------------
+
+cat("\n== advanced techniques ==\n")
+
+# (1) Correlated transaction and attrition processes, via Sarmanov. S6.5.2:
+#     "To relax the assumption of independence between the transaction and the
+#     attrition process, specify the argument use.cor".
+est.cor <- latentAttrition(family = pnbd, data = clv.apparel,
+                           use.cor = TRUE, verbose = FALSE)
+write_json(list(
+  coefficients = as.list(coef(est.cor)),
+  logLik       = as.numeric(logLik(est.cor)),
+  AIC          = AIC(est.cor),
+  BIC          = BIC(est.cor),
+  nobs         = nobs(est.cor),
+  se           = as.list(sqrt(diag(vcov(est.cor))))
+), "pnbd_correlation_fit")
+
+# (2) L2 regularization of the covariate parameters. S6.5.1:
+#     "by specifying reg.lambdas = c(trans = 0.1, life = 0.1)".
+for (lam in c(0.1, 10)) {
+  est.reg <- latentAttrition(~ Gender + Channel | Gender + Channel,
+                             family = pnbd, data = clv.static,
+                             reg.lambdas = c(trans = lam, life = lam),
+                             verbose = FALSE)
+  write_json(list(
+    lambda.life  = lam,
+    lambda.trans = lam,
+    coefficients = as.list(coef(est.reg)),
+    logLik       = as.numeric(logLik(est.reg)),
+    nobs         = nobs(est.reg)
+  ), sprintf("pnbd_staticcov_regularized_%s", sub("[.]", "_", as.character(lam))))
+}
+
+# (3) Equality constraints. S6.5.3: "an additional model is estimated that
+#     forces the covariate gender to have the same parameter value for the
+#     transaction and attrition process."
+est.constr <- latentAttrition(~ Gender + Channel | Gender + Channel,
+                              family = pnbd, data = clv.static,
+                              names.cov.constr = "Gender", verbose = FALSE)
+write_json(list(
+  coefficients = as.list(coef(est.constr)),
+  logLik       = as.numeric(logLik(est.constr)),
+  AIC          = AIC(est.constr),
+  BIC          = BIC(est.constr),
+  nobs         = nobs(est.constr),
+  se           = as.list(sqrt(diag(vcov(est.constr))))
+), "pnbd_staticcov_constrained_fit")
+
+# A likelihood-ratio test compares the constrained fit to the unconstrained
+# one; S6.5.3 uses exactly this to decide whether the two processes really
+# differ in a covariate.
+write_json(list(
+  df.constrained     = length(coef(est.constr)),
+  df.unconstrained   = length(coef(est.static)),
+  logLik.constrained = as.numeric(logLik(est.constr)),
+  logLik.unconstrained = as.numeric(logLik(est.static))
+), "pnbd_staticcov_lrtest")
+
 cat("\nfixtures written to ", OUT, "\n", sep = "")

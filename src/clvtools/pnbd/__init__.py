@@ -12,7 +12,10 @@ Modules mirror the paper:
 ``fit``
     S3.2 - maximum likelihood estimation of (r, alpha, s, beta).
 ``staticcov``
-    S3.3 and S6.4.1 - the extension for time-invariant covariates.
+    S3.3 and S6.4.1 - time-invariant covariates, plus the equality
+    constraints and L2 regularization of S6.5.
+``correlation``
+    S3.4 and S6.5.2 - Sarmanov-correlated transaction and attrition processes.
 """
 
 from __future__ import annotations
@@ -28,6 +31,12 @@ from clvtools.pnbd.aggregate import (
     probability_alive,
 )
 from clvtools.pnbd.fit import PnbdParams, fit_pnbd
+from clvtools.pnbd.correlation import (
+    PnbdCorrelatedParams,
+    correlated_log_likelihood,
+    correlation_coefficient,
+    fit_pnbd_correlated,
+)
 from clvtools.pnbd.staticcov import (
     PnbdStaticCovParams,
     alpha_i,
@@ -48,14 +57,18 @@ from clvtools.pnbd.individual import (
 )
 
 __all__ = [
+    "PnbdCorrelatedParams",
     "PnbdParams",
     "PnbdStaticCovParams",
     "alpha_i",
     "beta_i",
     "conditional_expected_transactions",
+    "correlated_log_likelihood",
+    "correlation_coefficient",
     "discounted_expected_residual_transactions",
     "expectation",
     "fit_pnbd",
+    "fit_pnbd_correlated",
     "fit_pnbd_staticcov",
     "gamma_pdf_lambda",
     "gamma_pdf_mu",

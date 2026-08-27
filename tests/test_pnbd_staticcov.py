@@ -362,6 +362,32 @@ class TestFitting:
     def test_parameter_count_includes_the_covariates(self, fitted):
         assert fitted.n_parameters == 8
 
+    def test_information_criteria_use_the_plain_likelihood_when_unpenalised(
+        self, fitted
+    ):
+        """Without a penalty the two likelihoods coincide."""
+        assert fitted.unpenalised_log_likelihood == pytest.approx(
+            fitted.log_likelihood
+        )
+        assert fitted.aic == pytest.approx(16 - 2 * fitted.log_likelihood)
+
+    def test_a_params_object_without_an_unpenalised_value_falls_back(self):
+        """Hand-built parameters, as when replaying a published fit."""
+        from clvtools.pnbd.staticcov import PnbdStaticCovParams
+
+        params = PnbdStaticCovParams(
+            r=1.8378, alpha=92.9123, s=0.5920, beta=49.6227,
+            gamma_life=np.array([-0.6430, 0.7907]),
+            gamma_trans=np.array([0.2859, 0.6241]),
+            names_cov_life=NAMES, names_cov_trans=NAMES,
+            log_likelihood=-5821.0627, converged=True, n_customers=600,
+        )
+        assert params.unpenalised_log_likelihood is None
+        assert params.aic == pytest.approx(16 - 2 * -5821.0627)
+        assert params.bic == pytest.approx(
+            8 * np.log(600) - 2 * -5821.0627
+        )
+
     def test_names_follow_clvtools_convention(self, fitted):
         assert fitted.names == [
             "r", "alpha", "s", "beta",
