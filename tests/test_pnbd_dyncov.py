@@ -593,7 +593,19 @@ class TestFit:
     some 80,000 scalar hypergeometric calls.
     """
 
-    def test_reaches_the_oracles_optimum(self, dyncov_walks):
+    def test_reaches_at_least_the_oracles_optimum(self, dyncov_walks):
+        r"""Runs in about 17 minutes, over 1,870 likelihood evaluations.
+
+        The assertion is one-sided. This implementation attains -5752.623
+        against CLVTools' -5752.937 -- 0.31 log-likelihood units better -- and
+        the parameters differ visibly, ``life.High.Season`` most of all at
+        -8.12 against -2.48. With ten parameters and a likelihood this flat
+        that is unsurprising, and the earlier tests establish that both
+        implementations agree about the *function* to nine significant figures
+        at two fixed parameter vectors. What differs is where each optimiser
+        stops, so requiring equality here would be testing SciPy against
+        optimx rather than testing the model.
+        """
         from clvtools.pnbd.dyncov import fit_pnbd_dyncov
 
         names = ["High.Season", "Gender", "Channel"]
@@ -602,8 +614,13 @@ class TestFit:
             dyncov_walks, names_cov_life=names, names_cov_trans=names
         )
         assert fitted.converged
-        assert fitted.log_likelihood == pytest.approx(want["logLik"], abs=1e-2)
-        assert fitted.log_likelihood >= want["logLik"] - 1e-2
+        assert fitted.log_likelihood >= want["logLik"] - 1e-6
+        # The transaction-process coefficients, which S6.4.1 is what a reader
+        # would interpret, do land in the same place.
+        coefficients = fitted.coefficients()
+        assert coefficients["trans.High.Season"] == pytest.approx(0.7183, abs=5e-3)
+        assert coefficients["trans.Gender"] == pytest.approx(0.2649, abs=1e-2)
+        assert coefficients["trans.Channel"] == pytest.approx(0.6137, abs=1e-2)
 
 
 class TestNumericalEdgeCases:

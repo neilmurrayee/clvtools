@@ -14,12 +14,17 @@ Modules mirror the paper's structure:
     S3.2 and Appendix A - the Pareto/NBD latent attrition model.
 ``gg``
     S3.5 - the Gamma-Gamma model of customer spending.
+``bgnbd``
+    The BG/NBD, one of Table 3's alternative latent attrition models.
+``ggomnbd``
+    The GGom/NBD, the other.
 ``predict``
     S6.3 - combining the two into predicted transactions, spending and CLV.
 """
 
 from __future__ import annotations
 
+from clvtools import bgnbd, gg, ggomnbd, pnbd
 from clvtools.predict import discount_factor, predict
 from clvtools.data import (
     ClvData,
@@ -33,6 +38,10 @@ from clvtools.data import (
 
 __all__ = [
     "ClvData",
+    "bgnbd",
+    "gg",
+    "ggomnbd",
+    "pnbd",
     "ClvDataDynCov",
     "ClvDataStaticCov",
     "discount_factor",
