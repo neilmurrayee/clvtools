@@ -354,3 +354,416 @@ class TestNesting:
             r, alpha, s, beta,
         )
         assert dynamic == pytest.approx(plain, rel=1e-8)
+
+
+@pytest.mark.oracle
+class TestWalkConstruction:
+    r"""Building the walks from raw data, against the oracle's own tables.
+
+    This is checked separately from the likelihood, and before it: the
+    :func:`dyncov_walks` fixture loads CLVTools' walks directly, so a fault in
+    construction cannot hide behind a correct likelihood or the reverse.
+    """
+
+    @pytest.fixture(scope="class")
+    def built(self):
+        from clvtools import ClvData, load_apparel_dyn_cov, load_apparel_trans
+        from clvtools.pnbd.dyncov import build_walks
+
+        return build_walks(
+            ClvData(load_apparel_trans(), time_unit="week", estimation_split=104),
+            load_apparel_dyn_cov(),
+            names_cov_life=["High.Season", "Gender", "Channel"],
+            names_cov_trans=["High.Season", "Gender", "Channel"],
+        )
+
+    def test_customer_summary_matches(self, built):
+        want = fixture_csv("dyncov_cbs").set_index("Id").loc[built.ids]
+        np.testing.assert_array_equal(built.x, want["x"])
+        np.testing.assert_array_equal(built.T_cal, want["T.cal"])
+        np.testing.assert_array_equal(built.d_omega, want["d_omega"])
+        # t_x is computed from whole days here and is the exact value; the
+        # fixture went through CSV at 15 significant digits.
+        np.testing.assert_allclose(built.t_x, want["t.x"], atol=1e-12)
+
+    def test_d_omega_is_one_for_this_cohort(self, built):
+        r"""Every first purchase falls on a covariate boundary.
+
+        The apparel cohort's covariate grid starts on the cohort's own first
+        purchase date, so ``d_omega`` takes the boundary value of 1 throughout.
+        This is what pins the "``d`` is 1 on the lower boundary" rule: with the
+        naive definition it would be 0 for all 600 customers.
+        """
+        np.testing.assert_array_equal(built.d_omega, np.ones(600))
+
+    def test_auxiliary_walk_indices_match(self, built):
+        want = fixture_csv("dyncov_walkinfo").set_index("Id").loc[built.ids]
+        np.testing.assert_array_equal(
+            built.walkinfo_aux_life, want[["aux_life_from", "aux_life_to"]]
+        )
+        np.testing.assert_array_equal(
+            built.walkinfo_aux_trans[:, :2],
+            want[["aux_trans_from", "aux_trans_to"]],
+        )
+
+    def test_auxiliary_transaction_walk_d1_and_tjk_match(self, built):
+        want = fixture_csv("dyncov_walkinfo").set_index("Id").loc[built.ids]
+        np.testing.assert_allclose(
+            built.walkinfo_aux_trans[:, 2:],
+            want[["aux_trans_d1", "aux_trans_tjk"]],
+            atol=1e-12,
+        )
+
+    def test_real_lifetime_walk_indices_match(self, built):
+        want = fixture_csv("dyncov_walkinfo").set_index("Id").loc[built.ids]
+        want_values = want[["real_life_from", "real_life_to"]].to_numpy(float)
+        np.testing.assert_array_equal(
+            np.isfinite(built.walkinfo_real_life), np.isfinite(want_values)
+        )
+        present = np.isfinite(want_values)
+        np.testing.assert_array_equal(
+            built.walkinfo_real_life[present], want_values[present]
+        )
+
+    def test_real_transaction_walks_match(self, built):
+        want = fixture_csv("dyncov_walkinfo_real_trans")[
+            ["walk_from", "walk_to", "d1", "tjk"]
+        ].to_numpy(float)
+        assert built.walkinfo_real_trans.shape == want.shape
+        np.testing.assert_allclose(built.walkinfo_real_trans, want, atol=1e-12)
+
+    def test_covariate_matrices_match(self, built):
+        for kind in ("aux_life", "real_life", "aux_trans", "real_trans"):
+            want = fixture_csv(f"dyncov_covdata_{kind}").to_numpy(dtype=float)
+            got = getattr(built, f"covdata_{kind}")
+            np.testing.assert_array_equal(got, want, err_msg=kind)
+
+    def test_the_likelihood_agrees_with_the_oracles_walks(self, built):
+        """End to end: raw data in, CLVTools' log-likelihood out."""
+        for case in CASES:
+            r, alpha, s, beta, g_life, g_trans = _split(case)
+            total = log_likelihood(built, r, alpha, s, beta, g_life, g_trans)
+            assert total == pytest.approx(GRID["LL.sum"][case], abs=1e-8), case
+
+    def test_day_aggregation_is_applied(self, built):
+        """S6.1's collapse to the day, which the walks inherit.
+
+        Passing a raw log instead would give a customer who bought twice in one
+        day an extra transaction and an extra zero-length walk.
+        """
+        from clvtools import ClvData, load_apparel_trans
+
+        data = ClvData(load_apparel_trans(), time_unit="week", estimation_split=104)
+        summary = data.customer_summary().set_index("Id").loc[built.ids]
+        np.testing.assert_array_equal(built.x, summary["x"])
+
+    def test_every_customer_has_an_auxiliary_walk(self, built):
+        """It runs from the last transaction to the window end, always non-empty."""
+        lengths = built.walkinfo_aux_trans[:, 1] - built.walkinfo_aux_trans[:, 0] + 1
+        assert (lengths >= 1).all()
+
+    def test_repeat_purchases_get_one_transaction_walk_each(self, built):
+        counts = np.where(
+            np.isfinite(built.real_trans_from),
+            built.real_trans_to - built.real_trans_from + 1,
+            0,
+        )
+        np.testing.assert_array_equal(counts, built.x)
+
+
+class TestWalkConstructionValidation:
+    @pytest.fixture(scope="class")
+    def data(self):
+        from clvtools import ClvData, load_apparel_trans
+
+        return ClvData(load_apparel_trans(), time_unit="week", estimation_split=104)
+
+    def test_rejects_covariates_without_a_date_column(self, data):
+        from clvtools.pnbd.dyncov import build_walks
+
+        with pytest.raises(ValueError, match="no 'Cov.Date' column"):
+            build_walks(data, pd.DataFrame({"Id": ["1"], "Gender": [0]}))
+
+    def test_rejects_an_unknown_covariate_name(self, data):
+        from clvtools import load_apparel_dyn_cov
+        from clvtools.pnbd.dyncov import build_walks
+
+        with pytest.raises(ValueError, match="missing columns"):
+            build_walks(data, load_apparel_dyn_cov(), names_cov_life=["Nope"])
+
+    def test_rejects_customers_without_covariate_data(self, data):
+        from clvtools import load_apparel_dyn_cov
+        from clvtools.pnbd.dyncov import build_walks
+
+        partial = load_apparel_dyn_cov()
+        partial = partial[partial["Id"] != "1"]
+        with pytest.raises(ValueError, match="have no covariate data"):
+            build_walks(
+                data, partial,
+                names_cov_life=["High.Season"], names_cov_trans=["High.Season"],
+            )
+
+    def test_covariate_names_default_to_every_column(self, data):
+        from clvtools import load_apparel_dyn_cov
+        from clvtools.pnbd.dyncov import build_walks
+
+        walks = build_walks(data, load_apparel_dyn_cov())
+        assert walks.n_cov_life == walks.n_cov_trans == 3
+
+
+class TestDynCovDataObject:
+    """``SetDynamicCovariates()``'s analogue."""
+
+    @pytest.fixture(scope="class")
+    def dynamic(self):
+        from clvtools import ClvData, ClvDataDynCov
+        from clvtools import load_apparel_dyn_cov, load_apparel_trans
+
+        return ClvDataDynCov(
+            ClvData(load_apparel_trans(), time_unit="week", estimation_split=104),
+            load_apparel_dyn_cov(),
+            names_cov_life=["High.Season", "Gender", "Channel"],
+            names_cov_trans=["High.Season", "Gender", "Channel"],
+        )
+
+    def test_inherits_the_transaction_data(self, dynamic):
+        assert dynamic.estimation_end == pd.Timestamp("2006-12-31")
+        assert dynamic.has_holdout
+
+    def test_builds_walks_matching_the_oracle(self, dynamic):
+        want = fixture_csv("dyncov_cbs").set_index("Id")
+        walks = dynamic.walks()
+        np.testing.assert_array_equal(walks.x, want.loc[walks.ids, "x"])
+
+    def test_walks_are_cached(self, dynamic):
+        """They cost a full sweep of the covariate data and do not depend on
+        the parameters, so building them once is worth it."""
+        assert dynamic.walks() is dynamic.walks()
+
+    def test_the_transaction_process_can_take_different_covariates(self):
+        from clvtools import ClvData, ClvDataDynCov
+        from clvtools import load_apparel_dyn_cov, load_apparel_trans
+
+        data = ClvDataDynCov(
+            ClvData(load_apparel_trans(), time_unit="week", estimation_split=104),
+            load_apparel_dyn_cov(),
+            names_cov_life=["High.Season"],
+            names_cov_trans=["High.Season", "Gender", "Channel"],
+        )
+        walks = data.walks()
+        assert (walks.n_cov_life, walks.n_cov_trans) == (1, 3)
+
+
+class TestFitValidation:
+    def test_rejects_bad_start_values(self, dyncov_walks):
+        from clvtools.pnbd.dyncov import fit_pnbd_dyncov
+
+        with pytest.raises(ValueError, match="four values"):
+            fit_pnbd_dyncov(dyncov_walks, start=(1.0, 1.0))
+        with pytest.raises(ValueError, match="strictly positive"):
+            fit_pnbd_dyncov(dyncov_walks, start=(1.0, -1.0, 1.0, 1.0))
+
+    def test_parameters_report_their_names(self, dyncov_walks):
+        from clvtools.pnbd.dyncov import PnbdDynCovParams
+
+        names = ["High.Season", "Gender", "Channel"]
+        params = PnbdDynCovParams(
+            r=1.0, alpha=50.0, s=1.0, beta=60.0,
+            gamma_life=np.zeros(3), gamma_trans=np.zeros(3),
+            names_cov_life=names, names_cov_trans=names,
+            log_likelihood=-5752.9, converged=True, n_customers=600,
+        )
+        assert params.names == [
+            "r", "alpha", "s", "beta",
+            "life.High.Season", "life.Gender", "life.Channel",
+            "trans.High.Season", "trans.Gender", "trans.Channel",
+        ]
+        assert params.n_parameters == 10
+        assert params.aic == pytest.approx(20 - 2 * -5752.9)
+        assert params.bic == pytest.approx(10 * np.log(600) - 2 * -5752.9)
+
+
+@pytest.mark.dyncov_fit
+class TestFit:
+    r"""The full MLE. Minutes, not seconds -- run with ``-m dyncov_fit``.
+
+    S6.4 warns about this: "the model estimation with time-varying covariates
+    is computationally much more demanding than the previously detailed
+    alternatives." Each likelihood evaluation sweeps 600 customers and makes
+    some 80,000 scalar hypergeometric calls.
+    """
+
+    def test_reaches_the_oracles_optimum(self, dyncov_walks):
+        from clvtools.pnbd.dyncov import fit_pnbd_dyncov
+
+        names = ["High.Season", "Gender", "Channel"]
+        want = fixture_json("dyncov_fit")
+        fitted = fit_pnbd_dyncov(
+            dyncov_walks, names_cov_life=names, names_cov_trans=names
+        )
+        assert fitted.converged
+        assert fitted.log_likelihood == pytest.approx(want["logLik"], abs=1e-2)
+        assert fitted.log_likelihood >= want["logLik"] - 1e-2
+
+
+class TestNumericalEdgeCases:
+    """The guarded branches, driven directly rather than waited for."""
+
+    def test_the_hypergeometric_fallback_matches_where_both_work(self):
+        r"""Where SciPy converges, the limiting form should be close.
+
+        The fallback only fires when the series fails, so it is normally
+        unobserved. Forcing it on arguments SciPy *can* handle shows the two
+        are the same quantity rather than one being a guess.
+        """
+        from clvtools.pnbd.dyncov import _hyp_alpha_ge_beta, _hyp_beta_gt_alpha
+        from scipy import special
+
+        r, s, x = 1.5, 0.8, 3.0
+        a = r + s + x
+        alpha_1, beta_1, alpha_2, beta_2 = 120.0, 60.0, 130.0, 62.0
+        got = _hyp_alpha_ge_beta(r, s, x, alpha_1, beta_1, alpha_2, beta_2)
+        direct = sum(
+            sign * special.hyp2f1(a, s + 1.0, a + 1.0, 1.0 - beta / alpha) / alpha**a
+            for alpha, beta, sign in
+            ((alpha_1, beta_1, 1.0), (alpha_2, beta_2, -1.0))
+        )
+        assert got == pytest.approx(direct, rel=1e-12)
+
+        got = _hyp_beta_gt_alpha(r, s, x, 60.0, 120.0, 62.0, 130.0)
+        assert np.isfinite(got)
+
+    def test_the_fallback_keeps_the_result_finite(self):
+        """Large ``x`` with ``z`` near 1 is where SciPy gives up."""
+        from clvtools.pnbd.dyncov import _hyp_alpha_ge_beta
+        from scipy import special
+
+        r, s, x = 1.5, 0.8, 400.0
+        a = r + s + x
+        assert not np.isfinite(special.hyp2f1(a, s + 1.0, a + 1.0, 1.0 - 1e-9))
+        with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+            got = _hyp_alpha_ge_beta(r, s, x, 1e9, 1.0, 1.1e9, 1.0)
+        assert not np.isnan(got)
+
+    def test_a_non_finite_f2_gives_a_non_finite_likelihood(self, dyncov_walks):
+        """Rather than a plausible number the optimiser would then trust."""
+        from clvtools.pnbd.dyncov import log_likelihood_ind
+
+        with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+            got = log_likelihood_ind(
+                dyncov_walks, 1e-300, 1e300, 1e-300, 1e300,
+                np.full(3, 300.0), np.full(3, 300.0),
+            )
+        assert not np.isfinite(got).all()
+
+    def test_f2_is_non_negative_on_this_data(self, dyncov_walks):
+        r"""And structurally so, which is worth knowing.
+
+        CLVTools guards against a negative ``F_2`` -- "The F2 can be
+        negative/zero for some observations and log(F2) cannot be calculated"
+        -- and that guard is reproduced here. But on well-formed walks it
+        cannot fire. Each term is
+        :math:`{}_2F_1(\cdot;z_1)/\alpha_1^{a} - {}_2F_1(\cdot;z_2)/\alpha_2^{a}`
+        with :math:`\alpha_2 = \alpha_1 + A \ge \alpha_1`, so the subtracted
+        term is the smaller one and the difference is non-negative; ``F2.2``
+        vanishes identically. Checked at both grid points and across random
+        parameter draws.
+        """
+        from clvtools.pnbd.dyncov import log_likelihood_ind
+
+        rng = np.random.default_rng(0)
+        draws = [_split(case) for case in CASES]
+        for _ in range(5):
+            model = np.exp(rng.uniform(-1, 3, 4)) * np.array([1.0, 20.0, 1.0, 20.0])
+            draws.append(
+                (*model, rng.uniform(-1, 1, 3), rng.uniform(-1, 1, 3))
+            )
+
+        for r, alpha, s, beta, g_life, g_trans in draws:
+            with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+                table = log_likelihood_ind(
+                    dyncov_walks, r, alpha, s, beta, g_life, g_trans,
+                    intermediates=True,
+                )
+            finite = np.isfinite(table["F2"].to_numpy(dtype=float))
+            assert (table["F2"].to_numpy(dtype=float)[finite] >= 0).all()
+
+    def test_the_negative_f2_branch_computes_the_right_thing(self, dyncov_walks):
+        r"""The guard is kept for parity, so it is checked in isolation.
+
+        With ``F_1 F_2 < 0`` but ``F_1 F_2 + F_3 > 0``, the likelihood is
+        ``log F_0 + log F_3 + log1p(exp(log F_1 - log F_3) F_2)``, which is the
+        same quantity as ``log F_0 + log(F_1 F_2 + F_3)`` computed without the
+        cancellation.
+        """
+        from unittest.mock import patch
+
+        import clvtools.pnbd.dyncov as dyncov
+
+        customer = dyncov_walks.customers(np.zeros(3), np.zeros(3))[0]
+        r, alpha, s, beta = 1.4490, 48.6361, 0.5613, 46.8844
+
+        baseline = dyncov.log_likelihood_customer(r, alpha, s, beta, customer)
+        # A small negative F2, well inside the range where F1*F2 + F3 > 0.
+        negative = -abs(baseline["F2"]) if baseline["F2"] else -1e-30
+
+        real_f2 = dyncov._f2
+
+        def fake_f2(*args, **kwargs):
+            _, parts = real_f2(*args, **kwargs)
+            return negative, parts
+
+        with patch.object(dyncov, "_f2", side_effect=fake_f2):
+            got = dyncov.log_likelihood_customer(r, alpha, s, beta, customer)
+
+        log_F0, log_F1, log_F3 = (
+            got["log_F0"], got["log_F1"], got["log_F3"]
+        )
+        direct = log_F0 + np.log(np.exp(log_F1) * negative + np.exp(log_F3))
+        assert got["F2"] == negative
+        assert got["LL"] == pytest.approx(direct, rel=1e-9)
+
+    def test_rejects_data_with_nothing_in_the_estimation_period(self):
+        from clvtools import ClvData, load_apparel_dyn_cov, load_apparel_trans
+        from clvtools.pnbd.dyncov import build_walks
+
+        trans = load_apparel_trans()
+        data = ClvData(trans, time_unit="week", estimation_split=104)
+        # Move the window to before any transaction exists.
+        data.estimation_end = pd.Timestamp("2004-01-01")
+        with pytest.raises(ValueError, match="no transactions fall within"):
+            build_walks(data, load_apparel_dyn_cov())
+
+
+class TestFitMechanics:
+    """The fit's plumbing, without paying for a full optimisation."""
+
+    def test_runs_and_reports_its_work(self, dyncov_walks):
+        from clvtools.pnbd.dyncov import fit_pnbd_dyncov
+
+        names = ["High.Season", "Gender", "Channel"]
+        fitted = fit_pnbd_dyncov(
+            dyncov_walks, names_cov_life=names, names_cov_trans=names,
+            options={"maxiter": 1, "maxfun": 12},
+        )
+        assert fitted.n_evaluations > 0
+        assert fitted.n_customers == 600
+        assert np.isfinite(fitted.log_likelihood)
+        assert list(fitted.coefficients()) == fitted.names
+
+    def test_covariate_names_default_to_positional_labels(self, dyncov_walks):
+        from clvtools.pnbd.dyncov import fit_pnbd_dyncov
+
+        fitted = fit_pnbd_dyncov(
+            dyncov_walks, options={"maxiter": 1, "maxfun": 12}
+        )
+        assert fitted.names[4:7] == ["life.life0", "life.life1", "life.life2"]
+
+    def test_weights_are_accepted(self, dyncov_walks):
+        from clvtools.pnbd.dyncov import fit_pnbd_dyncov
+
+        weights = np.ones(dyncov_walks.n_customers)
+        fitted = fit_pnbd_dyncov(
+            dyncov_walks, weights=weights, options={"maxiter": 1, "maxfun": 12}
+        )
+        assert np.isfinite(fitted.log_likelihood)

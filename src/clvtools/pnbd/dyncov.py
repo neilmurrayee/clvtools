@@ -71,6 +71,7 @@ from scipy import special
 
 __all__ = [
     "DyncovWalks",
+    "PnbdDynCovParams",
     "TransactionWalk",
     "Walk",
     "a1sum",
@@ -78,7 +79,9 @@ __all__ = [
     "bjsum",
     "bksum",
     "d_i",
+    "fit_pnbd_dyncov",
     "log_likelihood",
+    "build_walks",
     "log_likelihood_ind",
     "walk_integral",
 ]
@@ -295,19 +298,20 @@ def _hyp_alpha_ge_beta(
     two agree everywhere, including where neither is accurate.
     """
     a = r + s + x
-    log_c = (
-        special.gammaln(a + 1.0) + special.gammaln(s)
-        - special.gammaln(a) - special.gammaln(s + 1.0)
-    )
     out = 0.0
     for alpha, beta, sign in ((alpha_1, beta_1, 1.0), (alpha_2, beta_2, -1.0)):
         z = 1.0 - beta / alpha
-        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
-            value = special.hyp2f1(a, s + 1.0, a + 1.0, z)
-            if np.isfinite(value):
-                term = value / alpha**a
-            else:
-                term = (1.0 - z) ** (r + x) * np.exp(log_c) / beta**a
+        value = special.hyp2f1(a, s + 1.0, a + 1.0, z)
+        if np.isfinite(value):
+            term = value / alpha**a
+        else:
+            # Computed here rather than up front: the fallback fires rarely,
+            # and four gammaln calls on every term is most of this function.
+            log_c = (
+                special.gammaln(a + 1.0) + special.gammaln(s)
+                - special.gammaln(a) - special.gammaln(s + 1.0)
+            )
+            term = (1.0 - z) ** (r + x) * np.exp(log_c) / beta**a
         out += sign * term
     return float(out)
 
@@ -324,19 +328,18 @@ def _hyp_beta_gt_alpha(
         \qquad z_j = 1 - \alpha_j/\beta_j
     """
     a = r + s + x
-    log_c = (
-        special.gammaln(a + 1.0) + special.gammaln(r + x - 1.0)
-        - special.gammaln(a) - special.gammaln(r + x)
-    )
     out = 0.0
     for alpha, beta, sign in ((alpha_1, beta_1, 1.0), (alpha_2, beta_2, -1.0)):
         z = 1.0 - alpha / beta
-        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
-            value = special.hyp2f1(a, r + x, a + 1.0, z)
-            if np.isfinite(value):
-                term = value / beta**a
-            else:
-                term = (1.0 - z) ** (s + 1.0) * np.exp(log_c) / alpha**a
+        value = special.hyp2f1(a, r + x, a + 1.0, z)
+        if np.isfinite(value):
+            term = value / beta**a
+        else:
+            log_c = (
+                special.gammaln(a + 1.0) + special.gammaln(r + x - 1.0)
+                - special.gammaln(a) - special.gammaln(r + x)
+            )
+            term = (1.0 - z) ** (s + 1.0) * np.exp(log_c) / alpha**a
         out += sign * term
     return float(out)
 
@@ -659,7 +662,10 @@ def log_likelihood_ind(
     own.
     """
     customers = walks.customers(gamma_life, gamma_trans)
-    rows = [log_likelihood_customer(r, alpha, s, beta, c) for c in customers]
+    # Entered once for the whole sweep. Per-term, the context manager alone
+    # accounted for an eighth of the runtime.
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        rows = [log_likelihood_customer(r, alpha, s, beta, c) for c in customers]
     if not intermediates:
         return np.array([row["LL"] for row in rows])
     return pd.DataFrame(rows, index=walks.ids)[INTERMEDIATE_NAMES]
@@ -676,3 +682,358 @@ def log_likelihood(
     if weights is None:
         return float(np.sum(ll))
     return float(np.sum(ll * np.asarray(weights, dtype=float)))
+
+
+# -- building the walks from raw data -----------------------------------------
+
+
+def _interval_index(grid: NDArray[np.int64], when: NDArray[np.int64]) -> NDArray[np.int64]:
+    r"""Which covariate interval each timepoint falls in.
+
+    S3.3: the covariate functions "return the covariates :math:`x^P_k, x^A_k` of
+    the interval :math:`k` in which :math:`s` lies". Intervals are half-open,
+    :math:`[\text{grid}_k, \text{grid}_{k+1})`, because S6.1 has the covariate
+    date marking the *start* of the period it describes.
+    """
+    return np.searchsorted(grid, when, side="right") - 1
+
+
+def _distance_to_interval_end(
+    grid: NDArray[np.int64], when: np.int64, unit_days: float
+) -> float:
+    r"""``d`` -- from a timepoint to the end of the covariate interval it is in.
+
+    A timepoint sitting exactly on an interval boundary gets a whole period, not
+    zero: CLVTools' comment is "d shall be 1 if it is exactly on the time unit
+    lower boundary". Without that, a transaction on a boundary would contribute
+    nothing to its own interval and the walk arithmetic would double-count.
+    """
+    k = int(np.searchsorted(grid, when, side="right") - 1)
+    if grid[k] == when:
+        return 1.0
+    return float((grid[k + 1] - when) / unit_days)
+
+
+@dataclass(frozen=True)
+class _WalkSpec:
+    """One walk, before the flat arrays are assembled."""
+
+    customer: int
+    lo: int
+    hi: int
+    d1: float = float("nan")
+    tjk: float = float("nan")
+
+
+def build_walks(
+    clv_data: "ClvData",  # noqa: F821
+    covariates_life: pd.DataFrame,
+    covariates_trans: pd.DataFrame | None = None,
+    names_cov_life: list[str] | None = None,
+    names_cov_trans: list[str] | None = None,
+    name_date_cov: str = "Cov.Date",
+) -> DyncovWalks:
+    r"""Assemble every customer's walks from transaction and covariate data.
+
+    Takes a :class:`~clvtools.data.ClvData` rather than a raw log, so the
+    day-level aggregation of S6.1 and the estimation split are already applied.
+    Passing the raw log instead would double-count a customer who bought twice
+    on one day, which changes both ``x`` and the number of transaction walks.
+
+    The four kinds of walk, and the span each covers:
+
+    ``real_walks_trans``
+        :math:`[t_{j-1}, t_j]` for each repeat transaction :math:`j`. The first
+        transaction gets none -- there is no preceding interval for it to
+        depend on.
+    ``aux_walk_trans``
+        :math:`[t_x, T]`, from the last transaction to the end of the
+        estimation period.
+    ``real_walk_life``
+        the covariate intervals from coming alive up to, but not including,
+        the one holding the last transaction. A customer whose first and last
+        transactions share an interval has none.
+    ``aux_walk_life``
+        the same span as ``aux_walk_trans``, over the attrition covariates.
+
+    ``real_walk_life`` and ``aux_walk_life`` deliberately do not overlap: the
+    interval containing the last transaction belongs to the auxiliary walk
+    alone, which is what lets :func:`d_i` treat the pair as one continuous span.
+
+    All arithmetic is done in whole days and divided by the time unit only at
+    the end. Working in nanoseconds instead leaves ``d1`` and ``tjk`` off by
+    around 4e-13, which is enough to break the exact cancellation that makes
+    ``F2.2`` vanish.
+    """
+    if covariates_trans is None:
+        covariates_trans = covariates_life
+
+    trans = clv_data.transactions
+    trans = trans[trans["Date"] <= clv_data.estimation_end]
+    if trans.empty:
+        raise ValueError("no transactions fall within the estimation period")
+
+    unit_days = clv_data._unit_days
+    ids = sorted(trans["Id"].unique())
+    index_of = {cid: i for i, cid in enumerate(ids)}
+
+    def to_days(values) -> NDArray[np.int64]:
+        """Whole days since the epoch, so every span is exact."""
+        return (
+            pd.to_datetime(pd.Series(values))
+            .to_numpy(dtype="datetime64[D]")
+            .astype("int64")
+        )
+
+    def prepare(frame: pd.DataFrame, names: list[str] | None) -> tuple:
+        out = frame.copy()
+        out["Id"] = out["Id"].astype(str)
+        if name_date_cov not in out.columns:
+            raise ValueError(f"covariate data has no {name_date_cov!r} column")
+        chosen = list(
+            names
+            if names is not None
+            else [c for c in out.columns if c not in ("Id", name_date_cov)]
+        )
+        missing = [n for n in chosen if n not in out.columns]
+        if missing:
+            raise ValueError(f"covariate data is missing columns: {missing}")
+        out = out.sort_values(["Id", name_date_cov], kind="stable")
+        grids, rows = {}, {}
+        for cid, group in out.groupby("Id", sort=True):
+            grids[cid] = to_days(group[name_date_cov])
+            rows[cid] = group[chosen].to_numpy(dtype=float)
+        return grids, rows, chosen
+
+    grids_life, rows_life, names_cov_life = prepare(covariates_life, names_cov_life)
+    grids_trans, rows_trans, names_cov_trans = prepare(covariates_trans, names_cov_trans)
+
+    missing_cov = set(ids) - set(grids_life)
+    if missing_cov:
+        raise ValueError(
+            f"{len(missing_cov)} customers have no covariate data, "
+            f"e.g. {sorted(missing_cov)[:3]}"
+        )
+
+    end = int(to_days([clv_data.estimation_end])[0])
+
+    x = np.zeros(len(ids))
+    t_x = np.zeros(len(ids))
+    T_cal = np.zeros(len(ids))
+    d_omega = np.zeros(len(ids))
+
+    aux_life_specs: list[_WalkSpec] = []
+    aux_trans_specs: list[_WalkSpec] = []
+    real_life_specs: dict[int, _WalkSpec] = {}
+    real_trans_specs: list[_WalkSpec] = []
+
+    for cid, group in trans.groupby("Id", sort=True):
+        i = index_of[cid]
+        grid = grids_life[cid]
+        dates = np.sort(to_days(group["Date"]))
+        first, last = int(dates[0]), int(dates[-1])
+
+        x[i] = len(dates) - 1
+        t_x[i] = (last - first) / unit_days
+        T_cal[i] = (end - first) / unit_days
+        d_omega[i] = _distance_to_interval_end(grid, first, unit_days)
+
+        k_first = int(_interval_index(grid, np.array([first]))[0])
+        k_last = int(_interval_index(grid, np.array([last]))[0])
+        k_end = int(_interval_index(grid, np.array([end]))[0])
+
+        # The auxiliary walks run from the last transaction to the window end.
+        aux_life_specs.append(_WalkSpec(i, k_last, k_end))
+        aux_trans_specs.append(_WalkSpec(
+            i, k_last, k_end,
+            d1=_distance_to_interval_end(grid, last, unit_days),
+            tjk=(end - last) / unit_days,
+        ))
+
+        # The real lifetime walk stops short of the auxiliary walk's first
+        # interval, so the two never overlap.
+        if k_first <= k_last - 1:
+            real_life_specs[i] = _WalkSpec(i, k_first, k_last - 1)
+
+        # One transaction walk per repeat purchase, over the interval since the
+        # previous one.
+        for previous, this in zip(dates[:-1], dates[1:]):
+            real_trans_specs.append(_WalkSpec(
+                i,
+                int(_interval_index(grid, np.array([previous]))[0]),
+                int(_interval_index(grid, np.array([this]))[0]),
+                d1=_distance_to_interval_end(grid, int(previous), unit_days),
+                tjk=(int(this) - int(previous)) / unit_days,
+            ))
+
+    def stack(specs: list[_WalkSpec], rows: dict[str, NDArray[np.float64]]):
+        """Flatten walks into one matrix plus one-based inclusive indices."""
+        blocks, info, cursor = [], [], 1
+        for spec in specs:
+            block = rows[ids[spec.customer]][spec.lo : spec.hi + 1]
+            blocks.append(block)
+            info.append((cursor, cursor + len(block) - 1, spec.d1, spec.tjk))
+            cursor += len(block)
+        covdata = np.vstack(blocks) if blocks else np.empty((0, 0))
+        return covdata, np.array(info, dtype=float)
+
+    covdata_aux_life, wi_aux_life = stack(aux_life_specs, rows_life)
+    covdata_aux_trans, wi_aux_trans = stack(aux_trans_specs, rows_trans)
+
+    ordered_real_life = [real_life_specs[i] for i in sorted(real_life_specs)]
+    covdata_real_life, wi_real_life_packed = stack(ordered_real_life, rows_life)
+    # Customers without a real lifetime walk carry NaN, which the walk builder
+    # reads as "empty".
+    wi_real_life = np.full((len(ids), 2), np.nan)
+    for spec, row in zip(ordered_real_life, wi_real_life_packed):
+        wi_real_life[spec.customer] = row[:2]
+
+    covdata_real_trans, wi_real_trans = stack(real_trans_specs, rows_trans)
+    real_from = np.full(len(ids), np.nan)
+    real_to = np.full(len(ids), np.nan)
+    for position, spec in enumerate(real_trans_specs, start=1):
+        if np.isnan(real_from[spec.customer]):
+            real_from[spec.customer] = position
+        real_to[spec.customer] = position
+
+    return DyncovWalks(
+        ids=pd.Index(ids, name="Id"),
+        x=x, t_x=t_x, T_cal=T_cal, d_omega=d_omega,
+        walkinfo_aux_life=wi_aux_life[:, :2],
+        walkinfo_real_life=wi_real_life,
+        walkinfo_aux_trans=wi_aux_trans,
+        walkinfo_real_trans=wi_real_trans,
+        real_trans_from=real_from,
+        real_trans_to=real_to,
+        covdata_aux_life=covdata_aux_life,
+        covdata_real_life=covdata_real_life,
+        covdata_aux_trans=covdata_aux_trans,
+        covdata_real_trans=covdata_real_trans,
+    )
+
+
+# -- estimation ---------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class PnbdDynCovParams:
+    """A fitted Pareto/NBD with time-varying covariates."""
+
+    r: float
+    alpha: float
+    s: float
+    beta: float
+    gamma_life: NDArray[np.float64]
+    gamma_trans: NDArray[np.float64]
+    names_cov_life: list[str]
+    names_cov_trans: list[str]
+    log_likelihood: float
+    converged: bool
+    n_customers: int
+    n_evaluations: int = 0
+
+    def __iter__(self):
+        yield from (self.r, self.alpha, self.s, self.beta)
+        yield from self.gamma_life
+        yield from self.gamma_trans
+
+    @property
+    def names(self) -> list[str]:
+        return (
+            ["r", "alpha", "s", "beta"]
+            + [f"life.{n}" for n in self.names_cov_life]
+            + [f"trans.{n}" for n in self.names_cov_trans]
+        )
+
+    def coefficients(self) -> dict[str, float]:
+        return dict(zip(self.names, list(self)))
+
+    @property
+    def n_parameters(self) -> int:
+        return len(self.names)
+
+    @property
+    def aic(self) -> float:
+        return 2 * self.n_parameters - 2 * self.log_likelihood
+
+    @property
+    def bic(self) -> float:
+        return self.n_parameters * np.log(self.n_customers) - 2 * self.log_likelihood
+
+
+def fit_pnbd_dyncov(
+    walks: DyncovWalks,
+    names_cov_life: list[str] | None = None,
+    names_cov_trans: list[str] | None = None,
+    start: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0),
+    start_cov: float = 0.1,
+    method: str = "L-BFGS-B",
+    maxiter: int = 10_000,
+    options: dict | None = None,
+    weights: ArrayLike | None = None,
+) -> PnbdDynCovParams:
+    r"""Estimate the model of S6.4.2.
+
+    S6.4: "the model estimation with time-varying covariates is computationally
+    much more demanding than the previously detailed alternatives. It is
+    recommended to keep an eye on the progress of model optimization." That
+    holds here too, and more so: each likelihood evaluation walks 600 customers
+    and makes some 80,000 scalar hypergeometric calls, so a fit runs in minutes.
+
+    The search vector is
+    ``[log r, log alpha, log s, log beta, gamma_life..., gamma_trans...]``.
+    """
+    from clvtools._optimize import options_for
+
+    n_life, n_trans = walks.n_cov_life, walks.n_cov_trans
+    names_cov_life = list(
+        names_cov_life if names_cov_life is not None
+        else [f"life{i}" for i in range(n_life)]
+    )
+    names_cov_trans = list(
+        names_cov_trans if names_cov_trans is not None
+        else [f"trans{i}" for i in range(n_trans)]
+    )
+
+    start_arr = np.asarray(start, dtype=float)
+    if start_arr.shape != (4,):
+        raise ValueError("start must give four values (r, alpha, s, beta)")
+    if np.any(start_arr <= 0):
+        raise ValueError("start values must be strictly positive")
+
+    x0 = np.concatenate(
+        [np.log(start_arr), np.full(n_life + n_trans, float(start_cov))]
+    )
+    evaluations = 0
+
+    def negative_ll(v: np.ndarray) -> float:
+        nonlocal evaluations
+        evaluations += 1
+        r, alpha, s, beta = np.exp(v[:4])
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            value = log_likelihood(
+                walks, r, alpha, s, beta,
+                v[4 : 4 + n_life], v[4 + n_life :],
+                weights=weights,
+            )
+        return np.inf if not np.isfinite(value) else -value
+
+    from scipy import optimize
+
+    result = optimize.minimize(
+        negative_ll, x0=x0, method=method,
+        options=options_for(method, maxiter, x0, options),
+    )
+
+    r, alpha, s, beta = (float(v) for v in np.exp(result.x[:4]))
+    return PnbdDynCovParams(
+        r=r, alpha=alpha, s=s, beta=beta,
+        gamma_life=np.asarray(result.x[4 : 4 + n_life], dtype=float),
+        gamma_trans=np.asarray(result.x[4 + n_life :], dtype=float),
+        names_cov_life=names_cov_life,
+        names_cov_trans=names_cov_trans,
+        log_likelihood=float(-result.fun),
+        converged=bool(result.success),
+        n_customers=walks.n_customers,
+        n_evaluations=evaluations,
+    )

@@ -26,6 +26,7 @@ import pandas as pd
 
 __all__ = [
     "ClvData",
+    "ClvDataDynCov",
     "ClvDataStaticCov",
     "TIME_UNITS",
     "load_apparel_dyn_cov",
@@ -455,3 +456,71 @@ class ClvDataStaticCov(ClvData):
     def design_trans(self, names: list[str] | None = None) -> np.ndarray:
         r"""The transaction process's covariate matrix."""
         return self._cov_trans[names or self.names_cov_trans].to_numpy(dtype=float)
+
+
+class ClvDataDynCov(ClvData):
+    """Transaction data with time-varying covariates. Cf. ``SetDynamicCovariates()``.
+
+    S6.4: "Data for time-varying covariates require a time series of covariate
+    values for every customer. In other words, if a time-varying covariate is
+    included and the analysis is done based on weekly data, the covariate value
+    can change every week. Thus, a value has to be specified for every customer
+    every week."
+
+    The covariate date marks the *start* of the period it describes, so the
+    intervals are :math:`[\\text{Cov.Date}_k, \\text{Cov.Date}_{k+1})`.
+
+    Examples
+    --------
+    S6.4 adds seasonality alongside the two time-invariant covariates:
+
+    >>> clv = ClvData(load_apparel_trans(), time_unit="week", estimation_split=104)
+    >>> dynamic = ClvDataDynCov(
+    ...     clv, load_apparel_dyn_cov(),
+    ...     names_cov_life=["High.Season", "Gender", "Channel"],
+    ...     names_cov_trans=["High.Season", "Gender", "Channel"])
+    >>> walks = dynamic.walks()
+    >>> walks.n_customers, walks.n_cov_life
+    (600, 3)
+
+    ``Gender`` and ``Channel`` do not actually vary; S6.4 explains that they are
+    repeated anyway because "the data structure of time-invariant covariates
+    [...] needs to be aligned with the structure of time-varying covariates".
+    """
+
+    def __init__(
+        self,
+        clv_data: ClvData,
+        data_cov_life: pd.DataFrame,
+        data_cov_trans: pd.DataFrame | None = None,
+        names_cov_life: list[str] | None = None,
+        names_cov_trans: list[str] | None = None,
+        name_date_cov: str = "Cov.Date",
+    ) -> None:
+        self.__dict__.update(clv_data.__dict__)
+        self.data_cov_life = data_cov_life
+        self.data_cov_trans = (
+            data_cov_life if data_cov_trans is None else data_cov_trans
+        )
+        self.names_cov_life = names_cov_life
+        self.names_cov_trans = names_cov_trans
+        self.name_date_cov = name_date_cov
+
+    def walks(self):
+        """Build the walk structures the likelihood consumes.
+
+        Cached on first use: assembling them touches every covariate row for
+        every customer, and the result does not depend on the parameters.
+        """
+        if not hasattr(self, "_walks"):
+            from clvtools.pnbd.dyncov import build_walks
+
+            self._walks = build_walks(
+                self,
+                self.data_cov_life,
+                self.data_cov_trans,
+                names_cov_life=self.names_cov_life,
+                names_cov_trans=self.names_cov_trans,
+                name_date_cov=self.name_date_cov,
+            )
+        return self._walks

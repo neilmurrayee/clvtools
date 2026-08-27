@@ -28,7 +28,7 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["src", "tests", "docs"]
-addopts = "-q --strict-markers --doctest-modules --doctest-glob=*.md"
+addopts = "-q --strict-markers --doctest-modules --doctest-glob=*.md -m 'not dyncov_fit'"
 doctest_optionflags = ["NORMALIZE_WHITESPACE", "ELLIPSIS"]
 markers = [
   "paper: reproduces a number printed in Meierer et al. (JSS 5634)",
