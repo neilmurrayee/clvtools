@@ -134,11 +134,18 @@ for (nm in names(grid)) {
   p <- grid[[nm]]; vp <- unname(p)
   dt <- data.table(
     Id     = cbs$Id,
-    LL.ind = as.numeric(cpp("pnbd_nocov_LL_ind")(log(vp), x, t.x, T.cal)),
-    PAlive = as.numeric(cpp("pnbd_nocov_PAlive")(vp[1], vp[2], vp[3], vp[4], x, t.x, T.cal)),
-    CET    = as.numeric(cpp("pnbd_nocov_CET")(vp[1], vp[2], vp[3], vp[4], 52, x, t.x, T.cal)),
-    DERT   = as.numeric(cpp("pnbd_nocov_DERT")(vp[1], vp[2], vp[3], vp[4],
-                                               log(1 + 0.075) / 52, x, t.x, T.cal))
+    LL.ind = as.numeric(cpp("pnbd_nocov_LL_ind")(
+      vLogparams = log(vp), vX = x, vT_x = t.x, vT_cal = T.cal)),
+    PAlive = as.numeric(cpp("pnbd_nocov_PAlive")(
+      r = p[["r"]], alpha_0 = p[["alpha"]], s = p[["s"]], beta_0 = p[["beta"]],
+      vX = x, vT_x = t.x, vT_cal = T.cal)),
+    CET    = as.numeric(cpp("pnbd_nocov_CET")(
+      r = p[["r"]], alpha_0 = p[["alpha"]], s = p[["s"]], beta_0 = p[["beta"]],
+      dPeriods = 52, vX = x, vT_x = t.x, vT_cal = T.cal)),
+    DERT   = as.numeric(cpp("pnbd_nocov_DERT")(
+      r = p[["r"]], alpha_0 = p[["alpha"]], s = p[["s"]], beta_0 = p[["beta"]],
+      continuous_discount_factor = log(1 + 0.075) / 52,
+      vX = x, vT_x = t.x, vT_cal = T.cal))
   )
   write_csv(dt, paste0("pnbd_nocov_", nm))
 }
@@ -162,21 +169,40 @@ check("pnbd nocov LL_sum sign",
       logLik(est.pnbd), tol = 1e-4)
 
 # PMF: expected number of customers making exactly k repeat transactions.
+mle_p <- grid$mle
 pmf.dt <- data.table(Id = cbs$Id)
 for (k in 0:10) {
   pmf.dt[[paste0("pmf.", k)]] <-
-    as.numeric(cpp("pnbd_nocov_PMF")(1.4490, 48.6361, 0.5613, 46.8844, k, T.cal))
+    as.numeric(cpp("pnbd_nocov_PMF")(
+      r = mle_p[["r"]], alpha_0 = mle_p[["alpha"]], s = mle_p[["s"]],
+      beta_0 = mle_p[["beta"]], x = k, vT_i = T.cal))
 }
 write_csv(pmf.dt, "pnbd_nocov_pmf_mle")
 
 # Unconditional expectation E[X(t)] -- drives the tracking plot and the
 # prospective-customer prediction of S6.3.4.
+#
+# Named arguments are essential here: pnbd_nocov_expectation takes
+# (r, s, alpha_0, beta_0), transposing the middle pair relative to every
+# sibling entry point, which are all (r, alpha_0, s, beta_0).
 t.grid <- seq(0, 200, by = 0.5)
+mle <- grid$mle
 write_csv(data.table(
   t = t.grid,
   expectation = as.numeric(cpp("pnbd_nocov_expectation")(
-    1.4490, 48.6361, 0.5613, 46.8844, t.grid))
+    r = mle[["r"]], s = mle[["s"]],
+    alpha_0 = mle[["alpha"]], beta_0 = mle[["beta"]], vT_i = t.grid))
 ), "pnbd_nocov_expectation_mle")
+
+# predict(newcustomer(t)) reports 1 + E[X(t)], so it pins the expectation
+# against a public generic.
+check("pnbd nocov expectation",
+      1 + cpp("pnbd_nocov_expectation")(
+        r = coef(est.full)[["r"]], s = coef(est.full)[["s"]],
+        alpha_0 = coef(est.full)[["alpha"]], beta_0 = coef(est.full)[["beta"]],
+        vT_i = 52),
+      predict(est.full, newdata = newcustomer(num.periods = 52), verbose = FALSE),
+      tol = 1e-8)
 
 # The fit itself, with the standard errors the paper reports for the
 # covariate model and that summary() reports here.
