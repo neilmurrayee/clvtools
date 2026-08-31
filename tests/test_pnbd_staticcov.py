@@ -305,7 +305,7 @@ class TestAgainstThePaper:
 
     def test_covariate_coefficients_match(self, fitted):
         """The four the paper interprets, to the precision it prints them."""
-        got = fitted.coefficients()
+        got = fitted.coefficients
         for name in ("life.Gender", "life.Channel", "trans.Gender", "trans.Channel"):
             assert got[name] == pytest.approx(PNBD_STATIC_MLE[name], abs=2e-3), name
 
@@ -316,7 +316,7 @@ class TestAgainstThePaper:
         published one, so this bound is about where the optimiser stopped, not
         about the model.
         """
-        got = fitted.coefficients()
+        got = fitted.coefficients
         for name in ("r", "alpha", "s", "beta"):
             assert got[name] == pytest.approx(PNBD_STATIC_MLE[name], rel=5e-3), name
 

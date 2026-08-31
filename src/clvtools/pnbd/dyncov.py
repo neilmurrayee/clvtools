@@ -63,15 +63,18 @@ per-customer output in ``tests/test_pnbd_dyncov.py``.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
 from numpy.typing import ArrayLike, NDArray
 from scipy import special
 
+from clvtools.inference import Fitted
+
 __all__ = [
     "DyncovWalks",
+    "probability_alive",
     "PnbdDynCovParams",
     "TransactionWalk",
     "Walk",
@@ -672,6 +675,61 @@ def log_likelihood_ind(
     return pd.DataFrame(rows, index=walks.ids)[INTERMEDIATE_NAMES]
 
 
+def probability_alive(
+    walks: DyncovWalks,
+    r: float, alpha: float, s: float, beta: float,
+    gamma_life: ArrayLike, gamma_trans: ArrayLike,
+) -> NDArray[np.float64]:
+    r"""``PAlive`` with time-varying covariates. S6.4.2.
+
+    The same ratio as the standard model's: the likelihood of the customer's
+    history *and* their still being alive, over the likelihood of the history
+    however it came about. Both halves are already computed for the
+    log-likelihood, so this is one exponential away from it.
+
+    .. math::
+        \log F_1 &= \mathrm{A1sum} + \ln\Gamma(r{+}x) - \ln\Gamma(r)
+                  + r\lograc{lpha_0}{lpha_0 {+} \mathrm{Bksum}}
+                  - x\log(lpha_0 {+} \mathrm{Bksum})
+                  + s\lograc{eta_0}{eta_0 {+} D_{k_T}} \
+        \mathrm{PAlive} &= \exp(\log F_1 - \mathrm{LL})
+
+    Only the *alive* branch appears in :math:`F_1`: a customer who has died
+    contributes through the integral over their possible death times, which is
+    the part of the likelihood this ratio divides out.
+
+    Examples
+    --------
+    At CLVTools' own fitted parameters, for the first three customers:
+
+    >>> from clvtools import ClvData, ClvDataDynCov
+    >>> from clvtools import load_apparel_dyn_cov, load_apparel_trans
+    >>> names = ["High.Season", "Gender", "Channel"]
+    >>> data = ClvDataDynCov(
+    ...     ClvData(load_apparel_trans(), time_unit="week", estimation_split=104),
+    ...     load_apparel_dyn_cov(), names_cov_life=names, names_cov_trans=names)
+    >>> alive = probability_alive(
+    ...     data.walks(), r=1.977706, alpha=115.177940, s=2.012683,
+    ...     beta=158.181797, gamma_life=[-2.482678, -0.512544, 0.505730],
+    ...     gamma_trans=[0.718314, 0.264898, 0.613721])
+    >>> [round(float(v), 6) for v in alive[:3]]
+    [0.965822, 0.98131, 0.314156]
+    """
+    table = log_likelihood_ind(
+        walks, r, alpha, s, beta, gamma_life, gamma_trans, intermediates=True
+    )
+    x = walks.x
+    with np.errstate(divide="ignore", invalid="ignore"):
+        log_f1 = (
+            table["A1sum"].to_numpy()
+            + special.gammaln(r + x) - special.gammaln(r)
+            + r * (np.log(alpha) - np.log(alpha + table["Bksum"].to_numpy()))
+            - x * np.log(alpha + table["Bksum"].to_numpy())
+            + s * (np.log(beta) - np.log(beta + table["DkT"].to_numpy()))
+        )
+        return np.exp(log_f1 - table["LL"].to_numpy())
+
+
 def log_likelihood(
     walks: DyncovWalks,
     r: float, alpha: float, s: float, beta: float,
@@ -926,7 +984,7 @@ def build_walks(
 
 
 @dataclass(frozen=True)
-class PnbdDynCovParams:
+class PnbdDynCovParams(Fitted):
     """A fitted Pareto/NBD with time-varying covariates."""
 
     r: float
@@ -955,6 +1013,7 @@ class PnbdDynCovParams:
             + [f"trans.{n}" for n in self.names_cov_trans]
         )
 
+    @property
     def coefficients(self) -> dict[str, float]:
         return dict(zip(self.names, list(self)))
 

@@ -1,10 +1,10 @@
-r"""The BG/NBD model of Fader, Hardie & Lee, one of the alternatives in Table 3.
+r"""The BG/NBD model of Fader, Hardie & Lee, one of the alternatives in Table 4.
 
 S6.2.1: "As an alternative to the Pareto/NBD model, \pkg{CLVTools} features the
 Beta-Geometric/NBD model and the Gamma-Gompertz/NBD model."
 
 S3.2 gives the reference rather than the derivation: "The derivations for the
-Beta-Geometric/NBD (BG/NBD) model are found in Fader et al. (2005)". Table 3
+Beta-Geometric/NBD (BG/NBD) model are found in Fader et al. (2005)". Table 4
 gives its shape: the transaction process is Poisson with gamma heterogeneity, as
 in the Pareto/NBD, but attrition is *geometric* with beta heterogeneity rather
 than exponential with gamma.
@@ -23,13 +23,14 @@ probability.
 from __future__ import annotations
 
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from scipy import optimize, special
 
 from clvtools._optimize import options_for
+from clvtools.inference import Fitted, numerical_hessian
 
 __all__ = [
     "BgnbdParams",
@@ -333,8 +334,8 @@ def b_i(
 
 
 @dataclass(frozen=True)
-class BgnbdParams:
-    r"""A fitted BG/NBD. Parameters are :math:`(r, \alpha, a, b)`, per Table 3."""
+class BgnbdParams(Fitted):
+    r"""A fitted BG/NBD. Parameters are :math:`(r, \alpha, a, b)`, per Table 4."""
 
     r: float
     alpha: float
@@ -343,6 +344,11 @@ class BgnbdParams:
     log_likelihood: float
     converged: bool
     n_customers: int
+    hessian: np.ndarray | None = field(default=None, repr=False)
+
+    @property
+    def names(self) -> list[str]:
+        return ["r", "alpha", "a", "b"]
 
     def __iter__(self) -> Iterator[float]:
         yield from (self.r, self.alpha, self.a, self.b)
@@ -369,6 +375,7 @@ def fit_bgnbd(
     start: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0),
     method: str = "L-BFGS-B",
     maxiter: int = 10_000,
+    hessian: bool = True,
     options: dict | None = None,
 ) -> BgnbdParams:
     r"""Maximise the sample log-likelihood over :math:`(r, \alpha, a, b)`.
@@ -416,11 +423,19 @@ def fit_bgnbd(
         options=options_for(method, maxiter, np.log(start_arr), options),
     )
     r_, alpha_, a_, b_ = (float(v) for v in np.exp(result.x))
+    hess = None
+    if hessian:
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            hess = numerical_hessian(
+                lambda v: -log_likelihood(x, t_x, T, *v, weights=w),
+                np.array([r_, alpha_, a_, b_]),
+            )
     return BgnbdParams(
         r=r_, alpha=alpha_, a=a_, b=b_,
         log_likelihood=float(-result.fun),
         converged=bool(result.success),
         n_customers=int(x.size if w is None else w.sum()),
+        hessian=hess,
     )
 
 
@@ -436,7 +451,7 @@ def log_likelihood_staticcov(
 ) -> float:
     r"""The sample log-likelihood with time-invariant covariates.
 
-    Table 3 marks the BG/NBD as supporting them. The rates are built by
+    Table 4 marks the BG/NBD as supporting them. The rates are built by
     :func:`alpha_i`, :func:`a_i` and :func:`b_i` -- note that the two attrition
     parameters take a *positive* exponent where the transaction parameter takes
     a negative one.
@@ -454,7 +469,7 @@ def log_likelihood_staticcov(
 
 
 @dataclass(frozen=True)
-class BgnbdStaticCovParams:
+class BgnbdStaticCovParams(Fitted):
     r"""A fitted BG/NBD with time-invariant covariates."""
 
     r: float
@@ -471,8 +486,13 @@ class BgnbdStaticCovParams:
     def names(self) -> list[str]:
         return ["r", "alpha", "a", "b"] + self.covariates.names
 
-    def coefficients(self) -> dict[str, float]:
-        return dict(zip(self.names, list(self)))
+    @property
+    def names_cov_life(self) -> list[str]:
+        return self.covariates.names_cov_life
+
+    @property
+    def names_cov_trans(self) -> list[str]:
+        return self.covariates.names_cov_trans
 
     @property
     def gamma_life(self):
@@ -503,6 +523,11 @@ class BgnbdStaticCovParams:
         return len(self.names)
 
     @property
+    def hessian(self):
+        """Curvature over :attr:`names`, from the covariate fit."""
+        return self.covariates.hessian
+
+    @property
     def aic(self) -> float:
         return 2 * self.n_parameters - 2 * self.unpenalised_log_likelihood
 
@@ -513,24 +538,6 @@ class BgnbdStaticCovParams:
             - 2 * self.unpenalised_log_likelihood
         )
 
-    def standard_errors(self) -> dict[str, float]:
-        """Standard errors from the inverse Hessian, in :attr:`names` order."""
-        if self.covariates.hessian is None:
-            raise ValueError("fit with hessian=True to obtain standard errors")
-        errors = np.sqrt(np.diag(np.linalg.inv(self.covariates.hessian)))
-        # The Hessian is over the full (unconstrained) parameter vector; map it
-        # back onto the reported names.
-        full = ["r", "alpha", "a", "b"]
-        full += [f"life.{n}" for n in self.covariates.names_cov_life]
-        full += [f"trans.{n}" for n in self.covariates.names_cov_trans]
-        by_name = dict(zip(full, errors))
-        out = {}
-        for name in self.names:
-            if name.startswith("constr."):
-                out[name] = by_name[f"life.{name.removeprefix('constr.')}"]
-            else:
-                out[name] = by_name[name]
-        return out
 
 
 def fit_bgnbd_staticcov(
@@ -547,7 +554,7 @@ def fit_bgnbd_staticcov(
 ) -> BgnbdStaticCovParams:
     r"""Estimate the BG/NBD with time-invariant covariates.
 
-    Table 3 marks the BG/NBD as taking time-invariant covariates, equality
+    Table 4 marks the BG/NBD as taking time-invariant covariates, equality
     constraints and regularization -- but not time-varying covariates or
     process correlation, both of which are Pareto/NBD only.
 

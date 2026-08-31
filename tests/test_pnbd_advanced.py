@@ -144,8 +144,9 @@ class TestCorrelationCoefficient:
 
 @pytest.mark.slow
 class TestCorrelatedFit:
+    @staticmethod
     @pytest.fixture(scope="class")
-    def fitted(self, xtt):
+    def fitted(xtt):
         x, t_x, T = xtt
         return fit_pnbd_correlated(x, t_x, T)
 
@@ -233,8 +234,9 @@ class TestCorrelationAgainstOracle:
 
 @pytest.mark.slow
 class TestEqualityConstraints:
+    @staticmethod
     @pytest.fixture(scope="class")
-    def constrained(self, static_data):
+    def constrained(static_data):
         return fit_pnbd_staticcov(
             static_data, names_cov_constr=["Gender"], hessian=False
         )
@@ -244,7 +246,7 @@ class TestEqualityConstraints:
         want = fixture_json("pnbd_staticcov_constrained_fit")
         assert constrained.log_likelihood == pytest.approx(want["logLik"], abs=1e-4)
         for name, value in want["coefficients"].items():
-            assert constrained.coefficients()[name] == pytest.approx(
+            assert constrained.coefficients[name] == pytest.approx(
                 value, rel=1e-3
             ), name
 
@@ -326,7 +328,7 @@ class TestRegularization:
         for name, value in want["coefficients"].items():
             # Absolute, because heavy regularization drives coefficients to
             # near zero where a relative bound means nothing.
-            assert fit.coefficients()[name] == pytest.approx(
+            assert fit.coefficients[name] == pytest.approx(
                 value, rel=1e-2, abs=1e-2
             ), name
 

@@ -1,4 +1,4 @@
-r"""Table 3's two alternative latent attrition models.
+r"""Table 4's two alternative latent attrition models.
 
 S6.2.1: "As an alternative to the Pareto/NBD model, CLVTools features the
 Beta-Geometric/NBD model and the Gamma-Gompertz/NBD model. To use these models,
@@ -9,7 +9,7 @@ Neither model's equations appear in the paper -- S3.2 gives references instead
 implementation. Each expression is checked at three parameter vectors.
 
 Beyond that, the three families are compared against each other on the same
-data, which is the check the paper's Table 3 invites: they share a transaction
+data, which is the check the paper's Table 4 invites: they share a transaction
 process and differ only in how attrition is modelled, so where one nests inside
 another the fits must agree.
 """
@@ -396,7 +396,7 @@ class TestGgomnbdProperties:
 
 
 class TestFamiliesCompared:
-    r"""Table 3's three models, on one dataset.
+    r"""Table 4's three models, on one dataset.
 
     They share a transaction process -- Poisson with gamma heterogeneity -- and
     differ only in attrition: exponential/gamma, geometric/beta, or
@@ -521,10 +521,11 @@ def static_data():
 
 @pytest.mark.oracle
 class TestGgomnbdStaticCovariates:
-    r"""Table 3 marks the GGom/NBD as taking time-invariant covariates."""
+    r"""Table 4 marks the GGom/NBD as taking time-invariant covariates."""
 
+    @staticmethod
     @pytest.fixture(scope="class")
-    def published(self):
+    def published():
         return fixture_json("ggomnbd_staticcov_fit")["coefficients"]
 
     def test_rate_builders_match(self, static_data, published, cbs):
@@ -584,8 +585,9 @@ class TestGgomnbdStaticCovariates:
 
 @pytest.mark.slow
 class TestBgnbdStaticCovariateFit:
+    @staticmethod
     @pytest.fixture(scope="class")
-    def fitted(self, static_data):
+    def fitted(static_data):
         return bgnbd.fit_bgnbd_staticcov(static_data, hessian=False)
 
     @pytest.mark.oracle
@@ -641,7 +643,7 @@ class TestBgnbdStaticCovariateFit:
 
 @pytest.mark.slow
 class TestFamilyConstraintsAndRegularization:
-    r"""Table 3 marks both as available for all three families."""
+    r"""Table 4 marks both as available for all three families."""
 
     @pytest.mark.oracle
     def test_bgnbd_equality_constraint(self, static_data):
@@ -754,19 +756,21 @@ class TestGgomnbdStaticCovariateFit:
 class TestCovariateParamsObjects:
     """The accessors both covariate result types expose."""
 
+    @staticmethod
     @pytest.fixture(scope="class")
-    def bg(self, static_data):
+    def bg(static_data):
         return bgnbd.fit_bgnbd_staticcov(static_data, polish=False)
 
+    @staticmethod
     @pytest.fixture(scope="class")
-    def gg(self, static_data):
+    def gg(static_data):
         return ggomnbd.fit_ggomnbd_staticcov(
             static_data, polish=False, options={"maxiter": 2, "maxfun": 24}
         )
 
     def test_coefficients_align_names_with_values(self, bg, gg):
         for fit, n_model in ((bg, 4), (gg, 5)):
-            coefficients = fit.coefficients()
+            coefficients = fit.coefficients
             assert list(coefficients) == fit.names
             assert len(coefficients) == n_model + 4
             assert list(coefficients.values()) == list(fit)
@@ -776,7 +780,7 @@ class TestCovariateParamsObjects:
         fit = bgnbd.fit_bgnbd_staticcov(
             static_data, names_cov_constr=["Gender"], polish=False, hessian=False
         )
-        coefficients = fit.coefficients()
+        coefficients = fit.coefficients
         assert "constr.Gender" in coefficients
         assert "life.Gender" not in coefficients
         assert "trans.Gender" not in coefficients
@@ -868,3 +872,52 @@ class TestSharedCovariateMachineryValidation:
                 log_likelihood=lambda *args: 0.0,
                 n_model_params=4, model_start=(1.0, 1.0, 1.0, 1.0),
             )
+
+
+class TestCovariateResultAccessors:
+    """The wrappers expose what the shared generics need."""
+
+    @staticmethod
+    def _wrapped(cls, model: dict, hessian):
+        from clvtools._staticcov import StaticCovResult
+
+        covariates = StaticCovResult(
+            model=np.array(list(model.values())),
+            gamma_life=np.array([0.1, 0.2]),
+            gamma_trans=np.array([0.3, 0.4]),
+            names_cov_life=["Gender", "Channel"],
+            names_cov_trans=["Gender", "Channel"],
+            names_cov_constr=[],
+            log_likelihood=-1.0, unpenalised_log_likelihood=-1.0,
+            converged=True, n_customers=600, hessian=hessian,
+        )
+        return cls(**model, covariates=covariates)
+
+    @pytest.mark.parametrize("family,model", [
+        (bgnbd.BgnbdStaticCovParams, {"r": 1.0, "alpha": 2.0, "a": 3.0, "b": 4.0}),
+        (
+            ggomnbd.GgomnbdStaticCovParams,
+            {"r": 1.0, "alpha": 2.0, "b": 3.0, "s": 4.0, "beta": 5.0},
+        ),
+    ])
+    def test_the_hessian_comes_from_the_covariate_fit(self, family, model):
+        size = len(model) + 4
+        hessian = np.eye(size) * 4.0
+        fit = self._wrapped(family, model, hessian)
+        np.testing.assert_allclose(fit.hessian, hessian)
+        # Curvature of 4 in every direction is a standard error of 1/2.
+        assert set(np.round(list(fit.standard_errors().values()), 6)) == {0.5}
+        assert fit.names_cov_life == ["Gender", "Channel"]
+        assert fit.names_cov_trans == ["Gender", "Channel"]
+
+    @pytest.mark.parametrize("family,model", [
+        (bgnbd.BgnbdStaticCovParams, {"r": 1.0, "alpha": 2.0, "a": 3.0, "b": 4.0}),
+        (
+            ggomnbd.GgomnbdStaticCovParams,
+            {"r": 1.0, "alpha": 2.0, "b": 3.0, "s": 4.0, "beta": 5.0},
+        ),
+    ])
+    def test_without_a_hessian_they_say_so(self, family, model):
+        fit = self._wrapped(family, model, None)
+        with pytest.raises(ValueError, match="hessian=True"):
+            fit.confint()

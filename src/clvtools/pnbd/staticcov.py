@@ -41,6 +41,7 @@ from numpy.typing import ArrayLike, NDArray
 from scipy import optimize, stats
 
 from clvtools._optimize import options_for
+from clvtools.inference import Fitted
 from clvtools.pnbd.aggregate import log_likelihood_ind
 
 __all__ = [
@@ -182,7 +183,7 @@ def log_likelihood(
 
 
 @dataclass(frozen=True)
-class PnbdStaticCovParams:
+class PnbdStaticCovParams(Fitted):
     r"""A fitted Pareto/NBD with time-invariant covariates.
 
     S6.4.1: "The covariate parameters are directly interpretable as rate
@@ -236,6 +237,7 @@ class PnbdStaticCovParams:
             + [f"constr.{n}" for n in self.names_cov_constr]
         )
 
+    @property
     def coefficients(self) -> dict[str, float]:
         """Every estimate, keyed as ``summary()`` prints them in S6.4.1.
 
@@ -247,7 +249,7 @@ class PnbdStaticCovParams:
         ...     names_cov_life=["Gender", "Channel"],
         ...     names_cov_trans=["Gender", "Channel"])
         >>> fit = fit_pnbd_staticcov(data, hessian=False)
-        >>> list(fit.coefficients())
+        >>> list(fit.coefficients)
         ['r', 'alpha', 's', 'beta', 'life.Gender', 'life.Channel',
          'trans.Gender', 'trans.Channel']
         """
@@ -275,44 +277,6 @@ class PnbdStaticCovParams:
             self.n_parameters * np.log(self.n_customers)
             - 2 * self._comparable_log_likelihood
         )
-
-    def standard_errors(self) -> dict[str, float]:
-        """Standard errors from the inverse Hessian."""
-        if self.hessian is None:
-            raise ValueError("fit with hessian=True to obtain standard errors")
-        return dict(
-            zip(self.names, np.sqrt(np.diag(np.linalg.inv(self.hessian))))
-        )
-
-    def summary(self) -> "pd.DataFrame":  # noqa: F821
-        r"""The coefficient table of S6.4.1, with z- and p-values.
-
-        S6.4.1: "the four Pareto/NBD base parameters (:math:`r, \alpha, s,
-        \beta`) are not reported with any z- and p-values. As these parameters
-        are constrained to be strictly positive, the model definition fixes
-        their lower bound at 0. Thus, a null hypothesis of :math:`\theta = 0`
-        lies outside the admissible parameter space." They are ``NaN`` here for
-        the same reason.
-        """
-        import pandas as pd
-
-        errors = self.standard_errors()
-        table = pd.DataFrame(
-            {
-                "Estimate": list(self),
-                "Std. Error": [errors[n] for n in self.names],
-            },
-            index=self.names,
-        )
-        is_covariate = np.array(
-            [n.startswith(("life.", "trans.")) for n in self.names]
-        )
-        z = np.where(
-            is_covariate, table["Estimate"] / table["Std. Error"], np.nan
-        )
-        table["z-val"] = z
-        table["Pr(>|z|)"] = 2 * (1 - stats.norm.cdf(np.abs(z)))
-        return table
 
 
 def fit_pnbd_staticcov(
@@ -382,7 +346,7 @@ def fit_pnbd_staticcov(
     The covariate coefficients -- the ones S6.4.1 actually interprets -- come
     back to the printed precision:
 
-    >>> {k: round(float(v), 2) for k, v in fit.coefficients().items() if "." in k}
+    >>> {k: round(float(v), 2) for k, v in fit.coefficients.items() if "." in k}
     {'life.Gender': -0.64, 'life.Channel': 0.79,
      'trans.Gender': 0.29, 'trans.Channel': 0.62}
 

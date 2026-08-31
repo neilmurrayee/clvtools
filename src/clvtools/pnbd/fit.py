@@ -26,6 +26,7 @@ from numpy.typing import ArrayLike
 from scipy import optimize
 
 from clvtools._optimize import options_for
+from clvtools.inference import Fitted, numerical_hessian
 from clvtools.pnbd.aggregate import log_likelihood
 
 __all__ = ["PnbdParams", "fit_pnbd"]
@@ -38,7 +39,7 @@ _NAMES = ("r", "alpha", "s", "beta")
 
 
 @dataclass(frozen=True)
-class PnbdParams:
+class PnbdParams(Fitted):
     r"""A fitted Pareto/NBD.
 
     S3.2: ":math:`r` and :math:`\alpha` are the shape and scale parameters of
@@ -98,24 +99,10 @@ class PnbdParams:
         """Bayesian information criterion, as reported by ``summary()``."""
         return self.n_parameters * np.log(self.n_customers) - 2 * self.log_likelihood
 
-    def standard_errors(self) -> dict[str, float]:
-        """Standard errors from the inverse Hessian of the log-likelihood.
-
-        S6.4.1 reports these for the covariate model, and notes that the four
-        model parameters carry no z- or p-value: "As these parameters are
-        constrained to be strictly positive, the model definition fixes their
-        lower bound at 0. Thus, a null hypothesis of theta = 0 lies outside the
-        admissible parameter space."
-
-        Raises
-        ------
-        ValueError
-            If the model was fitted with ``hessian=False``.
-        """
-        if self.hessian is None:
-            raise ValueError("fit with hessian=True to obtain standard errors")
-        cov = np.linalg.inv(self.hessian)
-        return dict(zip(_NAMES, np.sqrt(np.diag(cov))))
+    @property
+    def names(self) -> list[str]:
+        r""":math:`(r, \alpha, s, \beta)`, the order everything else uses."""
+        return list(_NAMES)
 
 
 def _validate(x: np.ndarray, t_x: np.ndarray, T: np.ndarray) -> None:
@@ -131,30 +118,6 @@ def _validate(x: np.ndarray, t_x: np.ndarray, T: np.ndarray) -> None:
         raise ValueError("t_x cannot exceed T: a purchase after the window closed")
     if np.any((x == 0) & (t_x != 0)):
         raise ValueError("t_x must be 0 where x == 0")
-
-
-def _numerical_hessian(
-    fn, at: np.ndarray, step: float = 1e-5
-) -> np.ndarray:
-    """Central-difference Hessian of ``fn`` at ``at``.
-
-    CLVTools uses ``numDeriv`` for the same purpose. The step is relative to
-    each coordinate's magnitude so that parameters on very different scales --
-    ``s`` near 0.56 against ``beta`` near 47 -- are differenced comparably.
-    """
-    n = at.size
-    h = step * np.maximum(np.abs(at), 1.0)
-    out = np.empty((n, n))
-    for i in range(n):
-        for j in range(i, n):
-            ei = np.zeros(n); ei[i] = h[i]
-            ej = np.zeros(n); ej[j] = h[j]
-            value = (
-                fn(at + ei + ej) - fn(at + ei - ej)
-                - fn(at - ei + ej) + fn(at - ei - ej)
-            ) / (4 * h[i] * h[j])
-            out[i, j] = out[j, i] = value
-    return out
 
 
 def fit_pnbd(
@@ -272,7 +235,7 @@ def fit_pnbd(
             # what standard errors refer to, so it is differenced there rather
             # than in the log coordinates the search used.
             natural = np.exp(result.x)
-            hess = _numerical_hessian(
+            hess = numerical_hessian(
                 lambda p: -log_likelihood(x, t_x, T, *p, weights=w), natural
             )
 

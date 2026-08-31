@@ -368,7 +368,7 @@ variability in the actual outcomes (aleatoric uncertainty)."
 >>> round(covariate_fit.log_likelihood, 4)
 -5821.0627
 >>> {k: round(float(v), 2)
-...  for k, v in covariate_fit.coefficients().items() if "." in k}
+...  for k, v in covariate_fit.coefficients.items() if "." in k}
 {'life.Gender': -0.64, 'life.Channel': 0.79,
  'trans.Gender': 0.29, 'trans.Channel': 0.62}
 

@@ -26,13 +26,14 @@ with what CLVTools maximises. :func:`mean_spending_pdf` restores the exponent.
 from __future__ import annotations
 
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from scipy import optimize, special
 
 from clvtools._optimize import options_for
+from clvtools.inference import Fitted, numerical_hessian
 
 __all__ = [
     "GgParams",
@@ -240,7 +241,7 @@ def log_likelihood(
 
 
 @dataclass(frozen=True)
-class GgParams:
+class GgParams(Fitted):
     r"""A fitted Gamma-Gamma model.
 
     :math:`p` is the shape of the per-transaction gamma; :math:`q` and
@@ -254,6 +255,11 @@ class GgParams:
     log_likelihood: float
     converged: bool
     n_customers: int
+    hessian: np.ndarray | None = field(default=None, repr=False)
+
+    @property
+    def names(self) -> list[str]:
+        return list(_NAMES)
 
     def __iter__(self) -> Iterator[float]:
         r"""Yield :math:`(p, q, \gamma)` in the paper's order."""
@@ -282,6 +288,7 @@ def fit_gg(
     start: tuple[float, float, float] = _DEFAULT_START,
     method: str = "L-BFGS-B",
     maxiter: int = 10_000,
+    hessian: bool = True,
     options: dict | None = None,
 ) -> GgParams:
     r"""Maximise eq. (17) over :math:`(p, q, \gamma)`.
@@ -339,6 +346,13 @@ def fit_gg(
     )
 
     p, q, gamma = (float(v) for v in np.exp(result.x))
+    hess = None
+    if hessian:
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            hess = numerical_hessian(
+                lambda v: -log_likelihood(x, z_bar, *v, weights=w),
+                np.array([p, q, gamma]),
+            )
     return GgParams(
         p=p,
         q=q,
@@ -346,6 +360,7 @@ def fit_gg(
         log_likelihood=float(-result.fun),
         converged=bool(result.success),
         n_customers=int(x.size if w is None else w.sum()),
+        hessian=hess,
     )
 
 

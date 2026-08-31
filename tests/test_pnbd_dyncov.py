@@ -176,8 +176,9 @@ class TestBAndDTerms:
 class TestAgainstOracle:
     """Every intermediate quantity, at two parameter vectors."""
 
+    @staticmethod
     @pytest.fixture(scope="class", params=CASES)
-    def compared(self, request, dyncov_walks):
+    def compared(request, dyncov_walks):
         case = request.param
         r, alpha, s, beta, g_life, g_trans = _split(case)
         got = log_likelihood_ind(
@@ -365,8 +366,9 @@ class TestWalkConstruction:
     construction cannot hide behind a correct likelihood or the reverse.
     """
 
+    @staticmethod
     @pytest.fixture(scope="class")
-    def built(self):
+    def built():
         from clvtools import ClvData, load_apparel_dyn_cov, load_apparel_trans
         from clvtools.pnbd.dyncov import build_walks
 
@@ -472,8 +474,9 @@ class TestWalkConstruction:
 
 
 class TestWalkConstructionValidation:
+    @staticmethod
     @pytest.fixture(scope="class")
-    def data(self):
+    def data():
         from clvtools import ClvData, load_apparel_trans
 
         return ClvData(load_apparel_trans(), time_unit="week", estimation_split=104)
@@ -514,8 +517,9 @@ class TestWalkConstructionValidation:
 class TestDynCovDataObject:
     """``SetDynamicCovariates()``'s analogue."""
 
+    @staticmethod
     @pytest.fixture(scope="class")
-    def dynamic(self):
+    def dynamic():
         from clvtools import ClvData, ClvDataDynCov
         from clvtools import load_apparel_dyn_cov, load_apparel_trans
 
@@ -617,7 +621,7 @@ class TestFit:
         assert fitted.log_likelihood >= want["logLik"] - 1e-6
         # The transaction-process coefficients, which S6.4.1 is what a reader
         # would interpret, do land in the same place.
-        coefficients = fitted.coefficients()
+        coefficients = fitted.coefficients
         assert coefficients["trans.High.Season"] == pytest.approx(0.7183, abs=5e-3)
         assert coefficients["trans.Gender"] == pytest.approx(0.2649, abs=1e-2)
         assert coefficients["trans.Channel"] == pytest.approx(0.6137, abs=1e-2)
@@ -766,7 +770,7 @@ class TestFitMechanics:
         assert fitted.n_evaluations > 0
         assert fitted.n_customers == 600
         assert np.isfinite(fitted.log_likelihood)
-        assert list(fitted.coefficients()) == fitted.names
+        assert list(fitted.coefficients) == fitted.names
 
     def test_covariate_names_default_to_positional_labels(self, dyncov_walks):
         from clvtools.pnbd.dyncov import fit_pnbd_dyncov

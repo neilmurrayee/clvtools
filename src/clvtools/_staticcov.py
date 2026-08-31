@@ -1,6 +1,6 @@
 r"""Shared estimation machinery for the time-invariant covariate models.
 
-Table 3 marks all three latent attrition families as supporting time-invariant
+Table 4 marks all three latent attrition families as supporting time-invariant
 covariates, equality constraints and regularization. What differs between them
 is only the likelihood and how many model parameters it takes; the search
 vector, the constraint bookkeeping of eq. (14), the penalty of eq. (13) and the
@@ -30,36 +30,16 @@ from numpy.typing import ArrayLike, NDArray
 from scipy import optimize
 
 from clvtools._optimize import options_for
+from clvtools.inference import Fitted, numerical_hessian
 
-__all__ = ["StaticCovResult", "fit_static_covariates", "numerical_hessian"]
+__all__ = ["StaticCovResult", "fit_static_covariates"]
 
 #: S6.4: "If not given, the start values are set to 0.1 for all covariates."
 DEFAULT_COV_START = 0.1
 
 
-def numerical_hessian(fn, at: NDArray[np.float64], step: float = 1e-5):
-    """Central-difference Hessian of ``fn`` at ``at``.
-
-    CLVTools uses ``numDeriv`` for the same purpose. The step is relative to
-    each coordinate's magnitude, so parameters on very different scales are
-    differenced comparably.
-    """
-    n = at.size
-    h = step * np.maximum(np.abs(at), 1.0)
-    out = np.empty((n, n))
-    for i in range(n):
-        for j in range(i, n):
-            ei = np.zeros(n); ei[i] = h[i]
-            ej = np.zeros(n); ej[j] = h[j]
-            out[i, j] = out[j, i] = (
-                fn(at + ei + ej) - fn(at + ei - ej)
-                - fn(at - ei + ej) + fn(at - ei - ej)
-            ) / (4 * h[i] * h[j])
-    return out
-
-
 @dataclass(frozen=True)
-class StaticCovResult:
+class StaticCovResult(Fitted):
     """What a covariate fit produces, before a family wraps it in its own type."""
 
     model: NDArray[np.float64]
@@ -312,19 +292,25 @@ def fit_static_covariates(
 
     hess = None
     if hessian:
-        natural = np.concatenate([model, g_life, g_trans])
-        n_life_all = len(names_life)
+        # Curvature in the parameters actually estimated, which under an
+        # equality constraint is one coefficient per constrained covariate
+        # rather than two. Differencing the full unconstrained vector instead
+        # would produce one standard error too many, and they would line up
+        # with the wrong names. The model parameters are taken on their natural
+        # scale, since that is what a standard error refers to.
+        reported = np.concatenate([
+            model,
+            g_life[idx_life], g_trans[idx_trans], g_life[idx_constr_life],
+        ])
 
-        def natural_objective(v: NDArray[np.float64]) -> float:
-            return -log_likelihood(
-                v[:n_model_params],
-                v[n_model_params : n_model_params + n_life_all],
-                v[n_model_params + n_life_all :],
-                cov_life, cov_trans,
+        def reported_objective(v: NDArray[np.float64]) -> float:
+            m, gl, gt = unpack(
+                np.concatenate([np.log(v[:n_model_params]), v[n_model_params:]])
             )
+            return -log_likelihood(m, gl, gt, cov_life, cov_trans)
 
         with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
-            hess = numerical_hessian(natural_objective, natural)
+            hess = numerical_hessian(reported_objective, reported)
 
     return StaticCovResult(
         model=np.asarray(model, dtype=float),

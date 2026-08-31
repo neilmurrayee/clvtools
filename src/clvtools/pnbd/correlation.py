@@ -50,6 +50,7 @@ from numpy.typing import ArrayLike, NDArray
 from scipy import optimize
 
 from clvtools._optimize import options_for
+from clvtools.inference import Fitted
 from clvtools.pnbd.aggregate import log_likelihood_ind
 
 __all__ = [
@@ -216,7 +217,7 @@ def correlated_log_likelihood(
 
 
 @dataclass(frozen=True)
-class PnbdCorrelatedParams:
+class PnbdCorrelatedParams(Fitted):
     """A fitted Pareto/NBD with correlated processes."""
 
     r: float
@@ -228,6 +229,10 @@ class PnbdCorrelatedParams:
     converged: bool
     n_customers: int
     hessian: np.ndarray | None = field(default=None, repr=False)
+
+    @property
+    def names(self) -> list[str]:
+        return ["r", "alpha", "s", "beta", "m"]
 
     def __iter__(self) -> Iterator[float]:
         yield from (self.r, self.alpha, self.s, self.beta, self.m)
