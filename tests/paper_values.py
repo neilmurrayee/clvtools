@@ -24,6 +24,37 @@ ESTIMATION_WEEKS = 104
 TIME_UNIT = "week"
 ESTIMATION_END = "2006-12-31"
 
+# -- summary(clv.apparel), S6.1.2 ---------------------------------------------
+#
+# The descriptive table the paper prints, to the three decimals it prints it
+# to. "-" is a statistic that does not apply to that sample.
+
+DESCRIPTIVES = {
+    "Period Start": ("2005-01-02", "2007-01-01", "2005-01-02"),
+    "Period End": ("2006-12-31", "2010-12-20", "2010-12-20"),
+    "Number of customers": (None, None, 600),
+    "First Transaction in period": ("2005-01-02", "2007-01-01", "2005-01-02"),
+    "Last Transaction in period": ("2006-12-31", "2010-12-20", "2010-12-20"),
+    "Total # Transactions": (1866, 1317, 3183),
+    "Mean # Transactions per cust": (3.110, 5.557, 5.305),
+    "(SD) # Transactions": (2.714, 5.123, 6.119),
+    "Mean Spending per Transaction": (40.545, 36.977, 39.069),
+    "(SD) Spending": (73.362, 55.356, 66.519),
+    "Total Spending": (75657.730, 48699.170, 124356.900),
+    "Total # zero repeaters": (213, None, None),
+    "Percentage of zero repeaters": (35.500, None, None),
+    "Mean Interpurchase time": (24.823, 30.604, 37.817),
+    "(SD) Interpurchase time": (19.417, 24.756, 42.339),
+}
+
+#: S6.1.2: "the dataset includes a total of 600 customers who made 3'183
+#: purchases", four fewer than the 3,187 records, because same-day purchases by
+#: one customer are one transaction.
+N_TRANSACTIONS_AGGREGATED = 3183
+
+#: S6.1.2's frequency plot, and the zero-repeater count above.
+ZERO_REPEATERS = 213
+
 # -- Pareto/NBD without covariates, S6.2.1 ------------------------------------
 
 PNBD_MLE = {"r": 1.4490, "alpha": 48.6361, "s": 0.5613, "beta": 46.8844}
@@ -90,6 +121,23 @@ NEWCUSTOMER_PERIODS = 52
 NEWCUSTOMER_TRANSACTIONS = 2.218635
 NEWCUSTOMER_SPENDING = 39.1372
 NEWCUSTOMER_TOTAL = 86.83115
+
+# -- Pareto/NBD with time-varying covariates, S6.4.2 --------------------------
+#
+# head(dt.pred.mixed.future, 3), from a fit on the full data with the covariate
+# series extended by apparelDynCovFuture.
+#
+# These are NOT reproduced. CLVTools 0.12.1 no longer reaches the fit the paper
+# printed: its own predict() gives 0.0107292 where the paper prints 0.0139206
+# for customer 1. This package matches CLVTools 0.12.1 to 1e-12 at that fit --
+# see tests/test_pnbd_dyncov_predict.py, which pins both the agreement and the
+# gap.
+
+DYNCOV_FUTURE_PAPER = {
+    "1": {"PAlive": 0.0139206, "CET": 0.0253848, "DECT": 0.02379146},
+    "10": {"PAlive": 0.8108995, "CET": 1.5938786, "DECT": 1.49351918},
+    "100": {"PAlive": 0.9103230, "CET": 4.0419238, "DECT": 3.78742184},
+}
 
 # -- Pareto/NBD with time-invariant covariates, S6.4.1 ------------------------
 #

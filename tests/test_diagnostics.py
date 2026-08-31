@@ -262,8 +262,9 @@ class TestSpendingDensity:
 
 
 class TestSpendingDensityProperties:
+    @staticmethod
     @pytest.fixture(scope="class")
-    def fitted(self, data):
+    def fitted(data):
         spend = data.spending_summary()
         return fit_gg(spend["x"], spend["Spending"])
 
@@ -573,8 +574,9 @@ class TestConfidenceIntervals:
 class TestPredictIntervals:
     r"""The whole routine, as S6.3.3 describes it."""
 
+    @staticmethod
     @pytest.fixture(scope="class")
-    def refit(self):
+    def refit():
         from clvtools.gg import fit_gg as fit_spending
         from clvtools.pnbd import fit_pnbd
         from clvtools.predict import predict
@@ -589,8 +591,9 @@ class TestPredictIntervals:
 
         return run
 
+    @staticmethod
     @pytest.fixture(scope="class")
-    def intervals(self, data, refit):
+    def intervals(data, refit):
         return bootstrap.predict_intervals(
             data, refit, num_boots=10, level=0.9,
             columns=["PAlive", "CET", "predicted.CLV"], seed=1,

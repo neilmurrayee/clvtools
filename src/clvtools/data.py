@@ -19,10 +19,13 @@ shown are the ones printed in the paper.
 
 from __future__ import annotations
 
+import copy
+from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from pandas.api.types import is_bool_dtype, is_object_dtype, is_string_dtype
 
 from clvtools import timeunit
 from clvtools.timeunit import TIME_UNITS
@@ -33,6 +36,7 @@ __all__ = [
     "ClvDataStaticCov",
     "TIME_UNITS",
     "load_apparel_dyn_cov",
+    "load_apparel_dyn_cov_future",
     "load_apparel_static_cov",
     "load_apparel_trans",
     "load_cdnow",
@@ -95,6 +99,30 @@ def load_apparel_dyn_cov() -> pd.DataFrame:
     """
     return pd.read_csv(
         DATA_DIR / "apparelDynCov.csv", dtype={"Id": str}, parse_dates=["Cov.Date"]
+    )
+
+
+def load_apparel_dyn_cov_future() -> pd.DataFrame:
+    """The covariate series continued past the end of the transaction data.
+
+    S6.4.2: "the time-varying covariates have to be available for the entire
+    prediction period" -- the model needs a covariate value for every period it
+    predicts over, and the transaction data stops before the horizon does.
+    ``apparelDynCovFuture`` carries the series on from where
+    :func:`load_apparel_dyn_cov` stops, and the two are concatenated before the
+    prediction, as S6.4.2 does with ``rbind()``.
+
+    >>> future = load_apparel_dyn_cov_future()
+    >>> future["Cov.Date"].min().date(), future["Cov.Date"].max().date()
+    (datetime.date(2011, 1, 2), datetime.date(2012, 10, 14))
+    >>> past = load_apparel_dyn_cov()
+    >>> past["Cov.Date"].max() < future["Cov.Date"].min()
+    True
+    """
+    return pd.read_csv(
+        DATA_DIR / "apparelDynCovFuture.csv",
+        dtype={"Id": str},
+        parse_dates=["Cov.Date"],
     )
 
 
@@ -344,6 +372,176 @@ class ClvData:
             "Spending": agg["mean"].to_numpy(),
         }).reset_index(drop=True)
 
+    # -- inspecting the data, S6.1.2 ------------------------------------------
+
+    @property
+    def holdout_start(self) -> pd.Timestamp | None:
+        """The first timepoint of the holdout period, or ``None`` without one.
+
+        One time step past the estimation period, which is a day -- or an hour
+        on hourly data, the one unit finer than a day that S6.1 allows.
+        """
+        if not self.has_holdout:
+            return None
+        step = pd.Timedelta(hours=1) if self.time_unit == "hour" else pd.Timedelta(days=1)
+        return self.estimation_end + step
+
+    def nobs(self) -> int:
+        """The number of customers. Cf. ``nobs()`` on a data object."""
+        return int(self.transactions["Id"].nunique())
+
+    def as_data_frame(
+        self, sample: str = "full", ids: Sequence[str] | str | None = None
+    ) -> pd.DataFrame:
+        """The transaction log itself. Cf. ``as.data.frame()`` in S6.1.2.
+
+        S6.1.2 takes the data out three ways: ``sample = "full"``,
+        ``sample = "estimation"`` and ``ids = "1"``. ``sample`` defaults to
+        ``"full"``, as it does there -- unlike the descriptive plots, which
+        default to the estimation period.
+
+        The frame is post-aggregation -- at most one row per customer-day, per
+        S6.1 -- so it is shorter than the log that was passed in.
+
+        R's ``subset()`` has no Python counterpart here because pandas already
+        has one: ``clv.as_data_frame(sample="holdout").query('Price >= 50')``
+        is ``subset(clv, Price >= 50, sample = "holdout")``.
+
+        Examples
+        --------
+        >>> clv = ClvData(load_apparel_trans(), time_unit="week", estimation_split=104)
+        >>> len(clv.as_data_frame()), len(clv.as_data_frame(sample="estimation"))
+        (3183, 1866)
+        >>> len(clv.as_data_frame(ids="1"))
+        7
+        """
+        frame = self._sample(sample)
+        if ids is not None:
+            wanted = [ids] if isinstance(ids, str) else [str(i) for i in ids]
+            frame = frame[frame["Id"].isin(wanted)]
+        return frame.reset_index(drop=True)
+
+    def _sample(self, sample: str) -> pd.DataFrame:
+        """The transactions of one period. ``sample`` is estimation/holdout/full."""
+        if sample == "full":
+            return self.transactions
+        if sample == "estimation":
+            return self.transactions[self.transactions["Date"] <= self.estimation_end]
+        if sample == "holdout":
+            if not self.has_holdout:
+                raise ValueError("the data has no holdout period")
+            return self.transactions[self.transactions["Date"] >= self.holdout_start]
+        raise ValueError(
+            f"sample must be one of estimation, holdout, full; got {sample!r}"
+        )
+
+    def mean_interpurchase_times(self, sample: str = "estimation") -> pd.DataFrame:
+        """Each customer's mean time between transactions, in ``time_unit``.
+
+        S6.1.2: "the empirical density of customers' mean time between
+        transactions, after aggregating purchases of the same customer on the
+        same date. [...] Only data from customers with repeat transactions are
+        shown in this graph."
+
+        Customers with a single transaction in the sample have no interpurchase
+        time at all and are returned as ``NaN`` rather than dropped, which is
+        what lets :meth:`summary` average over them with the same expression
+        CLVTools uses.
+        """
+        frame = self._sample(sample).sort_values(["Id", "Date"], kind="stable")
+        gaps: dict[str, float] = {}
+        for customer, dates in frame.groupby("Id", sort=True)["Date"]:
+            when = dates.to_numpy()
+            if len(when) < 2:
+                gaps[customer] = np.nan
+                continue
+            spans = [
+                self.time.elapsed(pd.Timestamp(a), pd.Timestamp(b))
+                for a, b in zip(when[:-1], when[1:])
+            ]
+            gaps[customer] = float(np.mean(spans))
+        return pd.DataFrame(
+            {"Id": list(gaps), "mean.interpurchase.time": list(gaps.values())}
+        )
+
+    def summary(self) -> pd.DataFrame:
+        """The descriptive statistics of S6.1.2. Cf. ``summary()``.
+
+        One row per statistic and one column per sample -- ``Estimation``,
+        ``Holdout`` (only when there is one) and ``Total`` -- holding the values
+        themselves rather than the three-decimal strings CLVTools prints:
+        timestamps for the four date rows, floats for the rest, and ``None``
+        where a statistic does not apply to that sample.
+
+        Examples
+        --------
+        The paper prints this table for the apparel data. 35.5% of customers
+        are zero repeaters, and the estimation period holds 1,866 of the 3,183
+        transactions that remain after same-day aggregation:
+
+        >>> clv = ClvData(load_apparel_trans(), time_unit="week", estimation_split=104)
+        >>> table = clv.summary()
+        >>> table.loc["Percentage of zero repeaters", "Estimation"]
+        35.5
+        >>> [int(table.loc["Total # Transactions", c]) for c in table.columns]
+        [1866, 1317, 3183]
+        >>> round(table.loc["Mean Interpurchase time", "Estimation"], 3)
+        24.823
+
+        Spending statistics need a ``Price`` column; without one those rows are
+        absent rather than empty.
+        """
+        samples = ["Estimation"] + (["Holdout"] if self.has_holdout else []) + ["Total"]
+        return pd.DataFrame(
+            {name: self._descriptives(name) for name in samples}
+        )
+
+    def _descriptives(self, sample: str) -> pd.Series:
+        """One column of :meth:`summary`, in CLVTools' own row order."""
+        frame = self._sample({"Estimation": "estimation", "Holdout": "holdout"}
+                             .get(sample, "full"))
+        per_customer = frame.groupby("Id", sort=True)["Date"].size()
+        gaps = self.mean_interpurchase_times(
+            {"Estimation": "estimation", "Holdout": "holdout"}.get(sample, "full")
+        )["mean.interpurchase.time"]
+
+        start, end = {
+            "Estimation": (self.estimation_start, self.estimation_end),
+            "Holdout": (self.holdout_start, self.data_end),
+        }.get(sample, (self.estimation_start, self.data_end))
+
+        values: dict[str, object] = {
+            "Period Start": start,
+            "Period End": end,
+            # Only the total counts customers: the other two samples are
+            # windows on the same cohort, so the count would not mean anything
+            # different. CLVTools prints "-" there.
+            "Number of customers": (
+                float(frame["Id"].nunique()) if sample == "Total" else None
+            ),
+            "First Transaction in period": frame["Date"].min(),
+            "Last Transaction in period": frame["Date"].max(),
+            "Total # Transactions": float(len(frame)),
+            "Mean # Transactions per cust": float(per_customer.mean()),
+            "(SD) # Transactions": float(per_customer.std(ddof=1)),
+        }
+        if self.has_spending:
+            values["Mean Spending per Transaction"] = float(frame["Price"].mean())
+            values["(SD) Spending"] = float(frame["Price"].std(ddof=1))
+            values["Total Spending"] = float(frame["Price"].sum())
+        # A zero repeater is a customer who never came back, which only the
+        # estimation period can establish.
+        is_estimation = sample == "Estimation"
+        values["Total # zero repeaters"] = (
+            float((per_customer == 1).sum()) if is_estimation else None
+        )
+        values["Percentage of zero repeaters"] = (
+            float((per_customer == 1).mean() * 100) if is_estimation else None
+        )
+        values["Mean Interpurchase time"] = float(gaps.mean(skipna=True))
+        values["(SD) Interpurchase time"] = float(gaps.std(ddof=1, skipna=True))
+        return pd.Series(values, dtype=object)
+
     def __repr__(self) -> str:
         span = "no holdout" if not self.has_holdout else (
             f"holdout to {self.data_end.date()}"
@@ -446,10 +644,44 @@ class ClvDataStaticCov(ClvData):
             )
         out = out.loc[customers]
 
-        categorical = out.select_dtypes(include=["object", "category", "bool"]).columns
-        if len(categorical):
-            out = pd.get_dummies(out, columns=list(categorical), drop_first=True)
+        # Everything that is not already a number becomes dummies. Selected by
+        # dtype predicate rather than ``select_dtypes(include=["object", ...])``
+        # because pandas 3 gives string columns their own ``str`` dtype, which
+        # that call stopped matching; datetime columns stay out of it either way.
+        categorical = [
+            name
+            for name, dtype in out.dtypes.items()
+            if is_object_dtype(dtype)
+            or is_string_dtype(dtype)
+            or isinstance(dtype, pd.CategoricalDtype)
+            or is_bool_dtype(dtype)
+        ]
+        if categorical:
+            out = pd.get_dummies(out, columns=categorical, drop_first=True)
         return out.astype(float)
+
+    def with_covariates(
+        self, names_life: list[str] | None = None,
+        names_trans: list[str] | None = None,
+    ) -> "ClvDataStaticCov":
+        """The same data restricted to the covariates a formula names.
+
+        S6.4's formula selects from the covariates the data object carries;
+        this applies that selection without re-preparing the design matrices.
+        ``None`` on either side keeps what is already there.
+        """
+        other = copy.copy(self)
+        for attribute, wanted, frame in (
+            ("names_cov_life", names_life, self._cov_life),
+            ("names_cov_trans", names_trans, self._cov_trans),
+        ):
+            if wanted is None:
+                continue
+            missing = [n for n in wanted if n not in frame.columns]
+            if missing:
+                raise ValueError(f"covariates not in the data: {missing}")
+            setattr(other, attribute, list(wanted))
+        return other
 
     def design_life(self, names: list[str] | None = None) -> np.ndarray:
         r"""The attrition process's covariate matrix, customers in summary order."""
@@ -507,6 +739,31 @@ class ClvDataDynCov(ClvData):
         self.names_cov_life = names_cov_life
         self.names_cov_trans = names_cov_trans
         self.name_date_cov = name_date_cov
+
+    def with_covariates(
+        self, names_life: list[str] | None = None,
+        names_trans: list[str] | None = None,
+    ) -> "ClvDataDynCov":
+        """The same data restricted to the covariates a formula names.
+
+        The walks are rebuilt on demand, since which covariates are in the
+        model changes them.
+        """
+        other = copy.copy(self)
+        other.__dict__.pop("_walks", None)
+        available = set(self.data_cov_life.columns) | set(
+            self.data_cov_trans.columns
+        )
+        for attribute, wanted in (
+            ("names_cov_life", names_life), ("names_cov_trans", names_trans),
+        ):
+            if wanted is None:
+                continue
+            missing = [n for n in wanted if n not in available]
+            if missing:
+                raise ValueError(f"covariates not in the data: {missing}")
+            setattr(other, attribute, list(wanted))
+        return other
 
     def walks(self):
         """Build the walk structures the likelihood consumes.

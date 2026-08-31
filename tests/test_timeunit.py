@@ -314,8 +314,9 @@ class TestLookup:
 class TestClvDataWithCalendarUnits:
     """The unit reaching through to the model inputs."""
 
+    @staticmethod
     @pytest.fixture(scope="class")
-    def transactions(self):
+    def transactions():
         from clvtools import load_apparel_trans
 
         return load_apparel_trans()

@@ -20,17 +20,27 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from collections.abc import Sequence
+
 from clvtools.data import ClvData
 
 __all__ = [
+    "fitted_data",
+    "frequency_data",
+    "interpurchase_time_data",
     "pmf_data",
     "render",
+    "spending_data",
     "spending_density_data",
+    "timings_data",
     "tracking_data",
 ]
 
 #: Column name for the observed series, matching CLVTools.
 ACTUAL = "Actual"
+
+#: What CLVTools labels the observed series when no model is overlaid.
+REPEAT_TRANSACTIONS = "Number of Repeat Transactions"
 
 
 def _period_grid(data: ClvData, end: pd.Timestamp) -> pd.DatetimeIndex:
@@ -56,7 +66,7 @@ def _period_grid(data: ClvData, end: pd.Timestamp) -> pd.DatetimeIndex:
 
 def tracking_data(
     data: ClvData,
-    expectation,
+    expectation=None,
     prediction_end: int | float | str | pd.Timestamp | None = None,
     cumulative: bool = False,
     model_name: str = "Model",
@@ -74,7 +84,9 @@ def tracking_data(
         ``t -> E[X(t)]`` for a single customer with no history, as each family's
         ``expectation`` provides. It is summed over customers by multiplying by
         the number of them, since the unconditional expectation does not depend
-        on any customer's data.
+        on any customer's data. ``None`` gives the descriptive tracking plot of
+        S6.1.2 instead -- the observed series alone, with no model overlaid,
+        which is what ``plot(clv.data, which = "tracking")`` draws.
     cumulative
         S6.2.2 contrasts the two: the incremental plot "gives an indication of
         how well the model captures dynamic effects such as seasonality", while
@@ -102,6 +114,15 @@ def tracking_data(
 
     >>> bool(frame.loc[frame["variable"] == "Pareto/NBD", "value"].iloc[0] == 0.0)
     True
+
+    Without a model it is the descriptive plot of S6.1.2, "the total number of
+    repeat transactions per period":
+
+    >>> observed = tracking_data(data)
+    >>> sorted(observed["variable"].unique())
+    ['Number of Repeat Transactions']
+    >>> float(observed["value"].iloc[1])
+    10.0
     """
     end = data.data_end if prediction_end is None else (
         data.time.add(data.estimation_end, float(prediction_end))
@@ -123,13 +144,14 @@ def tracking_data(
         .to_numpy(dtype=float)
     )
 
-    n_customers = int(transactions["Id"].nunique())
-    elapsed = np.array(
-        [data.time.elapsed(data.estimation_start, when) for when in grid]
-    )
-    cumulative_expected = n_customers * np.asarray(
-        [float(expectation(t)) for t in elapsed], dtype=float
-    )
+    if expectation is not None:
+        n_customers = int(transactions["Id"].nunique())
+        elapsed = np.array(
+            [data.time.elapsed(data.estimation_start, when) for when in grid]
+        )
+        cumulative_expected = n_customers * np.asarray(
+            [float(expectation(t)) for t in elapsed], dtype=float
+        )
 
     # A period the data does not fully cover gets no observed count. Reporting
     # the transactions that happen to fall in it would understate it, since the
@@ -138,13 +160,22 @@ def tracking_data(
     if len(grid) and grid[-1] > data.data_end:
         counted[-1] = np.nan
 
-    if cumulative:
-        actual_series = np.cumsum(counted)
-        model_series = cumulative_expected
-    else:
-        actual_series = counted
-        model_series = np.diff(cumulative_expected, prepend=0.0)
+    actual_series = np.cumsum(counted) if cumulative else counted
 
+    if expectation is None:
+        return pd.DataFrame({
+            "period.until": grid,
+            "variable": REPEAT_TRANSACTIONS,
+            "value": actual_series,
+        })
+
+    model_series = (
+        cumulative_expected if cumulative
+        else np.diff(cumulative_expected, prepend=0.0)
+    )
+    # The opening value is zero "by definition"; differencing can hand back a
+    # negative zero for it, which prints as -0.0 and reads as a defect.
+    model_series = np.where(model_series == 0.0, 0.0, model_series)
     return pd.concat([
         pd.DataFrame({
             "period.until": grid, "variable": model_name, "value": model_series,
@@ -302,6 +333,237 @@ def _kernel_density(sample: np.ndarray, grid: np.ndarray) -> np.ndarray:
     bandwidth = 0.9 * spread * n ** (-0.2)
     z = (grid[:, None] - sample[None, :]) / bandwidth
     return np.exp(-0.5 * z**2).sum(axis=1) / (n * bandwidth * np.sqrt(2 * np.pi))
+
+
+def fitted_data(data: ClvData, expectation) -> pd.DataFrame:
+    """The model's expected repeat transactions per period. Cf. ``fitted()``.
+
+    Table 2 lists ``fitted()`` among the generics every fitted model offers. It
+    is the model half of the tracking plot on its own: one row per period, with
+    the period's number and the expected number of repeat transactions in it.
+
+    Examples
+    --------
+    >>> from clvtools import ClvData, load_apparel_trans
+    >>> from clvtools.pnbd import expectation
+    >>> data = ClvData(load_apparel_trans(), time_unit="week", estimation_split=104)
+    >>> curve = lambda t: expectation(t, 1.4490, 48.6361, 0.5613, 46.8844)
+    >>> frame = fitted_data(data, curve)
+    >>> print(frame.head(3).to_string(index=False))
+    period.until  period.num  expectation
+      2005-01-02           1     0.000000
+      2005-01-09           2    17.769779
+      2005-01-16           3    17.562679
+    """
+    frame = tracking_data(data, expectation)
+    model = frame.loc[frame["variable"] != ACTUAL]
+    return pd.DataFrame({
+        "period.until": model["period.until"].to_numpy(),
+        "period.num": np.arange(1, len(model) + 1),
+        "expectation": model["value"].to_numpy(),
+    })
+
+
+def frequency_data(
+    data: ClvData,
+    bins: range | Sequence[int] = range(10),
+    count_repeat_transactions: bool = True,
+    count_remaining: bool = True,
+    label_remaining: str = "10+",
+    sample: str = "estimation",
+) -> pd.DataFrame:
+    """How many customers made how many transactions. S6.1.2, Table 3.
+
+    "The distribution of the number of transactions per customer." One row per
+    bin, with the customers at or above the last bin collected into a final
+    ``label_remaining`` row so the counts still sum to every customer.
+
+    Counting *repeat* transactions is the default, matching the models: a
+    customer seen once has made none. Counting every transaction instead
+    (``count_repeat_transactions=False``) leaves no customer at zero, so the
+    bins must then start at one.
+
+    Examples
+    --------
+    S6.1.2 reports 35.5% zero repeaters, which is this frame's first bin:
+
+    >>> from clvtools import ClvData, load_apparel_trans
+    >>> data = ClvData(load_apparel_trans(), time_unit="week", estimation_split=104)
+    >>> frame = frequency_data(data)
+    >>> print(frame.head(3).to_string(index=False))
+    num.transactions  num.customers
+                   0            213
+                   1            116
+                   2             82
+    >>> int(frame["num.customers"].sum())
+    600
+    """
+    bins = list(bins)
+    if not count_repeat_transactions and min(bins) < 1:
+        raise ValueError(
+            "counting all transactions leaves no customer below one: "
+            "bins must be strictly positive"
+        )
+    frame = data._sample(sample)
+    counts = frame.groupby("Id", sort=True)["Date"].size()
+    if count_repeat_transactions:
+        counts = counts - 1
+
+    rows = [(str(b), int((counts == b).sum())) for b in bins]
+    if count_remaining:
+        rows.append((label_remaining, int((counts > max(bins)).sum())))
+    return pd.DataFrame(rows, columns=["num.transactions", "num.customers"])
+
+
+def interpurchase_time_data(
+    data: ClvData, sample: str = "estimation"
+) -> pd.DataFrame:
+    """Each customer's mean time between transactions. S6.1.2, Table 3.
+
+    "The empirical density of customer's mean time between transactions [...]
+    Only data from customers with repeat transactions are shown in this graph",
+    so single-transaction customers are dropped rather than counted as zero.
+
+    Examples
+    --------
+    387 of the 600 customers made a repeat purchase in the estimation period:
+
+    >>> from clvtools import ClvData, load_apparel_trans
+    >>> data = ClvData(load_apparel_trans(), time_unit="week", estimation_split=104)
+    >>> frame = interpurchase_time_data(data)
+    >>> len(frame), round(float(frame["mean.interpurchase.time"].mean()), 3)
+    (387, 24.823)
+    """
+    frame = data.mean_interpurchase_times(sample)
+    return frame.dropna(subset=["mean.interpurchase.time"]).reset_index(drop=True)
+
+
+def spending_data(
+    data: ClvData, sample: str = "estimation", mean_spending: bool = True
+) -> pd.DataFrame:
+    """Observed spending, per customer or per transaction. S6.1.2, Table 3.
+
+    "It either shows the empirical density of customers' average order values
+    (``mean.spending = TRUE``) or the value of every transaction in the data."
+    S6.1.2 draws it for both samples to check "whether the distribution remains
+    stable in the estimation and the holdout period, a key assumption of the
+    spending models".
+
+    Examples
+    --------
+    >>> from clvtools import ClvData, load_apparel_trans
+    >>> data = ClvData(load_apparel_trans(), time_unit="week", estimation_split=104)
+    >>> per_customer = spending_data(data)
+    >>> per_transaction = spending_data(data, mean_spending=False)
+    >>> len(per_customer), len(per_transaction)
+    (600, 1866)
+    >>> round(float(per_transaction["Spending"].mean()), 3)
+    40.545
+    """
+    if not data.has_spending:
+        raise ValueError("no Price column: there is no spending to plot")
+    frame = data._sample(sample)
+    if not mean_spending:
+        return frame[["Id", "Price"]].rename(
+            columns={"Price": "Spending"}
+        ).reset_index(drop=True)
+    mean = frame.groupby("Id", sort=True)["Price"].mean()
+    return pd.DataFrame({"Id": mean.index, "Spending": mean.to_numpy()})
+
+
+def timings_data(
+    data: ClvData,
+    ids: Sequence[str] | None = None,
+    n: int = 50,
+    seed: int | None = None,
+) -> pd.DataFrame:
+    """When each of a subset of customers transacted. S6.1.2, Table 3.
+
+    "Each dot in a row illustrates when a transaction for a particular customer
+    was recorded." The frame is the drawing itself, long: one horizontal
+    ``segment`` per customer spanning their first transaction to the end of the
+    data, and one ``point`` per transaction, labelled by which period it falls
+    in. ``x`` values are dates and ``y`` values are the row a customer sits on,
+    both as strings, exactly as CLVTools emits them.
+
+    Customers are laid out by first transaction, ties broken by descending
+    ``Id``, ten units apart -- CLVTools' own order, kept so the frames can be
+    compared row for row.
+
+    Parameters
+    ----------
+    ids
+        Which customers to draw. Defaults to ``n`` of them at random, as
+        CLVTools defaults to 50.
+
+    Examples
+    --------
+    >>> from clvtools import ClvData, load_apparel_trans
+    >>> data = ClvData(load_apparel_trans(), time_unit="week", estimation_split=104)
+    >>> frame = timings_data(data, ids=["1", "2", "3"])
+    >>> sorted(frame["type"].unique())
+    ['point_calibration', 'point_holdout', 'segment_end', 'segment_start']
+    >>> print(frame.loc[frame["type"] == "segment_start"].to_string(index=False))
+    Id          type variable      value
+     3 segment_start        x 2005-01-02
+     2 segment_start        x 2005-01-02
+     1 segment_start        x 2005-01-02
+     3 segment_start        y         10
+     2 segment_start        y         20
+     1 segment_start        y         30
+    """
+    everyone = data.transactions
+    if ids is None:
+        pool = pd.Index(sorted(everyone["Id"].unique()))
+        n = min(n, len(pool))
+        ids = list(
+            pd.Series(pool).sample(n=n, random_state=seed, replace=False)
+        )
+    ids = list(dict.fromkeys(str(i) for i in ids))
+    unknown = [i for i in ids if i not in set(everyone["Id"])]
+    if unknown:
+        raise ValueError(f"no such customers: {unknown[:3]}")
+
+    chosen = everyone[everyone["Id"].isin(ids)]
+    first = chosen.groupby("Id")["Date"].min().rename("first")
+    layout = (
+        first.reset_index()
+        .sort_values(["first", "Id"], ascending=[True, False], kind="stable")
+        .reset_index(drop=True)
+    )
+    layout["y"] = (layout.index + 1) * 10
+
+    def melted(frame: pd.DataFrame, kind: str) -> pd.DataFrame:
+        """One block, x rows then y rows, as CLVTools' ``melt`` produces."""
+        return pd.concat([
+            pd.DataFrame({
+                "Id": frame["Id"], "type": kind, "variable": "x",
+                "value": frame["x"].astype(str),
+            }),
+            pd.DataFrame({
+                "Id": frame["Id"], "type": kind, "variable": "y",
+                "value": frame["y"].astype(str),
+            }),
+        ], ignore_index=True)
+
+    def dated(dates: pd.DataFrame) -> pd.DataFrame:
+        return dates.merge(layout[["Id", "y"]], on="Id").assign(
+            x=lambda f: f["Date"].dt.date
+        )[["Id", "x", "y"]]
+
+    blocks = [
+        melted(layout.assign(x=layout["first"].dt.date)[["Id", "x", "y"]],
+               "segment_start"),
+        melted(layout.assign(x=data.data_end.date())[["Id", "x", "y"]],
+               "segment_end"),
+        melted(dated(data.as_data_frame("estimation", ids=ids)),
+               "point_calibration"),
+    ]
+    if data.has_holdout:
+        blocks.append(
+            melted(dated(data.as_data_frame("holdout", ids=ids)), "point_holdout")
+        )
+    return pd.concat(blocks, ignore_index=True)
 
 
 def render(frame: pd.DataFrame, title: str | None = None, ax=None):
