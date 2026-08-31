@@ -25,9 +25,11 @@ Source: [`arXiv-2602.09845v1/jss5634.tex`](../arXiv-2602.09845v1/jss5634.tex).
 | § | Topic | Module |
 |---|---|---|
 | [6.1](#61-data-preparation) | Data preparation | `clvtools.data` |
-| [6.2](#62-model-estimation) | Model estimation | `clvtools.pnbd`, `clvtools.gg` |
+| [—](#inspecting-the-data) | Inspecting the data | `clvtools.data`, `.diagnostics` |
+| [6.2](#62-model-estimation) | Model estimation | `clvtools.estimate`, `.inference` |
 | [6.3](#63-predicting-customer-lifetime-value) | Predicting CLV | `clvtools.predict` |
 | [6.4](#64-covariates) | Covariates | `clvtools.pnbd.staticcov`, `.dyncov` |
+| [—](#predicting-with-time-varying-covariates) | Predicting with covariate paths | `clvtools.pnbd.dyncov_predict` |
 | [—](#diagnostics) | Diagnostics and intervals | `clvtools.diagnostics`, `.bootstrap` |
 | [6.5](#65-advanced-modelling-techniques) | Advanced techniques | `clvtools.pnbd.correlation` |
 | [—](#the-other-two-families) | BG/NBD and GGom/NBD | `clvtools.bgnbd`, `clvtools.ggomnbd` |
@@ -92,12 +94,75 @@ default does not use the first transaction when estimating a spending model
 because in many cases this transaction has been found to be atypical."
 
 ```python
->>> spending = data.spending_summary()
->>> print(spending.head(3).to_string(index=False))
+>>> spend = data.spending_summary()
+>>> print(spend.head(3).to_string(index=False))
  Id  x  Spending
   1  6   101.415
  10  2    43.900
 100  0     0.000
+
+```
+
+### Inspecting the data
+
+> "the summary statistics show, for example, that the dataset includes a total
+> of 600 customers who made 3'183 purchases. 35.5% of these customers are zero
+> repeaters, i.e. they purchase only once and never return."
+
+`summary()` returns the table §6.1.2 prints, holding the values rather than the
+three-decimal strings: one row per statistic, one column per sample.
+
+```python
+>>> table = data.summary()
+>>> list(table.columns)
+['Estimation', 'Holdout', 'Total']
+>>> [int(table.loc["Total # Transactions", c]) for c in table.columns]
+[1866, 1317, 3183]
+>>> table.loc["Percentage of zero repeaters", "Estimation"]
+35.5
+>>> round(table.loc["Mean Interpurchase time", "Estimation"], 3)
+24.823
+
+```
+
+The values are timestamps, floats or `None` -- the last where a statistic does
+not apply to that sample, which is where CLVTools prints a dash:
+
+```python
+>>> table.loc["Period Start", "Holdout"].date()
+datetime.date(2007, 1, 1)
+>>> table.loc["Total # zero repeaters", "Holdout"] is None
+True
+
+```
+
+Table 3's five descriptive plots come back as the data they would be drawn
+from, like the model diagnostics further down. The frequency plot's first bin
+is the zero repeaters:
+
+```python
+>>> from clvtools.diagnostics import (
+...     frequency_data, interpurchase_time_data, spending_data, timings_data,
+...     tracking_data)
+>>> print(frequency_data(data).head(3).to_string(index=False))
+num.transactions  num.customers
+               0            213
+               1            116
+               2             82
+>>> len(interpurchase_time_data(data)), len(spending_data(data))
+(387, 600)
+>>> len(tracking_data(data))
+313
+
+```
+
+Only customers with a repeat transaction have an interpurchase time, which is
+why 387 of the 600 appear above. The timings plot draws a subset of customers:
+
+```python
+>>> timings = timings_data(data, ids=["1", "2", "3"])
+>>> sorted(timings["type"].unique())
+['point_calibration', 'point_holdout', 'segment_end', 'segment_start']
 
 ```
 
@@ -107,13 +172,38 @@ because in many cases this transaction has been found to be atypical."
 
 The paper prints `r = 1.4490, alpha = 48.6361, s = 0.5613, beta = 46.8844`.
 
+`latentAttrition()` is spelled `latent_attrition()`, and takes the same
+`family` and `data`.
+
 ```python
->>> from clvtools.pnbd import fit_pnbd
->>> pnbd = fit_pnbd(summary["x"], summary["t_x"], summary["T"], hessian=False)
+>>> from clvtools import latent_attrition, pnbd as pnbd_family
+>>> pnbd = latent_attrition(family=pnbd_family, data=data)
 >>> [round(v, 3) for v in pnbd]
 [1.449, 48.635, 0.561, 46.884]
 >>> round(pnbd.log_likelihood, 4)
 -5848.0978
+
+```
+
+The canonical generics of Table 2 come with it. §6.4.1 notes why the model
+parameters carry no z-value: their null "lies outside the admissible parameter
+space".
+
+```python
+>>> print(pnbd.summary().round(3).to_string())
+       Estimate  Std. Error  z-val  Pr(>|z|)
+r         1.449       0.243    NaN       NaN
+alpha    48.635       7.489    NaN       NaN
+s         0.561       0.271    NaN       NaN
+beta     46.884      35.615    NaN       NaN
+>>> print(pnbd.confint().round(3).to_string())
+        2.5 %   97.5 %
+r       0.972    1.926
+alpha  33.957   63.313
+s       0.030    1.093
+beta  -22.921  116.688
+>>> pnbd.aic > 0 and pnbd.n_customers == 600
+True
 
 ```
 
@@ -132,8 +222,8 @@ $s/\beta = 0.012$."
 The paper prints `p = 3.099, q = 5.654, gamma = 56.504`.
 
 ```python
->>> from clvtools.gg import fit_gg
->>> gg = fit_gg(spending["x"], spending["Spending"])
+>>> from clvtools import gg as gg_family, spending
+>>> gg = spending(family=gg_family, data=data)
 >>> [round(v, 3) for v in gg]
 [3.099, 5.654, 56.504]
 >>> round(gg.log_likelihood, 3)
@@ -184,10 +274,8 @@ scaling by time unit is the caller's job, which `discount_factor` does.
 ```python
 >>> from clvtools.predict import discount_factor
 >>> full = ClvData(transactions, time_unit="week")
->>> full_summary, full_spending = full.customer_summary(), full.spending_summary()
->>> pnbd_full = fit_pnbd(full_summary["x"], full_summary["t_x"],
-...                      full_summary["T"], hessian=False)
->>> gg_full = fit_gg(full_spending["x"], full_spending["Spending"])
+>>> pnbd_full = latent_attrition(family=pnbd_family, data=full, hessian=False)
+>>> gg_full = spending(family=gg_family, data=full, hessian=False)
 >>> final = predict(full, pnbd_full, gg_full, prediction_end=95,
 ...                 continuous_discount_factor=discount_factor(0.075))
 >>> final["period.first"].iloc[0].date(), final["period.last"].iloc[0].date()
@@ -221,10 +309,12 @@ ridge. Given the published parameters instead, every column reproduces to 1e-12
 
 The paper prints 2.218635 transactions and 39.1372 per order.
 
+`newcustomer()` builds the prospective customer and `predict()` answers for
+them; no transaction data of theirs is used, because there is none.
+
 ```python
->>> from clvtools.gg import expected_mean_spending
->>> from clvtools.pnbd import expectation
->>> transactions_first_year = 1 + float(expectation(52.0, **pnbd_full.as_dict()))
+>>> from clvtools import newcustomer, newcustomer_spending
+>>> transactions_first_year = predict(newcustomer(52), pnbd_full)
 >>> round(transactions_first_year, 4)
 2.2186
 
@@ -234,15 +324,20 @@ The paper prints 2.218635 transactions and 39.1372 per order.
 initial purchases of each customer."
 
 ```python
->>> gg_with_first = fit_gg(
-...     *full.spending_summary(remove_first_transaction=False)[["x", "Spending"]].T.to_numpy())
->>> per_order = float(expected_mean_spending(0, 0.0, **gg_with_first.as_dict()))
+>>> gg_with_first = spending(
+...     family=gg_family, data=full, remove_first_transaction=False,
+...     hessian=False)
+>>> per_order = predict(newcustomer_spending(), gg_with_first)
 >>> round(per_order, 4)
 39.1372
 >>> round(transactions_first_year * per_order, 3)
 86.832
 
 ```
+
+With covariates the same question can be asked of a scenario rather than of the
+average customer — §6.3.4's "region A versus region B". `newcustomer_static()`
+takes the covariate values in place of a history.
 
 The paper prints 86.83115 for that product; the difference is in the fourth
 decimal of `transactions_first_year`, which inherits the flat-ridge difference
@@ -330,11 +425,10 @@ True
 
 ```python
 >>> def refit(sample):
-...     cbs, spend = sample.customer_summary(), sample.spending_summary()
 ...     return predict(
 ...         sample,
-...         fit_pnbd(cbs["x"], cbs["t_x"], cbs["T"], hessian=False),
-...         fit_gg(spend["x"], spend["Spending"]))
+...         latent_attrition(family=pnbd_family, data=sample, hessian=False),
+...         spending(family=gg_family, data=sample, hessian=False))
 >>> intervals = bootstrap.predict_intervals(
 ...     data, refit, num_boots=5, level=0.9, columns=["CET"], seed=1)
 >>> list(intervals.columns)
@@ -359,12 +453,13 @@ variability in the actual outcomes (aleatoric uncertainty)."
 
 ```python
 >>> from clvtools import ClvDataStaticCov, load_apparel_static_cov
->>> from clvtools.pnbd.staticcov import fit_pnbd_staticcov
 >>> static = ClvDataStaticCov(
 ...     data, load_apparel_static_cov(),
 ...     names_cov_life=["Gender", "Channel"],
 ...     names_cov_trans=["Gender", "Channel"])
->>> covariate_fit = fit_pnbd_staticcov(static)
+>>> covariate_fit = latent_attrition(
+...     formula="~ Gender + Channel | Gender + Channel",
+...     family=pnbd_family, data=static)
 >>> round(covariate_fit.log_likelihood, 4)
 -5821.0627
 >>> {k: round(float(v), 2)
@@ -424,6 +519,57 @@ default:
 uv run pytest -m dyncov_fit
 ```
 
+### Predicting with time-varying covariates
+
+> "the time-varying covariates have to be available for the entire prediction
+> period."
+
+§6.4.2 continues the covariate series past the end of the transaction data with
+`apparelDynCovFuture` and predicts 95 weeks ahead. The prediction is done here
+at CLVTools' own fitted parameters, so that the fit is not on the critical path
+of the documentation:
+
+```python
+>>> import numpy as np, pandas as pd
+>>> from clvtools import load_apparel_dyn_cov_future
+>>> from clvtools.pnbd.dyncov import PnbdDynCovParams
+>>> extended = ClvDataDynCov(
+...     full, pd.concat([load_apparel_dyn_cov(), load_apparel_dyn_cov_future()],
+...                     ignore_index=True),
+...     names_cov_life=names, names_cov_trans=names)
+>>> fitted = PnbdDynCovParams(
+...     r=1.765920, alpha=104.777386, s=0.738873, beta=51.537313,
+...     gamma_life=np.array([-0.760894, -0.673342, 0.535030]),
+...     gamma_trans=np.array([0.682223, 0.280843, 0.575235]),
+...     names_cov_life=names, names_cov_trans=names,
+...     log_likelihood=-11762.8731, converged=True, n_customers=600)
+>>> future = predict(extended, fitted, gg_full, prediction_end=95,
+...                  continuous_discount_factor=discount_factor(0.075))
+>>> list(future.columns)
+['period.first', 'period.last', 'period.length', 'PAlive', 'CET', 'DECT',
+ 'predicted.mean.spending', 'predicted.period.spending',
+ 'predicted.period.CLV']
+>>> row = future.loc["10"]
+>>> [round(float(row[c]), 4) for c in ("PAlive", "CET", "DECT")]
+[0.8459, 0.8986, 0.842]
+
+```
+
+Those are CLVTools 0.12.1's numbers for customer 10, reproduced to 1e-12. They
+are *not* the paper's: §6.4.2 prints `PAlive = 0.8108995` and
+`CET = 1.5938786` for the same customer, from a fit whose parameters differ
+from the ones CLVTools 0.12.1 now reaches. The likelihood is the same function
+-- `tests/test_pnbd_dyncov.py` holds it to nine significant figures -- so what
+moved is where the optimiser stops.
+
+The columns are named `DECT` and `predicted.period.CLV` rather than `DERT` and
+`predicted.CLV`: with covariates the discounting runs to the end of the
+covariate series rather than to infinity, so what comes out is the value of
+that period.
+
+A prospective customer can be put on a covariate path in the same way, which is
+what §6.3.4 points at `newcustomer.dynamic()` for.
+
 ## 6.5 Advanced modelling techniques
 
 ### Correlated processes
@@ -460,13 +606,22 @@ coefficient"; eq. (13) converts it:
 uses a likelihood-ratio test to ask whether that costs anything.
 
 ```python
->>> constrained = fit_pnbd_staticcov(
-...     static, names_cov_constr=["Gender"], hessian=False)
+>>> constrained = latent_attrition(
+...     formula="~ . | .", names_cov_constr=["Gender"],
+...     family=pnbd_family, data=static, hessian=False)
 >>> constrained.names
 ['r', 'alpha', 's', 'beta', 'life.Channel', 'trans.Channel', 'constr.Gender']
->>> from scipy import stats
->>> statistic = 2 * (covariate_fit.log_likelihood - constrained.log_likelihood)
->>> bool(stats.chi2.sf(statistic, df=1) < 0.05)
+
+```
+
+`lrtest()` is `likelihood_ratio_test()`, restricted model first:
+
+```python
+>>> from clvtools import likelihood_ratio_test
+>>> test = likelihood_ratio_test(constrained, covariate_fit)
+>>> test.df, round(test.statistic, 3)
+(1, 10.943)
+>>> bool(test.p_value < 0.05)
 True
 
 ```
@@ -479,8 +634,9 @@ The constraint is rejected: gender does act differently on the two processes.
 regularization."
 
 ```python
->>> light = fit_pnbd_staticcov(static, reg_lambdas=(0.01, 0.01), hessian=False)
->>> heavy = fit_pnbd_staticcov(static, reg_lambdas=(100.0, 100.0), hessian=False)
+>>> regularized = lambda w: latent_attrition(
+...     family=pnbd_family, data=static, reg_lambdas=(w, w), hessian=False)
+>>> light, heavy = regularized(0.01), regularized(100.0)
 >>> def size(fit):
 ...     return float(np.sum(fit.gamma_life ** 2) + np.sum(fit.gamma_trans ** 2))
 >>> bool(size(heavy) < size(light))
@@ -502,7 +658,7 @@ True
 
 ## The other two families
 
-Table 3 lists two alternatives that share the transaction process and differ in
+Table 4 lists two alternatives that share the transaction process and differ in
 how attrition is modelled.
 
 ```python

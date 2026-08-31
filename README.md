@@ -21,33 +21,43 @@ The numbers in the documentation cannot drift from what the code returns.
 | §3.4 | Sarmanov process correlation | `clvtools.pnbd.correlation` |
 | §3.4 | L2 regularization, equality constraints | `clvtools.pnbd.staticcov` |
 | §3.5 | Gamma-Gamma spending | `clvtools.gg` |
-| Table 3 | BG/NBD | `clvtools.bgnbd` |
-| Table 3 | GGom/NBD | `clvtools.ggomnbd` |
+| Table 4 | BG/NBD | `clvtools.bgnbd` |
+| Table 4 | GGom/NBD | `clvtools.ggomnbd` |
 | §6.1 | `clvdata()` — the data layer | `clvtools.data` |
-| §6.3 | `predict()` — PAlive, CET, DERT, CLV | `clvtools.predict` |
+| §6.1.2 | `summary()`, `as.data.frame()` and Table 3's five descriptive plots | `clvtools.data`, `clvtools.diagnostics` |
+| Table 2 | `latentAttrition()` and `spending()` — the formula interface | `clvtools.estimate` |
+| Table 2 | `vcov()`, `confint()`, `summary()`, `fitted()`, `lrtest()` | `clvtools.inference` |
+| §6.3 | `predict()` — PAlive, CET, DERT, CLV, for all three families | `clvtools.predict` |
+| §6.3.4 | `newcustomer()` — prospective customers, with or without covariates | `clvtools.predict` |
+| §6.4.2 | Prediction with time-varying covariates | `clvtools.pnbd.dyncov_predict` |
 | §6.2.2, §6.2.4 | Tracking, PMF and spending diagnostics | `clvtools.diagnostics` |
 | §6.3.3 | Bootstrap confidence intervals | `clvtools.bootstrap` |
 | §5 | Time units, including calendar months and years | `clvtools.timeunit` |
 
 Time-invariant covariates, equality constraints and regularization are
-available for all three latent attrition families, as Table 3 marks them.
+available for all three latent attrition families, as Table 4 marks them.
 Time-varying covariates and process correlation are Pareto/NBD only, likewise.
 
 ## Usage
 
 ```python
-from clvtools import ClvData, load_apparel_trans, predict
-from clvtools.gg import fit_gg
-from clvtools.pnbd import fit_pnbd
+import clvtools
+from clvtools import ClvData, latent_attrition, load_apparel_trans, predict, spending
 
 data = ClvData(load_apparel_trans(), time_unit="week", estimation_split=104)
-cbs, spend = data.customer_summary(), data.spending_summary()
 
-pnbd = fit_pnbd(cbs["x"], cbs["t_x"], cbs["T"])
-gg = fit_gg(spend["x"], spend["Spending"])
+pnbd = latent_attrition(family=clvtools.pnbd, data=data)
+gg = spending(family=clvtools.gg, data=data)
 
 predict(data, pnbd, gg)   # PAlive, CET, DERT, predicted.CLV, and the actuals
+pnbd.summary()            # estimates, standard errors, z- and p-values
+data.summary()            # §6.1.2's descriptive table
 ```
+
+The two entry points are the paper's own; `latent_attrition` takes S6.4's
+formula (`~ Gender + Channel | Gender + Channel`) and picks the estimator from
+the data object's type. The per-family `fit_*` functions underneath take
+`(x, t_x, T)` directly.
 
 Bring your own data as a frame of `Id`, `Date` and optionally `Price`.
 
@@ -72,7 +82,8 @@ re-baseline them:
 R_LIBS=.Rlib Rscript tools/extract_data.R                 # datasets  -> data/
 R_LIBS=.Rlib Rscript tools/oracle/generate_fixtures.R     # -> tests/fixtures/
 R_LIBS=.Rlib Rscript tools/oracle/generate_family_fixtures.R
-R_LIBS=.Rlib Rscript tools/oracle/generate_dyncov_fixtures.R   # slow: fits dyncov
+R_LIBS=.Rlib Rscript tools/oracle/generate_interface_fixtures.R  # summary, plots, generics
+R_LIBS=.Rlib Rscript tools/oracle/generate_dyncov_fixtures.R     # slow: fits dyncov twice
 ```
 
 `setup_oracle.sh` never touches your system R library. CRAN's macOS binaries lag
@@ -102,6 +113,11 @@ ordering slip cannot ship as a plausible-looking expectation.
 | Static-cov log-likelihood / AIC | −5821.0627 / 11658.1254 | −5821.0627 / 11658.13 |
 | Tracking plot data, §6.2.2 | 626 rows × 2 series | to 6e-11 |
 | PMF plot data, §6.2.2 | 22 bins | to 3e-12 |
+| Descriptive table, §6.1.2 | 39 cells | every one |
+| Descriptive plot data, §6.1.2 | 5 frames, 3,900 rows | to 1e-12 |
+| Standard errors, §6.4.1 | 8 values | to 1e-3 |
+| Likelihood ratio test, §6.5.3 | χ² on a constraint | to 1e-3 against the oracle |
+| Dyncov prediction table, §6.4.2 | 18 values | oracle to 1e-12, *not* the paper — see below |
 | Time arithmetic, §5 | 840 spans, 280 additions | to 5e-15 |
 
 Given the *published* parameters rather than its own fit, every expression
@@ -146,6 +162,34 @@ parameter buys nothing and AIC charges for it.
 hypergeometrics are evaluated at identical arguments, because the auxiliary walk
 spans exactly $t_x$ to $T$ by construction.
 
+**The paper's §6.4.2 table cannot be reproduced by CLVTools 0.12.1 either.**
+Its time-varying covariate prediction prints `PAlive = 0.0139206` for customer
+1; CLVTools 0.12.1 predicts 0.0107292 from its own fit, and this package
+reproduces *that* to 1e-12. The likelihood agrees to nine significant figures
+at fixed parameters, so what moved is where the optimiser stops, not what it is
+optimising. `tests/test_pnbd_dyncov_predict.py` pins both the agreement and the
+gap.
+
+**CLVTools predicts from a *correlated* Pareto/NBD with the uncorrelated
+expressions.** The Sarmanov correlation enters estimation only: `PAlive` and
+`CET` are the plain ones evaluated at the fitted `(r, α, s, β)`. Checked
+against its internal per-customer entry points, the difference is exactly zero,
+so the correlation reaches a prediction only through the parameter estimates.
+
+**Standard errors under an equality constraint were misaligned here.** The
+covariate Hessian was taken over the full *unconstrained* parameter vector,
+which is one longer than the vector actually estimated, so `life.Channel` was
+being handed `life.Gender`'s standard error. Differencing over the reported
+parameters instead reproduces CLVTools' seven values.
+
+**A Hessian step of 1e-5 was too small.** These log-likelihoods are around
+−5800 while their second differences are around 1e-2, so the central difference
+cancels four significant figures before dividing. At 1e-5 the standard errors
+were wrong in the fourth digit; at a *relative* 1e-4 they agree with
+`numDeriv`'s to about 1e-4. Relative rather than absolute also keeps the
+GGom/NBD's `b = 8.1e-07` from being stepped negative, where the likelihood does
+not exist.
+
 **`continuous.discount.factor` defaults to an unscaled annual rate.** CLVTools
 uses `log(1.1)` per *period* regardless of the time unit; §6.3.2 is explicit that
 scaling is the caller's job. On weekly data the raw default discounts 52 times
@@ -189,16 +233,16 @@ which it reported successful convergence on the Gamma-Gamma at a local optimum
 ## Testing
 
 ```bash
-uv run pytest                  # 622 tests, including doctests in src/ and docs/
-uv run pytest -m paper         # 19 published-number checks
-uv run pytest -m oracle        # 137 checks against R CLVTools fixtures
-uv run pytest -m slow          # 86 full-dataset MLE fits
+uv run pytest                  # 808 tests, including doctests in src/ and docs/
+uv run pytest -m paper         # 24 published-number checks
+uv run pytest -m oracle        # 221 checks against R CLVTools fixtures
+uv run pytest -m slow          # 114 full-dataset MLE fits
 uv run pytest -m dyncov_fit    # the time-varying covariate MLE; ~17 minutes
 uv run pytest --cov=clvtools --cov-report=term-missing
 ```
 
 100% line coverage of `src/`. The time-varying covariate fit is deselected by
-default; everything else runs in about two minutes.
+default; everything else runs in about three minutes.
 
 The suite is layered: published numbers, agreement with the reference
 implementation expression by expression, internal cross-checks between
@@ -206,6 +250,30 @@ independently derived equations (mixing the individual-level expressions
 numerically to reproduce the marginalised ones), nesting relationships the paper
 asserts (zero covariate effects recover the standard model; `m = 0` recovers
 independence), and every worked example in the docs.
+
+`docs/audit.md` records what was compared against the paper and the R package,
+and what each gap turned into.
+
+## Run times
+
+Appendix B benchmarks CLVTools across sample sizes, on data simulated from
+`r = 1, alpha = 0.5, s = 1, beta = 0.5` with L-BFGS-B and no Hessian.
+`tools/benchmark.py` does the same here:
+
+```bash
+uv run python tools/benchmark.py --sizes 1000 10000 100000
+```
+
+| Customers | Weeks | No covariate | Time-invariant | CLVTools (Table 5) |
+|---|---|---|---|---|
+| 1,000 | 52 | 0.07 s | 0.32 s | 0.19 s / 0.26 s |
+| 10,000 | 52 | 0.32 s | 1.45 s | 0.32 s / 0.57 s |
+| 100,000 | 52 | 6.32 s | 8.91 s | 0.62 s / 1.34 s |
+
+Comparable at ten thousand customers and several times slower at a hundred
+thousand, on a different machine from the paper's. The likelihood is vectorised
+over customers; what grows is the number of NumPy passes per evaluation against
+CLVTools' single C++ sweep.
 
 ## Dependencies
 
@@ -221,7 +289,8 @@ useful on their own, so it stays out of the core.
 `data/` holds the datasets bundled with CLVTools 0.12.1, exported to CSV:
 `apparelTrans` (3,187 transactions from 600 customers, one acquisition cohort
 whose first purchase was 2005-01-02), `apparelStaticCov`, `apparelDynCov`,
-`apparelDynCovFuture` and `cdnow`.
+`apparelDynCovFuture` — the covariate series continued into the prediction
+window, which §6.4.2 needs — and `cdnow`.
 
 The paper's LaTeX source and PDF are in `arXiv-2602.09845v1/` and
 `2602.09845v1.pdf`.
