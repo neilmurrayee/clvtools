@@ -170,3 +170,122 @@ if (!isTRUE(all.equal(total, as.numeric(logLik(fit)), tolerance = 1e-6))) {
 cat(sprintf("  ok  %-34s %.6f\n", "dyncov LL at MLE", total))
 
 cat("\nfixtures written to ", OUT, "\n", sep = "")
+
+# -- prediction with time-varying covariates, S6.4.2 ---------------------------
+#
+# Three layers, so a failure localises:
+#
+#   * the ABCD table -- the per-period A_i, B_i, C_i, D_i built from the
+#     covariates a customer is alive for, which CET and DECT are both sums over.
+#     Dumped for a handful of customers only; it is one row per customer per
+#     period and would otherwise be a hundred thousand rows.
+#   * PAlive, CET and DECT for every customer, from the public predict().
+#   * the paper's own three printed rows, which need a second fit: on the full
+#     data, with the covariate series extended into the prediction window.
+
+cat("\n== prediction (S6.4.2) ==\n")
+
+SAMPLE_IDS <- c("1", "10", "100", "1000", "1001")
+
+dt.palive <- cpp("pnbd_dyncov_palive")(fit)
+write_csv(dt.palive, "dyncov_palive")
+
+date.holdout.end <- clv@clv.time@timepoint.holdout.end
+dt.abcd <- cpp("pnbd_dyncov_ABCD")(
+  clv.fitted = fit, prediction.end.date = date.holdout.end)
+write_csv(dt.abcd[Id %in% SAMPLE_IDS], "dyncov_abcd_sample")
+
+dt.pred <- as.data.table(predict(fit, verbose = FALSE))
+check.palive <- merge(dt.pred[, .(Id, PAlive)], dt.palive, by = "Id")
+if (!isTRUE(all.equal(check.palive$PAlive, check.palive$palive, tolerance = 1e-10))) {
+  stop("predict()'s PAlive disagrees with pnbd_dyncov_palive()")
+}
+cat("  ok  predict() PAlive matches pnbd_dyncov_palive()\n")
+write_csv(dt.pred, "dyncov_predict_holdout")
+write_json(list(
+  prediction.end = as.character(date.holdout.end),
+  period.length = dt.pred$period.length[1],
+  continuous.discount.factor = log(1 + 0.1),
+  sample.ids = SAMPLE_IDS
+), "dyncov_predict_holdout_settings")
+
+# -- the paper's table, S6.4.2 ------------------------------------------------
+
+cat("\n== the paper's prediction table (this takes another minute) ==\n")
+
+data("apparelDynCovFuture")
+clv.full <- clvdata(apparelTrans, date.format = "ymd", time.unit = "week",
+                    estimation.split = NULL,
+                    name.id = "Id", name.date = "Date", name.price = "Price")
+dyn.full <- SetDynamicCovariates(
+  clv.full,
+  data.cov.life = rbind(apparelDynCov, apparelDynCovFuture),
+  data.cov.trans = rbind(apparelDynCov, apparelDynCovFuture),
+  names.cov.life = NAMES_COV, names.cov.trans = NAMES_COV,
+  name.id = "Id", name.date = "Cov.Date"
+)
+fit.full <- latentAttrition(
+  ~ High.Season + Gender + Channel | High.Season + Gender + Channel,
+  family = pnbd, data = dyn.full, verbose = FALSE,
+  optimx.args = list(hessian = FALSE)
+)
+est.gg.full <- spending(family = gg, data = clv.full, verbose = FALSE)
+cat("  LL =", as.numeric(logLik(fit.full)), "\n")
+
+dt.pred.future <- as.data.table(predict(
+  fit.full, predict.spending = est.gg.full, prediction.end = 95,
+  continuous.discount.factor = log(1 + 0.075) / 52, verbose = FALSE))
+write_csv(dt.pred.future, "dyncov_predict_future")
+write_json(list(
+  coefficients = as.list(coef(fit.full)),
+  logLik = as.numeric(logLik(fit.full)),
+  spending.coefficients = as.list(coef(est.gg.full)),
+  prediction.periods = 95,
+  continuous.discount.factor = log(1 + 0.075) / 52
+), "dyncov_fit_full")
+
+# The covariate series the prediction window needs, as a plain table: the
+# Python side reads it from data/apparelDynCovFuture.csv.
+write_json(list(
+  n.rows.past = nrow(apparelDynCov),
+  n.rows.future = nrow(apparelDynCovFuture),
+  first.future.date = as.character(min(apparelDynCovFuture$Cov.Date)),
+  last.future.date = as.character(max(apparelDynCovFuture$Cov.Date))
+), "dyncov_future_covariates")
+
+# -- a prospective customer with time-varying covariates, S6.3.4 --------------
+
+cat("\n== newcustomer.dynamic() ==\n")
+
+dt.nc.cov <- data.table(
+  Cov.Date = seq(from = as.Date("2010-12-19"), by = "week", length.out = 15),
+  High.Season = 1, Gender = 0, Channel = 1
+)
+nc.dyn <- as.numeric(predict(fit.full, newdata = newcustomer.dynamic(
+  num.periods = 10,
+  data.cov.life = dt.nc.cov, data.cov.trans = dt.nc.cov,
+  first.transaction = as.Date("2010-12-21")
+)))
+write_json(list(
+  num.periods = 10,
+  first.transaction = "2010-12-21",
+  cov.dates = as.character(dt.nc.cov$Cov.Date),
+  High.Season = 1, Gender = 0, Channel = 1,
+  expected.num.transactions = nc.dyn
+), "dyncov_newcustomer")
+
+# A horizon inside the customer's first covariate period, which takes the other
+# branch of the expectation: there is no earlier period for the sum to
+# telescope through.
+nc.dyn.single <- as.numeric(predict(fit.full, newdata = newcustomer.dynamic(
+  num.periods = 0.5,
+  data.cov.life = dt.nc.cov, data.cov.trans = dt.nc.cov,
+  first.transaction = as.Date("2010-12-21")
+)))
+write_json(list(
+  num.periods = 0.5,
+  first.transaction = "2010-12-21",
+  expected.num.transactions = nc.dyn.single
+), "dyncov_newcustomer_single_period")
+
+cat("\ndone\n")

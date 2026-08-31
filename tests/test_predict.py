@@ -23,6 +23,10 @@ import pytest
 from conftest import fixture_csv, fixture_json
 from paper_values import (
     DISCOUNT_RATE_ANNUAL,
+    NEWCUSTOMER_PERIODS,
+    NEWCUSTOMER_SPENDING,
+    NEWCUSTOMER_TOTAL,
+    NEWCUSTOMER_TRANSACTIONS,
     HOLDOUT_ERRORS,
     PREDICTION_PERIOD_FIRST,
     PREDICTION_PERIOD_LAST,
@@ -30,10 +34,17 @@ from paper_values import (
     PREDICT_FULL_HEAD,
 )
 
-from clvtools import ClvData, load_apparel_trans
+from clvtools import ClvData, ClvDataStaticCov, load_apparel_trans
 from clvtools.gg import GgParams, fit_gg
 from clvtools.pnbd.fit import PnbdParams, fit_pnbd
-from clvtools.predict import DEFAULT_DISCOUNT_FACTOR, discount_factor, predict
+from clvtools.predict import (
+    DEFAULT_DISCOUNT_FACTOR,
+    discount_factor,
+    newcustomer,
+    newcustomer_spending,
+    newcustomer_static,
+    predict,
+)
 
 DELTA = discount_factor(DISCOUNT_RATE_ANNUAL)
 
@@ -193,8 +204,9 @@ class TestEndToEnd:
 class TestIdentities:
     """Relationships S6.3 states in words, which must hold exactly."""
 
+    @staticmethod
     @pytest.fixture(scope="class")
-    def table(self, transactions):
+    def table(transactions):
         data = ClvData(transactions, time_unit="week", estimation_split=104)
         pnbd, gg = _oracle_params("pnbd_nocov_fit", "gg_fit")
         return predict(data, pnbd, gg)
@@ -229,8 +241,9 @@ class TestIdentities:
 class TestParameterEffects:
     r"""S6.3.2 on which argument moves which column."""
 
+    @staticmethod
     @pytest.fixture(scope="class")
-    def setup(self, transactions):
+    def setup(transactions):
         data = ClvData(transactions, time_unit="week", estimation_split=104)
         return (data, *_oracle_params("pnbd_nocov_fit", "gg_fit"))
 
@@ -308,8 +321,9 @@ class TestDiscountFactor:
 
 
 class TestPredictionEnd:
+    @staticmethod
     @pytest.fixture(scope="class")
-    def full(self, transactions):
+    def full(transactions):
         data = ClvData(transactions, time_unit="week")
         return (data, *_oracle_params("pnbd_nocov_fit_full", "gg_fit_full"))
 
@@ -368,3 +382,301 @@ class TestNewData:
         full = ClvData(transactions, time_unit="week", estimation_split=104)
         want = predict(full, pnbd, gg).loc[["1", "10", "100"]]
         np.testing.assert_allclose(got["PAlive"], want["PAlive"], rtol=1e-12)
+
+
+@pytest.mark.oracle
+class TestOtherFamilies:
+    """Table 4's other two families, which report no DERT.
+
+    CLVTools returns ``CET`` and ``PAlive`` for the BG/NBD and the GGom/NBD but
+    neither ``DERT`` nor ``predicted.CLV``: neither model has a closed form for
+    the discounted expected residual transactions. Predicting at the oracle's
+    own coefficients keeps estimation out of the comparison.
+    """
+
+    @staticmethod
+    def _predicted(transactions, family, name):
+        from clvtools.gg import GgParams
+
+        data = ClvData(transactions, time_unit="week", estimation_split=104)
+        coefficients = fixture_json(f"predict_{name}_coefficients")
+        params = getattr(family, f"{name.capitalize()}Params")(
+            **coefficients, log_likelihood=float("nan"), converged=True,
+            n_customers=600,
+        )
+        spending = GgParams(
+            **fixture_json("gg_fit")["coefficients"],
+            log_likelihood=float("nan"), converged=True, n_customers=600,
+        )
+        return predict(data, params, spending)
+
+    # The GGom/NBD's CET is an integral this package evaluates numerically and
+    # CLVTools evaluates in C++, which is where its looser tolerance comes from.
+    @pytest.mark.parametrize("name,rtol", [("bgnbd", 1e-9), ("ggomnbd", 1e-6)])
+    def test_table_matches(self, transactions, name, rtol):
+        import clvtools
+
+        family = getattr(clvtools, name)
+        got = self._predicted(transactions, family, name)
+        want = fixture_csv(f"predict_{name}").set_index("Id")
+        assert list(got.index) == list(want.index)
+        for column in ("PAlive", "CET", "predicted.mean.spending",
+                       "predicted.period.spending", "actual.x"):
+            np.testing.assert_allclose(
+                got[column].to_numpy(), want[column].to_numpy(), rtol=rtol,
+                err_msg=column,
+            )
+
+    @pytest.mark.parametrize("name", ["bgnbd", "ggomnbd"])
+    def test_no_discounted_columns(self, transactions, name):
+        import clvtools
+
+        got = self._predicted(transactions, getattr(clvtools, name), name)
+        assert "DERT" not in got.columns
+        assert "predicted.CLV" not in got.columns
+        # The same columns as CLVTools, though not in its order: it puts the
+        # spending columns before CET and PAlive for these two families and
+        # after them for the Pareto/NBD. One order for all three reads better.
+        want = fixture_csv(f"predict_{name}")
+        assert set(got.reset_index().columns) == set(want.columns)
+
+    def test_an_unknown_model_is_refused(self, transactions):
+        data = ClvData(transactions, time_unit="week", estimation_split=104)
+        with pytest.raises(TypeError, match="no prediction expressions"):
+            predict(data, object())
+
+
+@pytest.mark.oracle
+class TestCorrelatedPredictsLikeTheIndependentModel:
+    """The Sarmanov correlation enters estimation only, not prediction.
+
+    CLVTools predicts from a correlated fit with the *plain* ``PAlive`` and
+    ``CET``, at the fitted (r, alpha, s, beta). Checked in R against the
+    internal per-customer entry points, the difference is exactly zero -- not
+    small -- so ``PnbdCorrelatedParams.as_dict()`` dropping ``m`` for the
+    prediction expressions is right rather than an approximation.
+    """
+
+    @staticmethod
+    def _correlated():
+        from clvtools.pnbd.correlation import PnbdCorrelatedParams
+
+        want = fixture_json("correlated_predict")
+        coefficients = want["coefficients"]
+        return want, PnbdCorrelatedParams(
+            r=coefficients["r"], alpha=coefficients["alpha"],
+            s=coefficients["s"], beta=coefficients["beta"],
+            m=0.0,  # replaced below; prediction never reads it
+            log_likelihood=want["logLik"], converged=True, n_customers=600,
+        )
+
+    def test_matches_the_oracles_correlated_prediction(self, transactions):
+        want, params = self._correlated()
+        data = ClvData(transactions, time_unit="week", estimation_split=104)
+        table = predict(data, params)
+        np.testing.assert_allclose(
+            table["PAlive"].to_numpy()[:5], np.array(want["palive.head"]),
+            rtol=1e-9,
+        )
+        np.testing.assert_allclose(
+            table["CET"].to_numpy()[:5], np.array(want["cet.head"]), rtol=1e-9,
+        )
+
+    def test_the_correlation_parameter_does_not_enter(self, transactions):
+        """Two fits differing only in ``m`` predict identically."""
+        from clvtools.pnbd.correlation import PnbdCorrelatedParams
+
+        _, params = self._correlated()
+        data = ClvData(transactions, time_unit="week", estimation_split=104)
+        other = PnbdCorrelatedParams(
+            r=params.r, alpha=params.alpha, s=params.s, beta=params.beta,
+            m=0.5, log_likelihood=params.log_likelihood, converged=True,
+            n_customers=600,
+        )
+        pd.testing.assert_frame_equal(predict(data, params), predict(data, other))
+
+
+@pytest.mark.oracle
+class TestProspectiveCustomers:
+    """S6.3.4's ``newcustomer()`` family."""
+
+    @staticmethod
+    def _static_fit():
+        from clvtools.pnbd.staticcov import PnbdStaticCovParams
+
+        want = fixture_json("newcustomer_static")
+        c = want["coefficients"]
+        return want, PnbdStaticCovParams(
+            r=c["r"], alpha=c["alpha"], s=c["s"], beta=c["beta"],
+            gamma_life=np.array([c["life.Gender"], c["life.Channel"]]),
+            gamma_trans=np.array([c["trans.Gender"], c["trans.Channel"]]),
+            names_cov_life=["Gender", "Channel"],
+            names_cov_trans=["Gender", "Channel"],
+            names_cov_constr=[],
+            log_likelihood=float("nan"),
+            unpenalised_log_likelihood=None,
+            converged=True, n_customers=600,
+        )
+
+    def test_without_covariates_matches_the_oracle(self, transactions):
+        want = fixture_json("newcustomer_static")
+        pnbd, _ = _oracle_params("pnbd_nocov_fit_full", "gg_fit_full")
+        got = predict(newcustomer(want["num.periods"]), pnbd)
+        assert got == pytest.approx(want["nocov.transactions"], rel=1e-9)
+
+    @pytest.mark.parametrize("gender,channel", [(0, 0), (1, 0), (0, 1), (1, 1)])
+    def test_each_covariate_scenario_matches_the_oracle(self, gender, channel):
+        want, params = self._static_fit()
+        key = f"gender{gender}.channel{channel}"
+        covariates = {"Gender": gender, "Channel": channel}
+        got = predict(
+            newcustomer_static(want["num.periods"], covariates, covariates),
+            params,
+        )
+        assert got == pytest.approx(want[key], rel=1e-9)
+
+    def test_covariates_separate_the_scenarios(self):
+        """S6.3.4's "region A versus region B" comparison."""
+        want, _ = self._static_fit()
+        scenarios = [want[f"gender{g}.channel{c}"]
+                     for g in (0, 1) for c in (0, 1)]
+        assert len(set(scenarios)) == 4
+
+    def test_a_covariate_model_refuses_a_plain_new_customer(self):
+        _, params = self._static_fit()
+        with pytest.raises(TypeError, match="newcustomer_static"):
+            predict(newcustomer(52), params)
+
+    def test_a_plain_model_refuses_covariate_values(self, transactions):
+        pnbd, _ = _oracle_params("pnbd_nocov_fit_full", "gg_fit_full")
+        with pytest.raises(TypeError, match="covariate model"):
+            predict(newcustomer_static(52, {"Gender": 0}, {"Gender": 0}), pnbd)
+
+    def test_missing_covariate_values_are_named(self):
+        _, params = self._static_fit()
+        with pytest.raises(ValueError, match="Channel"):
+            predict(newcustomer_static(52, {"Gender": 0}, {"Gender": 0}), params)
+
+    def test_spending_needs_a_spending_model(self, transactions):
+        pnbd, _ = _oracle_params("pnbd_nocov_fit_full", "gg_fit_full")
+        with pytest.raises(TypeError, match="spending model"):
+            predict(newcustomer_spending(), pnbd)
+
+    @pytest.mark.parametrize("periods", [0, -1])
+    def test_the_horizon_must_be_positive(self, periods):
+        with pytest.raises(ValueError, match="strictly positive"):
+            newcustomer(periods)
+        with pytest.raises(ValueError, match="strictly positive"):
+            newcustomer_static(periods, {}, {})
+
+    @pytest.mark.paper
+    def test_reproduces_the_printed_totals(self, transactions):
+        """S6.3.4: 2.218635 transactions, 39.1372 per order, 86.83115 total."""
+        pnbd, _ = _oracle_params("pnbd_nocov_fit_full", "gg_fit_full")
+        gg = GgParams(
+            **fixture_json("gg_fit_full_with_first")["coefficients"],
+            log_likelihood=float("nan"), converged=True, n_customers=600,
+        )
+        transactions_predicted = predict(
+            newcustomer(NEWCUSTOMER_PERIODS), pnbd
+        )
+        spending = predict(newcustomer_spending(), gg)
+        assert transactions_predicted == pytest.approx(
+            NEWCUSTOMER_TRANSACTIONS, abs=5e-7
+        )
+        assert spending == pytest.approx(NEWCUSTOMER_SPENDING, abs=5e-5)
+        assert transactions_predicted * spending == pytest.approx(
+            NEWCUSTOMER_TOTAL, abs=5e-5
+        )
+
+
+@pytest.mark.oracle
+class TestCovariatePredictionForTheOtherFamilies:
+    """Table 4 gives time-invariant covariates to all three families.
+
+    Each family builds its per-customer rates differently -- the BG/NBD scales
+    both of its beta parameters by ``exp(+gamma'x)`` where every other family's
+    rate parameter takes a negative exponent -- so each one's covariate
+    prediction is checked separately.
+    """
+
+    @staticmethod
+    def _fitted(name, coefficients):
+        import numpy as np
+
+        import clvtools
+
+        family = getattr(clvtools, name)
+        cls = getattr(family, f"{name.capitalize()}StaticCovParams")
+        model = {
+            "bgnbd": ["r", "alpha", "a", "b"],
+            "ggomnbd": ["r", "alpha", "b", "s", "beta"],
+        }[name]
+        from clvtools._staticcov import StaticCovResult
+
+        covariates = StaticCovResult(
+            model=np.array([coefficients[n] for n in model]),
+            gamma_life=np.array(
+                [coefficients["life.Gender"], coefficients["life.Channel"]]
+            ),
+            gamma_trans=np.array(
+                [coefficients["trans.Gender"], coefficients["trans.Channel"]]
+            ),
+            names_cov_life=["Gender", "Channel"],
+            names_cov_trans=["Gender", "Channel"],
+            names_cov_constr=[],
+            log_likelihood=float("nan"),
+            unpenalised_log_likelihood=float("nan"),
+            converged=True, n_customers=600,
+        )
+        return cls(
+            **{n: coefficients[n] for n in model}, covariates=covariates
+        )
+
+    @pytest.mark.parametrize("name,rtol", [("bgnbd", 1e-9), ("ggomnbd", 1e-6)])
+    def test_table_matches(self, transactions, apparel_static_cov, name, rtol):
+        from clvtools.gg import GgParams
+
+        data = ClvDataStaticCov(
+            ClvData(transactions, time_unit="week", estimation_split=104),
+            apparel_static_cov,
+            names_cov_life=["Gender", "Channel"],
+            names_cov_trans=["Gender", "Channel"],
+        )
+        params = self._fitted(
+            name, fixture_json(f"predict_{name}_staticcov_coefficients")
+        )
+        spending = GgParams(
+            **fixture_json("gg_fit")["coefficients"],
+            log_likelihood=float("nan"), converged=True, n_customers=600,
+        )
+        got = predict(data, params, spending)
+        want = fixture_csv(f"predict_{name}_staticcov").set_index("Id")
+        for column in ("PAlive", "CET", "predicted.period.spending"):
+            np.testing.assert_allclose(
+                got[column].to_numpy(), want[column].to_numpy(), rtol=rtol,
+                err_msg=column,
+            )
+
+    def test_covariate_data_is_required(self, transactions):
+        params = self._fitted(
+            "bgnbd", fixture_json("predict_bgnbd_staticcov_coefficients")
+        )
+        data = ClvData(transactions, time_unit="week", estimation_split=104)
+        with pytest.raises(ValueError, match="needs covariate data"):
+            predict(data, params)
+
+    @pytest.mark.parametrize("name", ["bgnbd", "ggomnbd"])
+    def test_a_prospective_customer_scenario_matches(self, name):
+        """``newcustomer.static()`` on the other two families, S6.3.4."""
+        want = fixture_json(f"newcustomer_static_{name}")
+        params = self._fitted(name, want["coefficients"])
+        for key, (gender, channel) in {
+            "gender0.channel0": (0, 0), "gender1.channel1": (1, 1),
+        }.items():
+            covariates = {"Gender": gender, "Channel": channel}
+            got = predict(
+                newcustomer_static(want["num.periods"], covariates, covariates),
+                params,
+            )
+            assert got == pytest.approx(want[key], rel=1e-9), key

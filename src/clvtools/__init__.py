@@ -25,7 +25,8 @@ Modules mirror the paper's structure:
 ``estimate``
     Table 2's two entry points - ``latent_attrition()`` and ``spending()``.
 ``predict``
-    S6.3 - combining the two into predicted transactions, spending and CLV.
+    S6.3 - combining the two into predicted transactions, spending and CLV,
+    including for prospective customers (S6.3.4).
 ``diagnostics``
     S6.1.2, S6.2.2 and S6.2.4 - the descriptive and model plots, as data.
 ``bootstrap``
@@ -40,12 +41,20 @@ from __future__ import annotations
 from clvtools import bgnbd, bootstrap, diagnostics, gg, ggomnbd, inference, pnbd
 from clvtools.estimate import latent_attrition, spending
 from clvtools.inference import likelihood_ratio_test
-from clvtools.predict import discount_factor, predict
+from clvtools.predict import (
+    discount_factor,
+    newcustomer,
+    newcustomer_dynamic,
+    newcustomer_spending,
+    newcustomer_static,
+    predict,
+)
 from clvtools.data import (
     ClvData,
     ClvDataDynCov,
     ClvDataStaticCov,
     load_apparel_dyn_cov,
+    load_apparel_dyn_cov_future,
     load_apparel_static_cov,
     load_apparel_trans,
     load_cdnow,
@@ -65,7 +74,12 @@ __all__ = [
     "inference",
     "latent_attrition",
     "likelihood_ratio_test",
+    "newcustomer",
+    "newcustomer_dynamic",
+    "newcustomer_spending",
+    "newcustomer_static",
     "load_apparel_dyn_cov",
+    "load_apparel_dyn_cov_future",
     "load_apparel_static_cov",
     "load_apparel_trans",
     "load_cdnow",
