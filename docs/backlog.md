@@ -10,7 +10,7 @@ speculation.
 stop. Do not add items without evidence, and do not work an item marked
 `[needs-decision]` — those need the maintainer.
 
-Definition of done for every item: `uv run pytest` green (900 tests at the time
+Definition of done for every item: `uv run pytest` green (901 tests at the time
 of writing), `uv run ruff check src tests tools docs` clean, and 100% line
 coverage of `src/`. Anything that changes behaviour also needs a test and, if it
 deviates from CLVTools, a README findings entry — the house rule.

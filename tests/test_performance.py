@@ -45,6 +45,7 @@ from types import ModuleType
 import numpy as np
 import pandas as pd
 import pytest
+from conftest import fixture_json
 
 import clvtools.pnbd.aggregate as pnbd_aggregate
 import clvtools.special
@@ -120,6 +121,7 @@ class FitCounts:
 
     n_customers: int
     evaluations: int
+    log_likelihood: float
     ratio: Count
     series: Count
 
@@ -135,7 +137,9 @@ def instrumented_fit(cbs) -> FitCounts:
         counted(clvtools.special, "_hyp2f1_series") as series,
     ):
         fit = fit_pnbd(cbs["x"], cbs["t_x"], cbs["T"], hessian=False)
-    return FitCounts(len(cbs), fit.n_evaluations, ratio, series)
+    return FitCounts(
+        len(cbs), fit.n_evaluations, fit.log_likelihood, ratio, series
+    )
 
 
 @pytest.fixture(scope="module")
@@ -300,6 +304,24 @@ class TestEvaluationsPerFit:
         """A count of 1 would pass a lower bound of 0, so the bound binds."""
         assert self.BAND[0] > 0
         assert apparel_fit.evaluations > 0
+
+    @pytest.mark.oracle
+    def test_the_search_still_arrives_where_it_should(self, apparel_fit):
+        """The band's blind spot, closed.
+
+        A count inside the band says nothing about the *quality* of the
+        optimum: a change that stops early somewhere equally good and one that
+        stops early somewhere worse are the same number. The published
+        log-likelihood is already pinned under ``-m paper`` and against the
+        oracle, but in another file -- so a reader of the band above has to
+        know to go and look. Asserting it here makes the pair one thing: this
+        many evaluations, *and* this optimum.
+        """
+        want = fixture_json("pnbd_nocov_fit")["logLik"]
+        assert apparel_fit.log_likelihood == pytest.approx(want, abs=1e-4), (
+            "the fit no longer reaches the oracle's optimum, so the "
+            "evaluation band above is counting a different search"
+        )
 
 
 class TestCostIsFlatInN:

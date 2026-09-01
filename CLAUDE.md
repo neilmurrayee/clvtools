@@ -33,7 +33,7 @@ Module ↔ paper mapping lives in `src/clvtools/__init__.py` and the README tabl
 ## Commands
 
 ```bash
-uv run pytest                  # 900 tests inc. doctests in src/ and docs/; ~3:20 on an M-series
+uv run pytest                  # 901 tests inc. doctests in src/ and docs/; ~3:20 on an M-series
 uv run pytest -m paper         # 24 numbers printed in the paper
 uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
 uv run pytest -m oracle        # 229 checks against R CLVTools fixtures
