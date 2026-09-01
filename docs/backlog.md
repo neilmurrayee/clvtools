@@ -129,7 +129,7 @@ clean, and `import clvtools` still works both as a fresh import and via
 `importlib.reload`, and with `clvtools.data` or `clvtools.pnbd.dyncov`
 imported first.
 
-## 3. `[ ]` Split `pnbd/dyncov.py`
+## 3. `[x]` Split `pnbd/dyncov.py`
 
 At 655 code lines against the 700 limit, it is the largest module in `src/` and
 nearly twice the next (`ggomnbd.py`, 365). Its complexity metrics are green
@@ -144,6 +144,39 @@ moved so no import outside the package changes, and the module docstrings still
 carry S3.3/S6.4. Beware the import cycle: `DyncovWalks` is used by the
 likelihood, so the primitives must move *with* it to keep the dependency
 one-way.
+
+**Done:** `src/clvtools/pnbd/dyncov_walks.py` — the walk primitives (`Walk`,
+`TransactionWalk`, `EMPTY_WALK`, `Customer`, `DyncovWalks`) and everything that
+builds them from a transaction log and a covariate table (`build_walks` and its
+helpers `_interval_index`, `_distance_to_interval_end`, `_WalkSpec`, `_to_days`,
+`_prepare_covariates`, `_check_covariate_coverage`, `_CustomerSpecs`,
+`_customer_specs`, `_stack`, `_real_trans_bounds`). `dyncov.py` keeps the
+likelihood and the fit and goes from **655 code lines to 382**; the new module
+is **309**. Nothing outside the package changed: `dyncov.py` imports the five
+public names for real and re-exports them, so `tests/`, `docs/paper.md`,
+`clvtools.data`, `clvtools.estimate`, `clvtools.predict` and
+`pnbd/dyncov_predict.py` are untouched. Its `__all__` gains one entry,
+`EMPTY_WALK` — the tests already imported it from `dyncov`, so it was public in
+practice and is now declared, which is also what keeps ruff from calling the
+re-export an unused import.
+
+The dependency runs one way, likelihood → walks, and the import that closes no
+cycle is the one that was already there: `dyncov_walks` imports `ClvData` at
+module scope (so `build_walks`' annotation still resolves, per item 2), while
+`ClvDataDynCov` keeps importing `build_walks` inside the method that calls it.
+Nothing new is imported inside a function. Checked by importing the package in
+four orders, `dyncov_walks` first among them.
+
+The paper stays where the code went: `dyncov_walks` carries S3.3's covariate
+intervals and the four kinds of walk, and `dyncov` keeps S3.3's rate equations
+and the S6.4.2 likelihood, with a pointer to where the walks now live.
+
+Verified: 891 passed, 1 deselected, `TOTAL 2666 0 100%`, ruff clean over
+`src tests tools docs`, and the `quality` tests green — including
+`test_the_shipped_annotations_resolve` and `test_the_limit_still_binds`, which
+still binds because the largest file the gate sees is now `test_families.py` at
+662. The module's own tests, run on their own, are 106 passed, 1 deselected
+(the `dyncov_fit` MLE, deselected by `addopts` as always).
 
 ## 4. `[ ]` Packaging metadata
 
