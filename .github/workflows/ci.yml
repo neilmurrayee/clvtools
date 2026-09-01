@@ -1,0 +1,91 @@
+# The gate, run for us.
+#
+# Everything below is what `CLAUDE.md` asks a contributor to run by hand: the
+# whole suite under coverage, and ruff over every directory that is ours. The
+# thresholds are not repeated here -- they live in `pyproject.toml` and in
+# `tests/test_code_quality.py`, so there is exactly one definition of green.
+#
+# Two properties of this repo are asserted by the workflow rather than stated:
+#
+#   * **It runs without R.** The R package CLVTools is the oracle, but its
+#     output is committed under `tests/fixtures/` (118 files) and `data/`
+#     precisely so that the suite never shells out to `Rscript`. No R is
+#     installed below; if that promise is ever broken, this job is where it
+#     breaks.
+#   * **It runs on every supported Python.** `requires-python = ">=3.12"`, so
+#     the matrix is 3.12 and 3.13, and a step below asserts the interpreter
+#     under test really is the matrix one rather than the 3.12 pinned by the
+#     repo's `.python-version`.
+#
+# Not run here: the `dyncov_fit` marker, the ~17-minute time-varying covariate
+# MLE. `addopts` deselects it by default and this job keeps that default; giving
+# it a schedule of its own is backlog item 6.
+name: CI
+
+# Every push, not just pushes to `main`: work here happens on long-lived
+# branches that are not always open as a pull request, and a branch that is
+# never tested until it is proposed is tested too late. A branch that *is*
+# proposed therefore gets both events; that is the price of the first property.
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch makes the older run's answer uninteresting.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      # Both versions are worth knowing about, so a failure on one does not
+      # hide the result on the other.
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # `python-version` here exports `UV_PYTHON`, which takes precedence over
+      # the `.python-version` file; the cache is keyed on `uv.lock`, the only
+      # file that can change what gets installed.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      # `--locked` fails rather than silently re-resolving, so the environment
+      # CI tests is the one `uv.lock` describes.
+      - name: Sync the environment
+        run: uv sync --locked
+
+      # The oracle generators assert their conventions before writing anything;
+      # this is the same idea. Without it a matrix that quietly ran 3.12 twice
+      # would look exactly like a passing one.
+      - name: Confirm the interpreter is the matrix one
+        run: |
+          uv run python -c "
+          import sys
+          want = tuple(int(p) for p in '${{ matrix.python-version }}'.split('.'))
+          assert sys.version_info[:2] == want, sys.version
+          print(sys.version)
+          "
+
+      # Ruff is already a test (`tests/test_code_quality.py`), but running it
+      # first means a lint slip reports in seconds instead of after the fits.
+      - name: Lint
+        run: uv run ruff check src tests tools docs
+
+      # 888 tests including the doctests in `src/` and `docs/paper.md`, plus the
+      # standing bar: 100% line coverage of `src/`, which `--cov-fail-under`
+      # turns from a habit into a gate.
+      - name: Test
+        run: uv run pytest --cov=clvtools --cov-fail-under=100
