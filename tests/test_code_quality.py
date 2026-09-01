@@ -13,6 +13,13 @@ What is enforced, and why each limit is where it is:
     codebase rather than taken from defaults, so each sits just above what the
     code needs and trips on a regression.
 
+``ty``
+    ``src/clvtools/py.typed`` tells every downstream type checker that the
+    annotations in this package are meant to be relied on. That is a promise,
+    and this is what keeps it true. Only ``src/`` is checked, because only
+    ``src/`` is what ``py.typed`` covers; the three rules that are off, and
+    why, are recorded in ``pyproject.toml`` beside the ruff ignores.
+
 module length
     Counted in *code* lines -- docstrings, comments and blanks excluded.
     Roughly 37% of ``src/`` is docstring, deliberately: the docstrings carry the
@@ -29,13 +36,20 @@ object. Each says so at the site.
 from __future__ import annotations
 
 import ast
+import importlib
+import inspect
 import io
+import pkgutil
 import subprocess
 import sys
 import tokenize
+import typing
 from pathlib import Path
+from types import ModuleType
 
 import pytest
+
+import clvtools
 
 pytestmark = pytest.mark.quality
 
@@ -76,6 +90,18 @@ def code_lines(path: Path) -> int:
     return total - len(documented) - comments - blanks
 
 
+def _modules() -> list[ModuleType]:
+    """Every module in the package, imported.
+
+    >>> "clvtools.pnbd.dyncov" in {m.__name__ for m in _modules()}
+    True
+    """
+    found = [clvtools]
+    for info in pkgutil.walk_packages(clvtools.__path__, f"{clvtools.__name__}."):
+        found.append(importlib.import_module(info.name))
+    return found
+
+
 def python_files() -> list[Path]:
     """Every Python file the gate covers."""
     return sorted(
@@ -103,6 +129,56 @@ class TestRuff:
             f"{result.stdout}{result.stderr}\n"
             "Run `uv run ruff check --fix src tests tools docs` for the "
             "mechanical ones."
+        )
+
+
+class TestTy:
+    """The annotations ``py.typed`` promises are usable."""
+
+    def test_reports_nothing(self):
+        """``ty check src`` is clean."""
+        result = subprocess.run(
+            [sys.executable, "-m", "ty", "check", "src"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode == 0, (
+            "ty reported findings:\n\n"
+            f"{result.stdout}{result.stderr}\n"
+            "Fix the annotation rather than adding a rule to "
+            "[tool.ty.rules] -- those three are stub noise, and the notes "
+            "beside them say how much of it there is."
+        )
+
+    def test_the_shipped_annotations_resolve(self):
+        """``typing.get_type_hints()`` works on every public signature.
+
+        A checker reads annotations lazily; ``get_type_hints()`` evaluates
+        them, which is what a downstream consumer generating docs or
+        validating arguments will do. An annotation naming something imported
+        only inside the function body -- which is how the covariate fits and
+        ``build_walks`` used to break their import cycles -- passes the first
+        and raises ``NameError`` on the second.
+        """
+        unresolved = {}
+        for module in _modules():
+            for name, member in vars(module).items():
+                if not (inspect.isfunction(member) or inspect.isclass(member)):
+                    continue
+                if getattr(member, "__module__", None) != module.__name__:
+                    continue
+                try:
+                    typing.get_type_hints(member)
+                except Exception as error:
+                    unresolved[f"{module.__name__}.{name}"] = (
+                        f"{type(error).__name__}: {error}"
+                    )
+        assert not unresolved, (
+            f"these public names carry annotations that do not resolve: "
+            f"{unresolved}. Import the name for real rather than inside the "
+            "function; see the notes in bgnbd.py and pnbd/dyncov.py."
         )
 
 

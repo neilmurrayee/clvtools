@@ -18,6 +18,7 @@ A parameter's log-scale curvature would describe a different quantity.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 import numpy as np
@@ -81,10 +82,22 @@ class Fitted:
 
     Mixed into each family's parameter class. It needs three things from one:
     ``names``, iteration over the estimates in that order, and ``hessian``.
+    All three are declared below rather than left to prose, because
+    ``py.typed`` says the annotations here can be relied on.
     """
+
+    #: Curvature of the *negative* log-likelihood at the optimum, in the
+    #: natural parameters, ordered as :attr:`names` lists them -- or ``None``
+    #: when the fit was asked to skip it. Supplied by each family, usually as a
+    #: dataclass field; an annotation rather than a property so a frozen
+    #: dataclass can still assign to it.
+    hessian: NDArray[np.float64] | None
 
     @property
     def names(self) -> list[str]:  # pragma: no cover - each class provides it
+        raise NotImplementedError
+
+    def __iter__(self) -> Iterator[float]:  # pragma: no cover - each class provides it
         raise NotImplementedError
 
     @property
@@ -93,12 +106,15 @@ class Fitted:
         return dict(zip(self.names, self, strict=True))
 
     def _covariance(self) -> NDArray[np.float64]:
-        if getattr(self, "hessian", None) is None:
+        # `getattr` rather than `self.hessian`: the dyncov fit reports no
+        # Hessian at all, so the attribute can be absent as well as None.
+        hessian = getattr(self, "hessian", None)
+        if hessian is None:
             raise ValueError(
                 "fit with hessian=True to obtain standard errors, a covariance "
                 "matrix or confidence intervals"
             )
-        return np.linalg.inv(self.hessian)
+        return np.linalg.inv(hessian)
 
     def vcov(self) -> pd.DataFrame:
         """The asymptotic covariance matrix of the estimates. Cf. ``vcov()``.

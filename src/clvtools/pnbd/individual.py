@@ -43,7 +43,7 @@ __all__ = [
 ]
 
 
-def _require_positive(**params: float) -> None:
+def _require_positive(**params: ArrayLike) -> None:
     for name, value in params.items():
         if not np.all(np.asarray(value) > 0):
             raise ValueError(f"{name} must be strictly positive, got {value!r}")

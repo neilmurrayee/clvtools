@@ -39,6 +39,11 @@ from dataclasses import dataclass, field
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
+# `ClvDataStaticCov` appears only in an annotation, but it is imported for
+# real rather than under `TYPE_CHECKING` so that `typing.get_type_hints()`
+# resolves it -- `py.typed` promises the signatures are usable downstream.
+# `clvtools.data` does not reach back here, so this closes no cycle.
+from clvtools.data import ClvDataStaticCov
 from clvtools.inference import Fitted
 from clvtools.pnbd.aggregate import log_likelihood_ind
 
@@ -278,7 +283,7 @@ class PnbdStaticCovParams(Fitted):
 
 
 def fit_pnbd_staticcov(
-    data: ClvDataStaticCov,  # noqa: F821
+    data: ClvDataStaticCov,
     names_cov_constr: list[str] | None = None,
     reg_lambdas: tuple[float, float] | None = None,
     start: tuple[float, float, float, float] | None = None,

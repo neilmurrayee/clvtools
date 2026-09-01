@@ -29,7 +29,15 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from scipy import optimize, special
 
+# `ClvDataStaticCov` and `StaticCovResult` appear only in annotations, but
+# they are imported for real rather than under `TYPE_CHECKING` so that
+# `typing.get_type_hints()` resolves them -- `py.typed` promises the
+# signatures are usable downstream. Neither module reaches back here, so
+# this closes no cycle; the covariate fit still imports
+# `fit_static_covariates` inside the function, where it is needed.
 from clvtools._optimize import options_for
+from clvtools._staticcov import StaticCovResult
+from clvtools.data import ClvDataStaticCov
 from clvtools.inference import Fitted, numerical_hessian
 
 __all__ = [
@@ -476,7 +484,7 @@ class BgnbdStaticCovParams(Fitted):
     alpha: float
     a: float
     b: float
-    covariates: StaticCovResult  # noqa: F821
+    covariates: StaticCovResult
 
     def __iter__(self) -> Iterator[float]:
         yield from (self.r, self.alpha, self.a, self.b)
@@ -541,7 +549,7 @@ class BgnbdStaticCovParams(Fitted):
 
 
 def fit_bgnbd_staticcov(
-    data: ClvDataStaticCov,  # noqa: F821
+    data: ClvDataStaticCov,
     names_cov_constr: list[str] | None = None,
     reg_lambdas: tuple[float, float] | None = None,
     start: tuple[float, float, float, float] | None = None,

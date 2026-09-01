@@ -65,12 +65,19 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from itertools import pairwise
+from typing import Literal, overload
 
 import numpy as np
 import pandas as pd
 from numpy.typing import ArrayLike, NDArray
 from scipy import special
 
+# `build_walks` annotates its argument with `ClvData`, and `py.typed`
+# promises that annotation resolves -- so this is a real import, not a
+# `TYPE_CHECKING` one. The cycle stays broken at the other end:
+# `ClvDataDynCov` imports `build_walks` inside the method that calls it,
+# and must keep doing so.
+from clvtools.data import ClvData
 from clvtools.inference import Fitted
 
 __all__ = [
@@ -658,6 +665,24 @@ class DyncovWalks:
         return out
 
 
+@overload
+def log_likelihood_ind(
+    walks: DyncovWalks,
+    r: float, alpha: float, s: float, beta: float,
+    gamma_life: ArrayLike, gamma_trans: ArrayLike,
+    intermediates: Literal[False] = False,
+) -> NDArray[np.float64]: ...
+
+
+@overload
+def log_likelihood_ind(
+    walks: DyncovWalks,
+    r: float, alpha: float, s: float, beta: float,
+    gamma_life: ArrayLike, gamma_trans: ArrayLike,
+    intermediates: Literal[True],
+) -> pd.DataFrame: ...
+
+
 def log_likelihood_ind(
     walks: DyncovWalks,
     r: float, alpha: float, s: float, beta: float,
@@ -968,7 +993,7 @@ def _real_trans_bounds(
 
 
 def build_walks(
-    clv_data: ClvData,  # noqa: F821
+    clv_data: ClvData,
     covariates_life: pd.DataFrame,
     covariates_trans: pd.DataFrame | None = None,
     names_cov_life: list[str] | None = None,

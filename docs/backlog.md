@@ -10,7 +10,7 @@ speculation.
 stop. Do not add items without evidence, and do not work an item marked
 `[needs-decision]` — those need the maintainer.
 
-Definition of done for every item: `uv run pytest` green (888 tests at the time
+Definition of done for every item: `uv run pytest` green (891 tests at the time
 of writing), `uv run ruff check src tests tools docs` clean, and 100% line
 coverage of `src/`. Anything that changes behaviour also needs a test and, if it
 deviates from CLVTools, a README findings entry — the house rule.
@@ -45,7 +45,7 @@ Verified locally on both interpreters before landing: 888 passed, 1 deselected,
 throwaway environment built from the same lock file. The workflow YAML was
 parsed with `uvx --with pyyaml`; no project dependency was added for it.
 
-## 2. `[ ]` Make `py.typed` true
+## 2. `[x]` Make `py.typed` true
 
 `src/clvtools/py.typed` ships, which tells every downstream type checker that
 this package's annotations are meant to be relied on. Nothing verifies them.
@@ -76,6 +76,58 @@ this package's annotations are meant to be relied on. Nothing verifies them.
 is a test — and the four groups above are fixed rather than suppressed.
 Stub-driven pandas noise may be ignored by rule, with the reason recorded in
 `pyproject.toml` next to the ruff ignores, in the same style.
+
+**Done:** `ty==0.0.77` is a dev dependency and `tests/test_code_quality.py`
+runs `ty check src` beside `ruff check`. 56 diagnostics down to 0: 31 fixed, 25
+suppressed by three rules in `[tool.ty.rules]`, each with a note saying which
+stub idiom it covers and how many sites it accounts for. The version is pinned
+exactly rather than with `>=`, because ty is pre-1.0 and its inference moves
+between releases.
+
+The four groups were fixed, not suppressed:
+
+- The annotations now resolve, but **not** by the `TYPE_CHECKING` import this
+  item proposed. `TYPE_CHECKING` satisfies a checker and leaves
+  `get_type_hints()` raising exactly as before, since the name never enters the
+  module namespace -- so it would have fixed the diagnostic and not the defect.
+  `ClvDataStaticCov`, `ClvData` and `StaticCovResult` are imported for real at
+  module scope in `bgnbd`, `ggomnbd`, `pnbd/staticcov` and `pnbd/dyncov`, each
+  with a note saying why that closes no cycle. The runtime-only local imports
+  (`fit_static_covariates`, `build_walks` inside `ClvDataDynCov`) stay exactly
+  where they were; they are what keeps the graph one-way.
+- `Fitted` declares `hessian` and `__iter__` alongside `names`. `hessian` is an
+  annotation rather than a property so that a frozen dataclass can still supply
+  it as a field. `_covariance` narrows through a local, which turned up a
+  second thing worth keeping: the dyncov fit reports no Hessian at all, so the
+  `getattr` there guards absence, not just `None`.
+- `predict.Family` is a `Protocol` over the three expressions every family
+  provides, its members read-only properties because a module supplies them.
+  `DERT` is Pareto/NBD only, so `_FAMILIES` now carries the expression itself
+  rather than a `has_dert` flag -- the branch narrows on `is not None` and no
+  cast is needed.
+- `_search` runs every candidate and takes a `min`, so there is no point at
+  which the winner is `None`, and its return type says `OptimizeResult`.
+
+Four more real defects fell out of turning the checker on, all fixed:
+`_require_positive(**params: float)` was annotated for a scalar and only ever
+called with arrays; `log_likelihood_ind` returns a table only with
+`intermediates=True`, which is now two `@overload`s rather than a union its
+callers had to index blindly; `predict()` returns a `float`, not a
+`DataFrame`, for an S6.3.4 new-customer scenario, and accepts one as
+`clv_data`; and `np.linalg.inv` was reached with a possibly-`None` Hessian.
+
+A second test, `test_the_shipped_annotations_resolve`, walks every module in
+the package and calls `typing.get_type_hints()` on every function and class it
+defines -- the thing a checker never does. Reintroducing the old local import
+in `pnbd/staticcov.py` was confirmed to fail it with
+`NameError: name 'ClvDataStaticCov' is not defined`, which `ty` alone reports
+as a diagnostic that a `TYPE_CHECKING` block would have silenced.
+
+Verified: 891 passed (888 plus the two new tests and a doctest), 1 deselected,
+`TOTAL 2659 0 100%`, ruff clean over `src tests tools docs`, `ty check src`
+clean, and `import clvtools` still works both as a fresh import and via
+`importlib.reload`, and with `clvtools.data` or `clvtools.pnbd.dyncov`
+imported first.
 
 ## 3. `[ ]` Split `pnbd/dyncov.py`
 

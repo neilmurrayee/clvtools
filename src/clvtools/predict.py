@@ -27,10 +27,13 @@ error (RMSE) and the mean absolute error (MAE)."
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Protocol
 
 import numpy as np
 import pandas as pd
+from numpy.typing import NDArray
 
 from clvtools import bgnbd, ggomnbd, pnbd, timeunit
 from clvtools.data import ClvData, ClvDataStaticCov
@@ -345,27 +348,58 @@ def _actuals(clv_data: ClvData, first: pd.Timestamp, last: pd.Timestamp,
 
 
 
-#: Which family's expressions evaluate a given parameter object, and whether
-#: that family has a closed form for ``DERT``.
+#: One of the paper's expressions, as a family exposes it. The model
+#: parameters differ family by family -- :math:`(r, \alpha, s, \beta)` against
+#: :math:`(r, \alpha, a, b)` -- and reach the call as ``**model``, so the
+#: argument list is genuinely open; what is fixed is the float array out.
+_Expression = Callable[..., NDArray[np.float64]]
+
+
+class Family(Protocol):
+    """What :func:`predict` requires of a model family.
+
+    A "family" here is a module -- :mod:`clvtools.pnbd`, :mod:`clvtools.bgnbd`
+    or :mod:`clvtools.ggomnbd` -- and this is the part of one that prediction
+    touches. Table 4 gives all three a ``PAlive`` and a ``CET``; ``DERT`` is
+    Pareto/NBD only and so is not required here, but carried alongside as an
+    optional :data:`_Expression` (see :data:`_FAMILIES`).
+
+    The members are read-only properties rather than plain attributes because
+    a module supplies them, and a module's attributes cannot be written
+    through this interface.
+    """
+
+    @property
+    def expectation(self) -> _Expression: ...
+
+    @property
+    def probability_alive(self) -> _Expression: ...
+
+    @property
+    def conditional_expected_transactions(self) -> _Expression: ...
+
+
+#: Which family's expressions evaluate a given parameter object, and that
+#: family's ``DERT`` expression if it has one.
 #:
 #: Table 4 gives all three families a ``PAlive`` and a ``CET``; only the
 #: Pareto/NBD has a closed form for the discounted expected residual
 #: transactions, so only it can report ``DERT`` and therefore
 #: ``predicted.CLV``. CLVTools omits both columns for the other two, and so
 #: does this.
-_FAMILIES = {
-    PnbdParams: (pnbd, True),
-    PnbdStaticCovParams: (pnbd, True),
-    PnbdCorrelatedParams: (pnbd, True),
-    bgnbd.BgnbdParams: (bgnbd, False),
-    bgnbd.BgnbdStaticCovParams: (bgnbd, False),
-    ggomnbd.GgomnbdParams: (ggomnbd, False),
-    ggomnbd.GgomnbdStaticCovParams: (ggomnbd, False),
+_FAMILIES: dict[type, tuple[Family, _Expression | None]] = {
+    PnbdParams: (pnbd, pnbd.discounted_expected_residual_transactions),
+    PnbdStaticCovParams: (pnbd, pnbd.discounted_expected_residual_transactions),
+    PnbdCorrelatedParams: (pnbd, pnbd.discounted_expected_residual_transactions),
+    bgnbd.BgnbdParams: (bgnbd, None),
+    bgnbd.BgnbdStaticCovParams: (bgnbd, None),
+    ggomnbd.GgomnbdParams: (ggomnbd, None),
+    ggomnbd.GgomnbdStaticCovParams: (ggomnbd, None),
 }
 
 
-def _family_of(params) -> tuple[object, bool]:
-    """The module whose expressions evaluate ``params``, and its DERT support."""
+def _family_of(params) -> tuple[Family, _Expression | None]:
+    """The module whose expressions evaluate ``params``, and its DERT, if any."""
     try:
         return _FAMILIES[type(params)]
     except KeyError:
@@ -469,12 +503,12 @@ def _has_covariates(params) -> bool:
 
 
 def predict(
-    clv_data: ClvData,
+    clv_data: ClvData | NewCustomer | NewCustomerSpending,
     params: PnbdParams,
     spending_params: GgParams | None = None,
     prediction_end: float | str | pd.Timestamp | None = None,
     continuous_discount_factor: float = DEFAULT_DISCOUNT_FACTOR,
-) -> pd.DataFrame:
+) -> pd.DataFrame | float:
     r"""The combined prediction table of S6.3. Cf. ``predict()``.
 
     Parameters
@@ -482,7 +516,9 @@ def predict(
     clv_data
         The transaction data the model was fitted on, or -- as S6.3.1's
         ``newdata`` argument allows -- another set of customers to apply the
-        fitted parameters to.
+        fitted parameters to. A :class:`NewCustomer` scenario from S6.3.4 is
+        accepted here too, and returns the single number of that section
+        rather than a table; see :func:`newcustomer`.
     params
         A fitted Pareto/NBD, with or without time-invariant covariates. A
         covariate model requires ``clv_data`` to be a
@@ -570,7 +606,7 @@ def predict(
             continuous_discount_factor,
         )
 
-    family, has_dert = _family_of(params)
+    family, dert = _family_of(params)
     cbs = clv_data.customer_summary().set_index("Id")
     x, t_x, T = cbs["x"].to_numpy(), cbs["t_x"].to_numpy(), cbs["T"].to_numpy()
     model = _model_rates(clv_data, params)
@@ -593,10 +629,8 @@ def predict(
     table["CET"] = family.conditional_expected_transactions(
         x, t_x, T, length, **model
     )
-    if has_dert:
-        table["DERT"] = family.discounted_expected_residual_transactions(
-            x, t_x, T, continuous_discount_factor, **model
-        )
+    if dert is not None:
+        table["DERT"] = dert(x, t_x, T, continuous_discount_factor, **model)
 
     if spending_params is not None:
         if not clv_data.has_spending:
@@ -614,7 +648,7 @@ def predict(
         # mean spending; CLV is DERT times mean spending, so a family without a
         # DERT has no CLV column either.
         table["predicted.period.spending"] = table["CET"] * mean_spending
-        if has_dert:
+        if dert is not None:
             table["predicted.CLV"] = table["DERT"] * mean_spending
 
     return table

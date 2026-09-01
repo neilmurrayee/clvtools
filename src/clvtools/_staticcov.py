@@ -230,7 +230,7 @@ def _search(
     objective: Callable[[NDArray[np.float64]], float],
     candidates: list[NDArray[np.float64]],
     settings: SearchSettings,
-):
+) -> optimize.OptimizeResult:
     """Minimise from each candidate start, then optionally polish the winner.
 
     The polish is a derivative-free pass from wherever the gradient method
@@ -239,17 +239,21 @@ def _search(
     reports convergence at ``a + b`` around 1,200 where the likelihood is still
     climbing past 300,000 -- so it is on by default. It can only improve the
     objective, since the worse of the two points is discarded.
+
+    Every candidate is run and the best kept, so the search is written as a
+    comprehension and a ``min``: there is then no point at which the winner is
+    ``None``, which is what the return type promises.
     """
-    result = None
-    for x0 in candidates:
-        attempt = optimize.minimize(
+    attempts = [
+        optimize.minimize(
             objective,
             x0=x0,
             method=settings.method,
             options=options_for(settings.method, settings.maxiter, x0, settings.options),
         )
-        if result is None or attempt.fun < result.fun:
-            result = attempt
+        for x0 in candidates
+    ]
+    result = min(attempts, key=lambda attempt: attempt.fun)
 
     if settings.polish and settings.method != "Nelder-Mead":
         # A simplex spanning a factor of e per axis, centred on where the

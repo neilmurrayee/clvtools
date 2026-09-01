@@ -31,6 +31,11 @@ dev = [
     # Informational only -- the maintainability and complexity reports in
     # CLAUDE.md's commands. Nothing gates on it.
     "radon>=6.0.1",
+    # The type checker, run as a test by tests/test_code_quality.py. Pinned
+    # exactly rather than with `>=`: ty is pre-1.0 and its inference changes
+    # between releases, so a floating version would turn an upgrade into a
+    # surprise failure in an unrelated change. Bump it deliberately.
+    "ty==0.0.77",
 ]
 
 [project.optional-dependencies]
@@ -138,3 +143,31 @@ known-first-party = ["clvtools"]
 
 [tool.ruff.lint.flake8-pytest-style]
 parametrize-names-type = "csv"   # the style already used throughout tests/
+
+# ---------------------------------------------------------------------------
+# Type checking. `src/clvtools/py.typed` tells downstream checkers that the
+# annotations here are meant to be relied on, so something has to check them;
+# `tests/test_code_quality.py` runs this over `src/` in the same breath as
+# ruff. Only `src/` -- that is the surface `py.typed` makes a promise about.
+# ---------------------------------------------------------------------------
+[tool.ty.rules]
+# Three rules are off, and all three for the same reason: pandas' and numpy's
+# own stubs are wider than the values this code actually handles, and the
+# residue is theirs rather than ours. The count in each note is what was left
+# after the real defects were fixed -- if one of these grows, the note is
+# wrong and the rule should come back on rather than the number go up.
+#
+# `Timestamp + Timedelta` and `pd.Timestamp(year=..., month=..., day=...)` are
+# both typed `Timestamp | NaTType`, because NaT propagates through Timestamp
+# arithmetic. Nothing here ever holds a NaT: the dates come from a transaction
+# log that `ClvData` has already validated. 12 sites, in `timeunit`, `data`
+# and `predict`.
+invalid-return-type = "ignore"
+# The same `Timestamp | NaTType` passed on to a callee (8 sites), plus
+# `float(Series.mean())`, which the stubs type `Series | Any` because `mean()`
+# takes an `axis` (2 sites). 10 in all.
+invalid-argument-type = "ignore"
+# `DataFrame.groupby(...)` keys are typed `Hashable`, so writing one into a
+# `dict[str, float]` is rejected even though `Id` is a string everywhere (see
+# CLAUDE.md), and one more `Timestamp | NaTType`. 3 sites.
+invalid-assignment = "ignore"
