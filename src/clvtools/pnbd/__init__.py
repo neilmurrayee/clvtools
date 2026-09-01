@@ -30,19 +30,13 @@ from clvtools.pnbd.aggregate import (
     pmf,
     probability_alive,
 )
-from clvtools.pnbd.fit import PnbdParams, fit_pnbd
 from clvtools.pnbd.correlation import (
     PnbdCorrelatedParams,
     correlated_log_likelihood,
     correlation_coefficient,
     fit_pnbd_correlated,
 )
-from clvtools.pnbd.staticcov import (
-    PnbdStaticCovParams,
-    alpha_i,
-    beta_i,
-    fit_pnbd_staticcov,
-)
+from clvtools.pnbd.fit import PnbdParams, fit_pnbd
 from clvtools.pnbd.individual import (
     gamma_pdf_lambda,
     gamma_pdf_mu,
@@ -54,6 +48,12 @@ from clvtools.pnbd.individual import (
     log_individual_likelihood,
     nbd_pmf,
     poisson_pmf,
+)
+from clvtools.pnbd.staticcov import (
+    PnbdStaticCovParams,
+    alpha_i,
+    beta_i,
+    fit_pnbd_staticcov,
 )
 
 __all__ = [

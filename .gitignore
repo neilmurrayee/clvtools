@@ -19,3 +19,6 @@ wheels/
 # Coverage
 .coverage
 htmlcov/
+
+# Static analysis
+.ruff_cache/

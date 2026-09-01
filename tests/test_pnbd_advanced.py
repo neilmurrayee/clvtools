@@ -20,11 +20,30 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from conftest import fixture_csv, fixture_json
+from rdoc_values import (
+    CONSTRAINED_AIC,
+    CONSTRAINED_BIC,
+    CONSTRAINED_LL,
+    CONSTRAINED_MLE,
+    CONSTRAINED_N_PARAMETERS,
+    CONSTRAINED_SE,
+    CONSTRAINED_Z,
+    LRTEST,
+    REGULARIZED_AIC_CLVTOOLS,
+    REGULARIZED_BIC_CLVTOOLS,
+    REGULARIZED_LAMBDAS,
+    REGULARIZED_LL,
+    REGULARIZED_MLE,
+)
 from scipy import stats
 
-from conftest import fixture_csv, fixture_json
-
-from clvtools import ClvData, ClvDataStaticCov, load_apparel_static_cov, load_apparel_trans
+from clvtools import (
+    ClvData,
+    ClvDataStaticCov,
+    load_apparel_static_cov,
+    load_apparel_trans,
+)
 from clvtools.pnbd import log_likelihood, log_likelihood_ind
 from clvtools.pnbd.correlation import (
     correlated_log_likelihood,
@@ -36,7 +55,7 @@ from clvtools.pnbd.correlation import (
 )
 from clvtools.pnbd.staticcov import fit_pnbd_staticcov
 
-PLAIN_MLE = dict(r=1.4490, alpha=48.6361, s=0.5613, beta=46.8844)
+PLAIN_MLE = {"r": 1.4490, "alpha": 48.6361, "s": 0.5613, "beta": 46.8844}
 PLAIN_LL = -5848.097827
 
 
@@ -312,6 +331,104 @@ class TestEqualityConstraints:
         assert fit.n_parameters == 6
 
 
+@pytest.mark.slow
+@pytest.mark.rdoc
+class TestConstraintsAgainstTheVignette:
+    """Section 4 of ``CLVTools_advanced_techniques.pdf``, printed in full.
+
+    The paper prints the *unconstrained* covariate table (S6.4.1, and
+    :mod:`paper_values`) but never the constrained one. The vignette prints
+    both, on the same data, which makes the constraint machinery of eq. (14)
+    checkable against published values rather than only against a fixture.
+    """
+
+    @staticmethod
+    @pytest.fixture(scope="class")
+    def constrained(static_data):
+        return fit_pnbd_staticcov(
+            static_data, names_cov_constr=["Gender"], hessian=True
+        )
+
+    def test_coefficients_match(self, constrained):
+        """Estimates to 1e-3 -- the Pareto/NBD ridge, as everywhere else."""
+        for name, value in CONSTRAINED_MLE.items():
+            assert constrained.coefficients[name] == pytest.approx(
+                value, rel=1e-3
+            ), name
+
+    def test_standard_errors_match(self, constrained):
+        errors = constrained.standard_errors()
+        for name, value in CONSTRAINED_SE.items():
+            assert errors[name] == pytest.approx(value, rel=2e-3), name
+
+    def test_covariate_z_values_match(self, constrained):
+        table = constrained.summary()
+        for name, value in CONSTRAINED_Z.items():
+            assert table.loc[name, "z-val"] == pytest.approx(value, rel=5e-3), name
+
+    def test_model_parameters_carry_no_z_value(self, constrained):
+        """A deviation from the vignette, following the paper and ``?pnbd``.
+
+        The vignette prints z-values for ``r``, ``alpha``, ``s`` and ``beta``.
+        S6.4.1 says they should not exist -- a null of zero "lies outside the
+        admissible parameter space" -- and CLVTools' own ``?pnbd`` agrees that
+        the indicators "are set to NA on purpose". The vignette contradicts
+        both; this package follows the paper.
+        """
+        table = constrained.summary()
+        for name in ("r", "alpha", "s", "beta"):
+            assert np.isnan(table.loc[name, "z-val"]), name
+            assert np.isnan(table.loc[name, "Pr(>|z|)"]), name
+
+    def test_likelihood_and_information_criteria_match(self, constrained):
+        """All three to the four decimals the vignette prints them to."""
+        assert constrained.n_parameters == CONSTRAINED_N_PARAMETERS
+        assert constrained.log_likelihood == pytest.approx(CONSTRAINED_LL, abs=1e-3)
+        assert constrained.aic == pytest.approx(CONSTRAINED_AIC, abs=1e-3)
+        assert constrained.bic == pytest.approx(CONSTRAINED_BIC, abs=1e-3)
+
+
+@pytest.mark.slow
+@pytest.mark.rdoc
+class TestLikelihoodRatioTestAgainstTheVignette:
+    """``lrtest(est.pnbd.constr, est.pnbd.full)``, same section.
+
+    The vignette prints the whole table, so every field of
+    :class:`~clvtools.inference.LikelihoodRatioTest` has a published value to
+    answer to -- degrees of freedom on both sides, the statistic, and the
+    p-value.
+    """
+
+    @staticmethod
+    @pytest.fixture(scope="class")
+    def tested(static_data):
+        from clvtools.inference import likelihood_ratio_test
+
+        return likelihood_ratio_test(
+            fit_pnbd_staticcov(
+                static_data, names_cov_constr=["Gender"], hessian=False
+            ),
+            fit_pnbd_staticcov(static_data, hessian=False),
+        )
+
+    def test_degrees_of_freedom_match(self, tested):
+        assert tested.n_parameters_restricted == LRTEST["df_restricted"]
+        assert tested.n_parameters_unrestricted == LRTEST["df_unrestricted"]
+        assert tested.df == LRTEST["df"]
+
+    def test_statistic_matches(self, tested):
+        assert tested.statistic == pytest.approx(LRTEST["chisq"], abs=5e-3)
+
+    def test_p_value_matches(self, tested):
+        """To all four significant figures the vignette prints."""
+        assert tested.p_value == pytest.approx(LRTEST["p_value"], rel=1e-3)
+
+    def test_the_constraint_is_rejected(self, tested):
+        """The vignette's conclusion: "adding an equality constraint for the
+        Gender parameter significantly worsened the model fit"."""
+        assert tested.p_value < 0.001
+
+
 # -- regularization, eq. (13) and S6.5.1 --------------------------------------
 
 
@@ -405,6 +522,79 @@ class TestRegularization:
         )
         assert default.log_likelihood > cold.log_likelihood
         assert default.s == pytest.approx(0.56, abs=0.05)
+
+
+@pytest.mark.slow
+@pytest.mark.rdoc
+class TestRegularizationAgainstTheVignette:
+    """Section 2 of ``CLVTools_advanced_techniques.pdf``.
+
+    Two things here that no other test reaches. The weights are *asymmetric*
+    -- ``c(trans = 0.1, life = 0.2)`` -- where the paper and every oracle
+    fixture use equal ones, so this is the only check that the two processes
+    receive the weight meant for them. And the printed ``LL -9.7313`` is
+    independent confirmation, from CLVTools' own documentation, that what its
+    ``logLik()`` returns under regularization is the penalised *mean*.
+    """
+
+    @staticmethod
+    @pytest.fixture(scope="class")
+    def regularized(static_data):
+        return fit_pnbd_staticcov(
+            static_data, reg_lambdas=REGULARIZED_LAMBDAS, hessian=False
+        )
+
+    def test_coefficients_match(self, regularized):
+        for name, value in REGULARIZED_MLE.items():
+            assert regularized.coefficients[name] == pytest.approx(
+                value, rel=2e-3, abs=1e-5
+            ), name
+
+    def test_the_penalised_mean_objective_matches(self, regularized):
+        assert regularized.log_likelihood == pytest.approx(REGULARIZED_LL, abs=1e-4)
+
+    def test_the_lifetime_process_took_the_heavier_weight(self, regularized):
+        r"""``life = 0.2`` against ``trans = 0.1``, so the attrition
+        coefficients are shrunk twice as hard. Asserted through the published
+        estimates: both lifetime coefficients land near zero while both
+        transaction coefficients survive."""
+        assert abs(regularized.coefficients["life.Gender"]) < 0.05
+        assert abs(regularized.coefficients["life.Channel"]) < 0.05
+        assert abs(regularized.coefficients["trans.Gender"]) > 0.15
+        assert abs(regularized.coefficients["trans.Channel"]) > 0.2
+
+    def test_information_criteria_deviate_from_clvtools(self, regularized):
+        r"""A deliberate deviation, recorded in the README's findings.
+
+        CLVTools computes AIC and BIC of a regularized fit from the penalised
+        mean -- the vignette prints ``AIC 35.4626`` and ``BIC 70.6380`` for a
+        model whose log-likelihood is about -5833 -- and prints ``AIC
+        11658.1254`` for the same model unregularized. Two information
+        criteria on different scales cannot be compared with each other, which
+        is the one thing an information criterion is for. This package uses
+        the unpenalised sum, so its AIC stays comparable across models.
+
+        Both relationships are asserted, so the deviation cannot drift into
+        being an accident.
+        """
+        k, n = regularized.n_parameters, regularized.n_customers
+
+        # What CLVTools prints, reproduced from the penalised mean.
+        assert 2 * k - 2 * REGULARIZED_LL == pytest.approx(
+            REGULARIZED_AIC_CLVTOOLS, abs=1e-3
+        )
+        assert k * np.log(n) - 2 * REGULARIZED_LL == pytest.approx(
+            REGULARIZED_BIC_CLVTOOLS, abs=1e-3
+        )
+
+        # What this package reports instead.
+        assert regularized.aic == pytest.approx(
+            2 * k - 2 * regularized.unpenalised_log_likelihood
+        )
+        assert regularized.bic == pytest.approx(
+            k * np.log(n) - 2 * regularized.unpenalised_log_likelihood
+        )
+        assert regularized.aic > 10_000
 
 
 @pytest.mark.slow

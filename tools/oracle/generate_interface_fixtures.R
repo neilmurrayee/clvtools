@@ -137,6 +137,18 @@ for (j in c("Estimation", "Holdout", "Total")) {
 cat("  ok  every cell agrees with summary()\n")
 write_csv(dt.desc, "descriptives_summary")
 
+# summary(clv, ids = ...) restricts the same table to named customers.
+# ?summary.clv.data demonstrates it with ids that are not in apparelTrans at
+# all -- "1219", and "1000" in a data set whose ids stop at 600 -- which
+# CLVTools answers with a table of Inf and NaN rather than an error. Three ids
+# that do exist are used here instead.
+SUMMARY_IDS <- c("1", "10", "100")
+dt.printed.ids <- as.data.table(
+  summary(clv.apparel, ids = SUMMARY_IDS)$descriptives.transactions
+)
+write_csv(dt.printed.ids, "descriptives_summary_ids")
+cat(sprintf("  ok  summary(ids=) for %s\n", paste(SUMMARY_IDS, collapse = ", ")))
+
 # as.data.frame() and subset() default to the FULL sample, where the
 # descriptive plots below default to the estimation period. Both defaults are
 # pinned here so the difference cannot be lost in translation.

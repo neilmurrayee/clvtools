@@ -20,7 +20,9 @@ shown are the ones printed in the paper.
 from __future__ import annotations
 
 import copy
+import re
 from collections.abc import Sequence
+from itertools import pairwise
 from pathlib import Path
 
 import numpy as np
@@ -31,10 +33,10 @@ from clvtools import timeunit
 from clvtools.timeunit import TIME_UNITS
 
 __all__ = [
+    "TIME_UNITS",
     "ClvData",
     "ClvDataDynCov",
     "ClvDataStaticCov",
-    "TIME_UNITS",
     "load_apparel_dyn_cov",
     "load_apparel_dyn_cov_future",
     "load_apparel_static_cov",
@@ -178,7 +180,7 @@ class ClvData:
         self,
         transactions: pd.DataFrame,
         time_unit: str = "week",
-        estimation_split: int | float | str | pd.Timestamp | None = None,
+        estimation_split: float | str | pd.Timestamp | None = None,
         data_end: str | pd.Timestamp | None = None,
         name_id: str = "Id",
         name_date: str = "Date",
@@ -235,16 +237,15 @@ class ClvData:
         floor = "h" if self.time_unit == "hour" else "D"  # S6.1
         df = df.copy()
         df["Date"] = df["Date"].dt.floor(floor)
-        out = (
+        return (
             df.groupby(["Id", "Date"], as_index=False, sort=True)["Price"]
             .sum(min_count=1)
             .sort_values(["Id", "Date"], kind="stable")
             .reset_index(drop=True)
         )
-        return out
 
     def _resolve_split(
-        self, split: int | float | str | pd.Timestamp | None
+        self, split: float | str | pd.Timestamp | None
     ) -> pd.Timestamp:
         """Turn ``estimation_split`` into the date the estimation period ends.
 
@@ -273,9 +274,11 @@ class ClvData:
         Delegated to the unit because a calendar unit cannot be a division:
         see :mod:`clvtools.timeunit`.
         """
-        end = pd.Series([end] * len(start), index=start.index) if not hasattr(end, "__len__") else end
+        if not hasattr(end, "__len__"):
+            end = pd.Series([end] * len(start), index=start.index)
         return pd.Series(
-            [self.time.elapsed(a, b) for a, b in zip(start, end)], index=start.index
+            [self.time.elapsed(a, b) for a, b in zip(start, end, strict=True)],
+            index=start.index,
         )
 
     # -- model inputs ---------------------------------------------------------
@@ -390,6 +393,25 @@ class ClvData:
         """The number of customers. Cf. ``nobs()`` on a data object."""
         return int(self.transactions["Id"].nunique())
 
+    def _resolve_ids(self, ids: Sequence[str] | str) -> list[str]:
+        """Customer ids as a list, rejecting any this data has never seen.
+
+        CLVTools filters leniently: ``summary(clv, ids = "1219")`` on data
+        whose ids run 1..600 returns a table of ``Inf``, ``-Inf`` and ``NaN``
+        with a warning rather than an error, and both examples in
+        ``?summary.clv.data`` do exactly that. A summary of no customers is
+        not an answer to any question worth asking, so this raises.
+        """
+        wanted = [ids] if isinstance(ids, str) else [str(i) for i in ids]
+        known = set(self.transactions["Id"])
+        missing = [i for i in wanted if i not in known]
+        if missing:
+            raise ValueError(
+                f"no transactions for {len(missing)} of the ids given, "
+                f"e.g. {missing[:3]}"
+            )
+        return wanted
+
     def as_data_frame(
         self, sample: str = "full", ids: Sequence[str] | str | None = None
     ) -> pd.DataFrame:
@@ -407,6 +429,11 @@ class ClvData:
         has one: ``clv.as_data_frame(sample="holdout").query('Price >= 50')``
         is ``subset(clv, Price >= 50, sample = "holdout")``.
 
+        One trap in that idiom, on dates. pandas does not coerce a bare string
+        on the right of ``==``, so a date equality written inline matches
+        *nothing* rather than raising -- while the range comparisons beside it
+        coerce perfectly well. Bind the timestamp, or use a mask.
+
         Examples
         --------
         >>> clv = ClvData(load_apparel_trans(), time_unit="week", estimation_split=104)
@@ -414,11 +441,19 @@ class ClvData:
         (3183, 1866)
         >>> len(clv.as_data_frame(ids="1"))
         7
+
+        The date trap, and the two spellings that avoid it:
+
+        >>> frame = ClvData(load_cdnow(), time_unit="week").as_data_frame()
+        >>> len(frame.query('Date == "1997-02-16"'))          # silently empty
+        0
+        >>> when = pd.Timestamp("1997-02-16")
+        >>> len(frame.query("Date == @when")), len(frame[frame["Date"] == when])
+        (44, 44)
         """
         frame = self._sample(sample)
         if ids is not None:
-            wanted = [ids] if isinstance(ids, str) else [str(i) for i in ids]
-            frame = frame[frame["Id"].isin(wanted)]
+            frame = frame[frame["Id"].isin(self._resolve_ids(ids))]
         return frame.reset_index(drop=True)
 
     def _sample(self, sample: str) -> pd.DataFrame:
@@ -435,7 +470,9 @@ class ClvData:
             f"sample must be one of estimation, holdout, full; got {sample!r}"
         )
 
-    def mean_interpurchase_times(self, sample: str = "estimation") -> pd.DataFrame:
+    def mean_interpurchase_times(
+        self, sample: str = "estimation", ids: Sequence[str] | str | None = None
+    ) -> pd.DataFrame:
         """Each customer's mean time between transactions, in ``time_unit``.
 
         S6.1.2: "the empirical density of customers' mean time between
@@ -449,6 +486,8 @@ class ClvData:
         CLVTools uses.
         """
         frame = self._sample(sample).sort_values(["Id", "Date"], kind="stable")
+        if ids is not None:
+            frame = frame[frame["Id"].isin(self._resolve_ids(ids))]
         gaps: dict[str, float] = {}
         for customer, dates in frame.groupby("Id", sort=True)["Date"]:
             when = dates.to_numpy()
@@ -457,14 +496,14 @@ class ClvData:
                 continue
             spans = [
                 self.time.elapsed(pd.Timestamp(a), pd.Timestamp(b))
-                for a, b in zip(when[:-1], when[1:])
+                for a, b in pairwise(when)
             ]
             gaps[customer] = float(np.mean(spans))
         return pd.DataFrame(
             {"Id": list(gaps), "mean.interpurchase.time": list(gaps.values())}
         )
 
-    def summary(self) -> pd.DataFrame:
+    def summary(self, ids: Sequence[str] | str | None = None) -> pd.DataFrame:
         """The descriptive statistics of S6.1.2. Cf. ``summary()``.
 
         One row per statistic and one column per sample -- ``Estimation``,
@@ -493,17 +532,19 @@ class ClvData:
         """
         samples = ["Estimation"] + (["Holdout"] if self.has_holdout else []) + ["Total"]
         return pd.DataFrame(
-            {name: self._descriptives(name) for name in samples}
+            {name: self._descriptives(name, ids) for name in samples}
         )
 
-    def _descriptives(self, sample: str) -> pd.Series:
+    def _descriptives(
+        self, sample: str, ids: Sequence[str] | str | None = None
+    ) -> pd.Series:
         """One column of :meth:`summary`, in CLVTools' own row order."""
-        frame = self._sample({"Estimation": "estimation", "Holdout": "holdout"}
-                             .get(sample, "full"))
+        which = {"Estimation": "estimation", "Holdout": "holdout"}.get(sample, "full")
+        frame = self._sample(which)
+        if ids is not None:
+            frame = frame[frame["Id"].isin(self._resolve_ids(ids))]
         per_customer = frame.groupby("Id", sort=True)["Date"].size()
-        gaps = self.mean_interpurchase_times(
-            {"Estimation": "estimation", "Holdout": "holdout"}.get(sample, "full")
-        )["mean.interpurchase.time"]
+        gaps = self.mean_interpurchase_times(which, ids)["mean.interpurchase.time"]
 
         start, end = {
             "Estimation": (self.estimation_start, self.estimation_end),
@@ -552,6 +593,10 @@ class ClvData:
             f"estimation {self.estimation_start.date()}"
             f"..{self.estimation_end.date()}, {span})"
         )
+
+
+#: A formula term wrapping an expression to evaluate, as R's ``I()`` does.
+_TRANSFORMED_TERM = re.compile(r"^I\s*\((?P<expression>.+)\)$", re.DOTALL)
 
 
 class ClvDataStaticCov(ClvData):
@@ -663,25 +708,79 @@ class ClvDataStaticCov(ClvData):
     def with_covariates(
         self, names_life: list[str] | None = None,
         names_trans: list[str] | None = None,
-    ) -> "ClvDataStaticCov":
+    ) -> ClvDataStaticCov:
         """The same data restricted to the covariates a formula names.
 
         S6.4's formula selects from the covariates the data object carries;
         this applies that selection without re-preparing the design matrices.
         ``None`` on either side keeps what is already there.
+
+        A term wrapped in ``I(...)`` is an expression to evaluate rather than a
+        column to select, as in R -- ``?latentAttrition`` fits
+        ``~ Gender | I(log(Channel + 2))``. The derived column is named after
+        the term exactly as it was written, so the coefficient carries its own
+        definition. R names it by deparsing, which respaces the expression to
+        ``I(log(Channel + 2))``; nothing here reformats it, so write the term
+        the way you want the coefficient labelled.
+
+        Examples
+        --------
+        >>> data = ClvDataStaticCov(
+        ...     ClvData(load_apparel_trans(), time_unit="week", estimation_split=104),
+        ...     load_apparel_static_cov(),
+        ... )
+        >>> derived = data.with_covariates(["Gender"], ["I(log(Channel + 2))"])
+        >>> derived.names_cov_trans
+        ['I(log(Channel + 2))']
+        >>> sorted({float(v) for v in derived.design_trans().ravel().round(6)})
+        [0.693147, 1.098612]
         """
         other = copy.copy(self)
-        for attribute, wanted, frame in (
-            ("names_cov_life", names_life, self._cov_life),
-            ("names_cov_trans", names_trans, self._cov_trans),
+        for attribute, source, wanted in (
+            ("names_cov_life", "_cov_life", names_life),
+            ("names_cov_trans", "_cov_trans", names_trans),
         ):
             if wanted is None:
                 continue
-            missing = [n for n in wanted if n not in frame.columns]
+            resolved, frame = self._evaluate_terms(getattr(self, source), wanted)
+            missing = [n for n in resolved if n not in frame.columns]
             if missing:
                 raise ValueError(f"covariates not in the data: {missing}")
-            setattr(other, attribute, list(wanted))
+            setattr(other, source, frame)
+            setattr(other, attribute, resolved)
         return other
+
+    @staticmethod
+    def _evaluate_terms(
+        frame: pd.DataFrame, terms: Sequence[str]
+    ) -> tuple[list[str], pd.DataFrame]:
+        """Turn every ``I(...)`` term into a column, leaving plain names alone.
+
+        The expression is handed to :meth:`pandas.DataFrame.eval` rather than
+        to :func:`eval`, so it reaches the covariate columns and arithmetic and
+        not the interpreter.
+        """
+        resolved, derived = [], {}
+        for term in terms:
+            name = str(term).strip()
+            match = _TRANSFORMED_TERM.match(name)
+            resolved.append(name)
+            if match is None or name in frame.columns:
+                continue
+            expression = match.group("expression")
+            try:
+                values = frame.eval(expression)
+            except Exception as error:
+                raise ValueError(
+                    f"cannot evaluate the covariate expression {expression!r}: {error}"
+                ) from error
+            derived[name] = np.asarray(values, dtype=float)
+        if not derived:
+            return resolved, frame
+        frame = frame.copy()
+        for name, values in derived.items():
+            frame[name] = values
+        return resolved, frame
 
     def design_life(self, names: list[str] | None = None) -> np.ndarray:
         r"""The attrition process's covariate matrix, customers in summary order."""
@@ -743,7 +842,7 @@ class ClvDataDynCov(ClvData):
     def with_covariates(
         self, names_life: list[str] | None = None,
         names_trans: list[str] | None = None,
-    ) -> "ClvDataDynCov":
+    ) -> ClvDataDynCov:
         """The same data restricted to the covariates a formula names.
 
         The walks are rebuilt on demand, since which covariates are in the

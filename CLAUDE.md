@@ -18,7 +18,9 @@ the-paper numbers, and the findings log — read it before starting real work.
 src/clvtools/       the package. numpy + scipy + pandas only.
 tests/              pytest suite; tests/fixtures/ holds committed oracle output
 tests/paper_values.py   every number printed in the paper, in one place
+tests/rdoc_values.py    every number printed in the R package's own documentation
 docs/paper.md       §6 case study as an executable doctest document
+docs/vignette.md    the R package's walkthrough + advanced-techniques vignettes
 docs/audit.md       gaps against the paper and the R package, as a task list
 tools/oracle/*.R    fixture generators — the only thing that needs R
 tools/setup_oracle.sh   installs CLVTools into ./.Rlib (never the system library)
@@ -31,13 +33,24 @@ Module ↔ paper mapping lives in `src/clvtools/__init__.py` and the README tabl
 ## Commands
 
 ```bash
-uv run pytest                  # 808 tests inc. doctests in src/ and docs/; ~3:05 on an M-series
-uv run pytest -m paper         # 24 published-number checks
-uv run pytest -m oracle        # 221 checks against R CLVTools fixtures
-uv run pytest -m slow          # 114 full-dataset MLE fits
+uv run pytest                  # 888 tests inc. doctests in src/ and docs/; ~3:20 on an M-series
+uv run pytest -m paper         # 24 numbers printed in the paper
+uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
+uv run pytest -m oracle        # 229 checks against R CLVTools fixtures
+uv run pytest -m slow          # 138 full-dataset MLE fits
 uv run pytest -m dyncov_fit    # the time-varying covariate MLE; ~17 min, deselected by default
 uv run pytest --cov=clvtools --cov-report=term-missing
-uv run pytest docs/paper.md    # the case study alone
+uv run pytest docs/paper.md    # the paper's case study alone
+uv run pytest docs/vignette.md # the R package's own walkthrough
+uv run pytest -m quality       # the static-analysis gate alone (runs by default)
+```
+
+Static analysis is part of the suite, not a separate step:
+
+```bash
+uv run ruff check src tests tools docs          # what `-m quality` shells out to
+uv run ruff check --fix src tests tools docs    # the mechanical ones
+uv run radon cc src -s -n C                     # informational complexity report
 ```
 
 `uv run` handles the environment; there is no separate install step. `-m
@@ -51,6 +64,7 @@ R_LIBS=.Rlib Rscript tools/extract_data.R                    # datasets -> data/
 R_LIBS=.Rlib Rscript tools/oracle/generate_fixtures.R        # -> tests/fixtures/
 R_LIBS=.Rlib Rscript tools/oracle/generate_family_fixtures.R
 R_LIBS=.Rlib Rscript tools/oracle/generate_interface_fixtures.R  # summary, plots, generics
+R_LIBS=.Rlib Rscript tools/oracle/generate_cdnow_fixtures.R       # the CDNOW fit, pmf, frequencies
 R_LIBS=.Rlib Rscript tools/oracle/generate_dyncov_fixtures.R     # slow: fits dyncov twice
 ```
 
@@ -68,7 +82,12 @@ The discipline that makes this port trustworthy, in order of strength:
    exists. A single total agreeing can hide two errors cancelling; thirty columns
    agreeing at two parameter vectors cannot. Prefer a new fixture column over a
    hand-computed constant.
-2. **Published numbers.** `tests/paper_values.py`, checked under `-m paper`.
+2. **Published numbers.** `tests/paper_values.py` (`-m paper`) and
+   `tests/rdoc_values.py` (`-m rdoc`). The paper is not the only place
+   CLVTools prints results: its vignettes print a constrained covariate table,
+   a regularized one and an `lrtest()` that the paper never does, and `?pmf`
+   prints a PMF table with the empirical frequencies beside it. Treat a number
+   printed in the R documentation as an oracle of the same standing.
    Keep estimation and evaluation apart: given the *published* parameters, every
    expression should match to 1e-9..1e-14; where this package's own optimiser
    runs, the last digits move (the Pareto/NBD ridge shifts 3e-5 for 1e-10 of
@@ -87,6 +106,15 @@ The discipline that makes this port trustworthy, in order of strength:
 - **Docstrings carry the paper.** Section number, the paper's own words in
   quotes, the equation in `.. math::`, then a worked doctest. Match the density
   of the surrounding modules — they are unusually documented on purpose.
+- **Static analysis is a gate, not advice.** `tests/test_code_quality.py` runs
+  `ruff` and a module-size limit inside the ordinary `pytest` run, so there is
+  one way to be green. The thresholds in `pyproject.toml` were measured against
+  this code, not taken from defaults: mccabe 10, 50 statements, 12 branches, 12
+  arguments, 700 *code* lines per module (docstrings excluded — `src/` is 37%
+  docstring on purpose, and a raw line count would punish that). Prefer
+  splitting a function to raising a limit; where the paper's own signature is
+  the reason, a `noqa` with the reason at the site is the escape hatch, and
+  there are two.
 - **Deviations get a test, not a comment.** Where the paper misprints an
   equation or CLVTools stops at a worse optimum, that is pinned by a test and
   recorded in the README's Findings section. Add to both.

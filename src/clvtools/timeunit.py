@@ -41,7 +41,7 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-__all__ = ["Days", "Hours", "Months", "TIME_UNITS", "TimeUnit", "Weeks", "Years", "get"]
+__all__ = ["TIME_UNITS", "Days", "Hours", "Months", "TimeUnit", "Weeks", "Years", "get"]
 
 
 class TimeUnit:

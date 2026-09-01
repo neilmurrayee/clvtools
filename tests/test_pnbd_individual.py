@@ -16,6 +16,8 @@ Appendix A were wrong, the integral would not reproduce the other.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 import numpy as np
 import pytest
 from scipy import integrate, stats
@@ -34,7 +36,7 @@ from clvtools.pnbd.individual import (
     poisson_pmf,
 )
 
-MLE = dict(r=1.4490, alpha=48.6361, s=0.5613, beta=46.8844)
+MLE = {"r": 1.4490, "alpha": 48.6361, "s": 0.5613, "beta": 46.8844}
 
 
 class TestLifetime:
@@ -105,7 +107,7 @@ class TestParetoSecondKind:
         s, beta = MLE["s"], MLE["beta"]
         for omega in (0.0, 1.0, 25.0, 200.0):
             mixed, _ = integrate.quad(
-                lambda mu: lifetime_pdf(omega, mu) * gamma_pdf_mu(mu, s, beta),
+                lambda mu, omega=omega: lifetime_pdf(omega, mu) * gamma_pdf_mu(mu, s, beta),
                 0, np.inf,
             )
             assert lifetime_pdf_mixed(omega, s, beta) == pytest.approx(mixed, rel=1e-7)
@@ -216,10 +218,11 @@ class TestIndividualLikelihood:
         x, t_x, T, lam, mu = 5, 900.0, 1000.0, 2.0, 1.5
         assert individual_likelihood(x, t_x, T, lam, mu) == 0.0
         got = log_individual_likelihood(x, t_x, T, lam, mu)
-        assert np.isfinite(got) and got < -1000
+        assert np.isfinite(got)
+        assert got < -1000
 
     def test_rejects_nonpositive_rates(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="positive"):
             individual_likelihood(1, 1.0, 2.0, 0.0, 0.1)
 
 
@@ -235,7 +238,9 @@ class TestMarginalisation:
     # multiplied by lambda^x e^{-lambda T} with T = 104 -- so quad's defaults
     # are not enough: at x = 6 they are out by 17%. These settings bring every
     # case below 1e-9, which is what makes the agreement meaningful.
-    _QUAD = dict(limit=500, epsabs=1e-16, epsrel=1e-13)
+    _QUAD: ClassVar[dict[str, float]] = {
+        "limit": 500, "epsabs": 1e-16, "epsrel": 1e-13,
+    }
 
     @pytest.mark.parametrize(
         "x,t_x,T",

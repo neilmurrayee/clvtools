@@ -25,7 +25,6 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
-
 from paper_values import (
     COHORT_START,
     DATA_END,
@@ -258,7 +257,8 @@ class TestSplitSpecification:
     def test_repr_is_informative(self, apparel_trans):
         clv = ClvData(apparel_trans, time_unit="week", estimation_split=104)
         text = repr(clv)
-        assert "600 customers" in text and "2006-12-31" in text
+        assert "600 customers" in text
+        assert "2006-12-31" in text
 
 
 class TestOtherDatasets:

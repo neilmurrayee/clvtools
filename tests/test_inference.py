@@ -12,16 +12,16 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from conftest import fixture_json
 
 from clvtools import ClvData, ClvDataStaticCov, bgnbd, ggomnbd
-from clvtools.gg import fit_gg, log_likelihood as gg_log_likelihood
+from clvtools.gg import log_likelihood as gg_log_likelihood
 from clvtools.inference import (
     likelihood_ratio_test,
     numerical_hessian,
 )
 from clvtools.pnbd import fit_pnbd, fit_pnbd_staticcov
 from clvtools.pnbd.aggregate import log_likelihood as pnbd_log_likelihood
-from conftest import fixture_json
 
 
 @pytest.fixture(scope="module")
@@ -103,8 +103,9 @@ class TestCurvatureAgainstTheOracle:
         hessian = numerical_hessian(
             lambda v: -family.log_likelihood(x, t_x, T, *v), at
         )
-        got = dict(zip(want["names"], np.sqrt(np.diag(np.linalg.inv(hessian)))))
-        expected = dict(zip(want["names"], want["se"]))
+        se = np.sqrt(np.diag(np.linalg.inv(hessian)))
+        got = dict(zip(want["names"], se, strict=True))
+        expected = dict(zip(want["names"], want["se"], strict=True))
         for parameter in which:
             assert got[parameter] == pytest.approx(
                 expected[parameter], rel=2e-3
@@ -126,7 +127,7 @@ class TestGenerics:
     def test_standard_errors_match(self, fit):
         want = fixture_json("inference_pnbd")
         got = fit.standard_errors()
-        for name, expected in zip(want["names"], want["se"]):
+        for name, expected in zip(want["names"], want["se"], strict=True):
             assert got[name] == pytest.approx(expected, rel=2e-3), name
 
     @pytest.mark.oracle
@@ -210,7 +211,7 @@ class TestCovariateSummary:
         want = fixture_json("inference_pnbd_staticcov_constrained")
         assert constrained.names == want["names"]
         got = constrained.standard_errors()
-        for name, expected in zip(want["names"], want["se"]):
+        for name, expected in zip(want["names"], want["se"], strict=True):
             assert got[name] == pytest.approx(expected, rel=5e-2), name
 
     def test_the_constrained_coefficient_is_reported_once(self, constrained):
@@ -281,7 +282,7 @@ class TestEveryFamilyExposesTheSameAccessors:
         from clvtools.pnbd.correlation import PnbdCorrelatedParams
         from clvtools.pnbd.fit import PnbdParams
 
-        shared = dict(log_likelihood=-1.0, converged=True, n_customers=600)
+        shared = {"log_likelihood": -1.0, "converged": True, "n_customers": 600}
         return {
             "pnbd": (
                 PnbdParams(r=1.0, alpha=2.0, s=3.0, beta=4.0, **shared),

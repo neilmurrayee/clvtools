@@ -18,7 +18,6 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
-
 from conftest import fixture_csv, fixture_json
 
 from clvtools import ClvData, bootstrap, diagnostics, load_apparel_trans
@@ -485,6 +484,50 @@ class TestBootstrapApply:
             num_boots=2, sample=lambda pool: ["1", "10"],
         )
         assert drawn == [["1", "10"], ["1", "10"]]
+
+    def test_a_sampler_may_draw_fewer_customers(self, data):
+        """``?clv.bootstrapped.apply``'s own example.
+
+        Its sampler takes half the customers *without* replacement::
+
+            fn.sample = function(x) sample(x, size = as.integer(0.5*length(x)),
+                                           replace = FALSE)
+
+        which is a different shape from the default: the resampled data is
+        smaller than the original and holds no duplicates, so nothing is
+        suffixed. Worth its own test because every other sampler here returns
+        as many customers as it was given.
+        """
+        rng = np.random.default_rng(11)
+
+        def half(pool):
+            return rng.choice(pool, size=len(pool) // 2, replace=False)
+
+        drawn = bootstrap.bootstrap_apply(
+            data, lambda d: sorted(d.customer_summary()["Id"]),
+            num_boots=3, sample=half,
+        )
+        assert [len(ids) for ids in drawn] == [300, 300, 300]
+        for ids in drawn:
+            assert len(set(ids)) == len(ids)
+            assert not any(bootstrap.BOOTSTRAP_SUFFIX in i for i in ids)
+
+    def test_the_documented_use_is_bootstrapping_coefficients(self, data):
+        """``fn.boot.apply = coef`` -- what the man page reaches for first."""
+        from clvtools.pnbd import fit_pnbd
+
+        fits = bootstrap.bootstrap_apply(
+            data,
+            lambda d: fit_pnbd(
+                *(d.customer_summary()[c] for c in ("x", "t_x", "T")),
+                hessian=False, maxiter=200,
+            ).coefficients,
+            num_boots=2, seed=3,
+        )
+        assert len(fits) == 2
+        for coefficients in fits:
+            assert set(coefficients) == {"r", "alpha", "s", "beta"}
+            assert all(v > 0 for v in coefficients.values())
 
     def test_rejects_a_meaningless_iteration_count(self, data):
         with pytest.raises(ValueError, match="at least 1"):

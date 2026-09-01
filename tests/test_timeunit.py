@@ -13,10 +13,11 @@ satisfy.
 
 from __future__ import annotations
 
+from itertools import pairwise
+
 import numpy as np
 import pandas as pd
 import pytest
-
 from conftest import fixture_csv
 
 from clvtools import timeunit
@@ -42,7 +43,7 @@ class TestAgainstOracle:
         rows = elapsed_grid[elapsed_grid["unit"] == r_name]
         unit = timeunit.get(name)
         got = np.array(
-            [unit.elapsed(a, b) for a, b in zip(rows["start"], rows["end"])]
+            [unit.elapsed(a, b) for a, b in zip(rows["start"], rows["end"], strict=True)]
         )
         np.testing.assert_allclose(got, rows["elapsed"], rtol=1e-12, atol=1e-12)
 
@@ -177,8 +178,8 @@ class TestCalendarUnits:
             unit = timeunit.get(name)
             for start in ("2005-01-31", "2004-02-29", "2005-06-15"):
                 start_ts = pd.Timestamp(start)
-                points = [unit.add(start_ts, n) for n in range(0, 30)]
-                assert all(a < b for a, b in zip(points, points[1:])), name
+                points = [unit.add(start_ts, n) for n in range(30)]
+                assert all(a < b for a, b in pairwise(points)), name
 
     def test_the_anniversary_estimate_only_ever_overshoots(self):
         r"""Which is why :meth:`elapsed` corrects in one direction only.

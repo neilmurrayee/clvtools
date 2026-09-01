@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-
 from conftest import fixture_csv, fixture_json
 
 from clvtools import bgnbd, ggomnbd
@@ -196,7 +195,8 @@ class TestBgnbdProperties:
         scaled_a = float(bgnbd.a_i(a, gamma, design)[0])
         scaled_b = float(bgnbd.b_i(b, gamma, design)[0])
         assert scaled_a / (scaled_a + scaled_b) == pytest.approx(a / (a + b))
-        assert scaled_a > a and scaled_b > b
+        assert scaled_a > a
+        assert scaled_b > b
 
     def test_cet_and_expectation_reject_a_equal_to_one(self, xtt):
         with pytest.raises(ValueError, match="undefined at a = 1"):
@@ -508,8 +508,12 @@ class TestFamiliesCompared:
 
 @pytest.fixture(scope="module")
 def static_data():
-    from clvtools import ClvData, ClvDataStaticCov
-    from clvtools import load_apparel_static_cov, load_apparel_trans
+    from clvtools import (
+        ClvData,
+        ClvDataStaticCov,
+        load_apparel_static_cov,
+        load_apparel_trans,
+    )
 
     return ClvDataStaticCov(
         ClvData(load_apparel_trans(), time_unit="week", estimation_split=104),
@@ -702,8 +706,12 @@ class TestFamilyConstraintsAndRegularization:
         )
 
     def test_constraining_a_covariate_absent_from_a_process_is_rejected(self):
-        from clvtools import ClvData, ClvDataStaticCov
-        from clvtools import load_apparel_static_cov, load_apparel_trans
+        from clvtools import (
+            ClvData,
+            ClvDataStaticCov,
+            load_apparel_static_cov,
+            load_apparel_trans,
+        )
 
         data = ClvDataStaticCov(
             ClvData(load_apparel_trans(), time_unit="week", estimation_split=104),
@@ -878,7 +886,7 @@ class TestCovariateResultAccessors:
     """The wrappers expose what the shared generics need."""
 
     @staticmethod
-    def _wrapped(cls, model: dict, hessian):
+    def _wrapped(family, model: dict, hessian):
         from clvtools._staticcov import StaticCovResult
 
         covariates = StaticCovResult(
@@ -891,7 +899,7 @@ class TestCovariateResultAccessors:
             log_likelihood=-1.0, unpenalised_log_likelihood=-1.0,
             converged=True, n_customers=600, hessian=hessian,
         )
-        return cls(**model, covariates=covariates)
+        return family(**model, covariates=covariates)
 
     @pytest.mark.parametrize("family,model", [
         (bgnbd.BgnbdStaticCovParams, {"r": 1.0, "alpha": 2.0, "a": 3.0, "b": 4.0}),

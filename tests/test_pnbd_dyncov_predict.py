@@ -18,6 +18,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
+from conftest import fixture_csv, fixture_json
+from paper_values import DYNCOV_FUTURE_PAPER
 
 from clvtools import (
     ClvData,
@@ -31,8 +33,6 @@ from clvtools import (
 from clvtools.gg import GgParams
 from clvtools.pnbd.dyncov import PnbdDynCovParams
 from clvtools.pnbd.dyncov_predict import abcd, new_customer_expectation
-from conftest import fixture_csv, fixture_json
-from paper_values import DYNCOV_FUTURE_PAPER
 
 NAMES = ["High.Season", "Gender", "Channel"]
 
@@ -246,7 +246,7 @@ class TestThePapersScenario:
             predict(data, _params("dyncov_fit_full"), prediction_end=95)
 
     def test_a_dyncov_model_needs_dyncov_data(self, apparel_trans):
-        with pytest.raises(ValueError, match="ClvDataDynCov"):
+        with pytest.raises(TypeError, match="ClvDataDynCov"):
             predict(
                 ClvData(apparel_trans, time_unit="week"),
                 _params("dyncov_fit_full"), prediction_end=95,

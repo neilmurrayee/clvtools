@@ -213,7 +213,7 @@ def nbd_pmf(x: ArrayLike, t: ArrayLike, r: float, alpha: float) -> NDArray[np.fl
 # -- the two processes combined -----------------------------------------------
 
 
-def likelihood_alive_at_T(
+def likelihood_alive_at_T(  # noqa: N802 - `T` is the paper's observation window
     x: ArrayLike, T: ArrayLike, lam: ArrayLike
 ) -> NDArray[np.float64]:
     r"""Eq. (8) -- the customer is still alive at the end of the window.

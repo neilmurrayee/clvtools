@@ -26,7 +26,6 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
-
 from conftest import fixture_csv, fixture_json
 
 from clvtools.pnbd.dyncov import (
@@ -68,7 +67,8 @@ class TestWalk:
 
     def test_element_access_is_zero_based(self):
         w = Walk(np.array([10.0, 20.0, 30.0]))
-        assert w.elem(0) == 10.0 and w.elem(2) == 30.0
+        assert w.elem(0) == 10.0
+        assert w.elem(2) == 30.0
 
     def test_sum_from_to_includes_both_ends(self):
         """Mirrors Armadillo's ``subvec``, which the C++ relies on."""
@@ -118,7 +118,7 @@ class TestWalkIntegral:
 
     def test_scaling_every_multiplier_scales_the_integral(self):
         base = TransactionWalk(np.array([2.0, 5.0, 7.0]), d1=0.5, tjk=2.5)
-        scaled = TransactionWalk(base.values * 3.0, d1=0.5, tjk=2.5)
+        scaled = TransactionWalk(base.values * 3.0, d1=0.5, tjk=2.5)  # noqa: PD011
         assert walk_integral(scaled) == pytest.approx(3.0 * walk_integral(base))
 
 
@@ -248,7 +248,7 @@ class TestAgainstOracle:
         once the inputs have been through a file. That is six orders of
         magnitude below F2 itself, and the log-likelihood is unaffected.
         """
-        case, got, want = compared
+        _case, got, want = compared
         akt = want["akt"].to_numpy(dtype=float)
         aT = want["aT"].to_numpy(dtype=float)
         finite = np.isfinite(akt) & np.isfinite(aT)
@@ -260,7 +260,7 @@ class TestAgainstOracle:
         assert np.all(f2_2[both] < 1e-6 * f2[both])
 
     def test_the_log_likelihood_matches(self, compared):
-        case, got, want = compared
+        _case, got, want = compared
         np.testing.assert_allclose(got["LL"], want["LL"], rtol=1e-10)
 
     def test_the_sample_log_likelihood_matches(self, compared, dyncov_walks):
@@ -484,7 +484,7 @@ class TestWalkConstructionValidation:
     def test_rejects_covariates_without_a_date_column(self, data):
         from clvtools.pnbd.dyncov import build_walks
 
-        with pytest.raises(ValueError, match="no 'Cov.Date' column"):
+        with pytest.raises(ValueError, match=r"no 'Cov\.Date' column"):
             build_walks(data, pd.DataFrame({"Id": ["1"], "Gender": [0]}))
 
     def test_rejects_an_unknown_covariate_name(self, data):
@@ -506,6 +506,42 @@ class TestWalkConstructionValidation:
                 names_cov_life=["High.Season"], names_cov_trans=["High.Season"],
             )
 
+    def test_rejects_two_processes_on_different_date_grids(self, data):
+        """The walk indices are derived once and used to slice both matrices.
+
+        Nothing downstream would notice a transactional grid shifted against
+        the lifetime one: every walk would simply read the wrong intervals and
+        the likelihood would come back wrong but finite.
+        """
+        from clvtools import load_apparel_dyn_cov
+        from clvtools.pnbd.dyncov import build_walks
+
+        covariates = load_apparel_dyn_cov()
+        shifted = covariates.copy()
+        shifted["Cov.Date"] = shifted["Cov.Date"] + pd.Timedelta(days=7)
+        with pytest.raises(ValueError, match="share one date grid"):
+            build_walks(
+                data, covariates, shifted,
+                names_cov_life=["High.Season"], names_cov_trans=["High.Season"],
+            )
+
+    def test_rejects_a_series_too_short_for_the_walks_it_must_cover(self, data):
+        """A short series would slice to fewer rows than the walk spans.
+
+        The two grids still agree everywhere they overlap, so the grid check
+        passes; it is the stacking that would silently shift every later walk.
+        """
+        from clvtools import load_apparel_dyn_cov
+        from clvtools.pnbd.dyncov import build_walks
+
+        covariates = load_apparel_dyn_cov()
+        short = covariates[covariates["Cov.Date"] <= pd.Timestamp("2006-06-01")]
+        with pytest.raises(ValueError, match="periods its walk spans"):
+            build_walks(
+                data, covariates, short,
+                names_cov_life=["High.Season"], names_cov_trans=["High.Season"],
+            )
+
     def test_covariate_names_default_to_every_column(self, data):
         from clvtools import load_apparel_dyn_cov
         from clvtools.pnbd.dyncov import build_walks
@@ -520,8 +556,12 @@ class TestDynCovDataObject:
     @staticmethod
     @pytest.fixture(scope="class")
     def dynamic():
-        from clvtools import ClvData, ClvDataDynCov
-        from clvtools import load_apparel_dyn_cov, load_apparel_trans
+        from clvtools import (
+            ClvData,
+            ClvDataDynCov,
+            load_apparel_dyn_cov,
+            load_apparel_trans,
+        )
 
         return ClvDataDynCov(
             ClvData(load_apparel_trans(), time_unit="week", estimation_split=104),
@@ -545,8 +585,12 @@ class TestDynCovDataObject:
         assert dynamic.walks() is dynamic.walks()
 
     def test_the_transaction_process_can_take_different_covariates(self):
-        from clvtools import ClvData, ClvDataDynCov
-        from clvtools import load_apparel_dyn_cov, load_apparel_trans
+        from clvtools import (
+            ClvData,
+            ClvDataDynCov,
+            load_apparel_dyn_cov,
+            load_apparel_trans,
+        )
 
         data = ClvDataDynCov(
             ClvData(load_apparel_trans(), time_unit="week", estimation_split=104),
@@ -637,8 +681,9 @@ class TestNumericalEdgeCases:
         unobserved. Forcing it on arguments SciPy *can* handle shows the two
         are the same quantity rather than one being a guess.
         """
-        from clvtools.pnbd.dyncov import _hyp_alpha_ge_beta, _hyp_beta_gt_alpha
         from scipy import special
+
+        from clvtools.pnbd.dyncov import _hyp_alpha_ge_beta, _hyp_beta_gt_alpha
 
         r, s, x = 1.5, 0.8, 3.0
         a = r + s + x
@@ -656,8 +701,9 @@ class TestNumericalEdgeCases:
 
     def test_the_fallback_keeps_the_result_finite(self):
         """Large ``x`` with ``z`` near 1 is where SciPy gives up."""
-        from clvtools.pnbd.dyncov import _hyp_alpha_ge_beta
         from scipy import special
+
+        from clvtools.pnbd.dyncov import _hyp_alpha_ge_beta
 
         r, s, x = 1.5, 0.8, 400.0
         a = r + s + x
@@ -719,7 +765,7 @@ class TestNumericalEdgeCases:
         """
         from unittest.mock import patch
 
-        import clvtools.pnbd.dyncov as dyncov
+        from clvtools.pnbd import dyncov
 
         customer = dyncov_walks.customers(np.zeros(3), np.zeros(3))[0]
         r, alpha, s, beta = 1.4490, 48.6361, 0.5613, 46.8844

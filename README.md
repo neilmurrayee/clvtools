@@ -5,7 +5,7 @@ following Meierer, Bachmann, Näf, Schilter & Algesheimer, *"Estimating
 Individual Customer Lifetime Values with R: The CLVTools Package"* (Journal of
 Statistical Software, submission 5634).
 
-**[📄 The paper's case study, executable →](docs/paper.md)**
+**[📄 The paper's case study, executable →](docs/paper.md)** &nbsp;·&nbsp; **[📘 The R package's own walkthrough →](docs/vignette.md)**
 
 Every section of the paper maps to a module; every module's docstrings carry the
 paper's equations, its own words, and worked examples that **pytest executes**.
@@ -143,6 +143,50 @@ $\frac{\lambda^{x+1}\mu}{\lambda+\mu}e^{-(\lambda+\mu)T}$, where eq. (10) in the
 body has no $\mu$. Integrating the appendix version does not reproduce the
 closed form the appendix then states; eq. (10) does.
 
+**CLVTools computes AIC and BIC of a regularized fit from the penalised mean
+log-likelihood.** Its advanced-techniques vignette prints `AIC 35.4626` and
+`BIC 70.6380` for a model whose log-likelihood is −5833.33; those are exactly
+`2k − 2L` and `k·ln(n) − 2L` for `k = 8`, `n = 600` and `L = −9.7313`, the
+penalised *mean* objective its `logLik()` returns. The same model without
+regularization is printed at `AIC 11658.1254`. An information criterion
+computed on a per-customer mean is not comparable with one computed on a sum,
+so those two numbers cannot be compared with each other — which is the one
+thing an AIC is for. This package reports `11682.6547` from the unpenalised
+sum. Both relationships are asserted in
+`TestRegularizationAgainstTheVignette`, so the deviation cannot drift into
+being an accident.
+
+**The R documentation prints z-values for parameters it says have none.** The
+same vignette's coefficient tables give `r`, `alpha`, `s` and `beta` z- and
+p-values, which contradicts §6.4.1 — a null of zero "lies outside the
+admissible parameter space" — and CLVTools' own `?pnbd`, which states the
+indicators "are set to NA on purpose". This package follows the paper and
+reports `NaN`.
+
+**Several examples in the R documentation are stale.**
+`?predict.clv.fitted.transactions` prints two prediction end dates,
+`2010-11-28` and `2016-12-17`, that are unreachable from the code beside them:
+the comment says "the 37 weeks fitting period" while the call passes
+`estimation.split = 52`, and ten weeks past either estimation end on
+`apparelTrans` is 2006-03-12 or 2011-02-28. Both `?summary.clv.data` examples
+name customers — `"1219"`, and `"1000"` — that are not in `apparelTrans`, whose
+ids run 1..600; CLVTools answers with a table of `Inf`, `-Inf` and `NaN` and a
+warning. `ClvData.summary(ids=...)` raises instead. None of these printed
+values are used as oracles here, and `docs/audit.md` records why.
+
+**Three defects that static analysis found, once it was turned on.** A
+non-raw edit had written literal control characters into `pnbd/dyncov.py`'s
+`PAlive` docstring, so the LaTeX for that equation read `\x0crac{\x07lpha_0}`
+rather than `\frac{\alpha_0}` — invisible in a diff, and wrong in the rendered
+maths. Separately, `build_walks` computed the transactional covariate grid and
+then discarded it: every walk's interval indices came from the *lifetime* grid
+and were used to slice both covariate matrices, so a transactional series on a
+different grid, or one too short for the walks it had to cover, would have been
+sliced silently into misalignment and returned a wrong but finite likelihood.
+Both cases now raise, and both are covered by
+`TestWalkConstructionValidation`. The unused variable that pointed at them was
+the linter's `RUF059`.
+
 **Two places this implementation reaches a better optimum than CLVTools 0.12.1.**
 Its *correlated* Pareto/NBD fit attains −5850.82 against −5848.10 for its own
 uncorrelated fit — impossible at a true optimum, since `m = 0` nests it — because
@@ -233,16 +277,27 @@ which it reported successful convergence on the Gamma-Gamma at a local optimum
 ## Testing
 
 ```bash
-uv run pytest                  # 808 tests, including doctests in src/ and docs/
-uv run pytest -m paper         # 24 published-number checks
-uv run pytest -m oracle        # 221 checks against R CLVTools fixtures
-uv run pytest -m slow          # 114 full-dataset MLE fits
+uv run pytest                  # 888 tests, including doctests in src/ and docs/
+uv run pytest -m paper         # 24 numbers printed in the paper
+uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
+uv run pytest -m oracle        # 229 checks against R CLVTools fixtures
+uv run pytest -m slow          # 138 full-dataset MLE fits
 uv run pytest -m dyncov_fit    # the time-varying covariate MLE; ~17 minutes
 uv run pytest --cov=clvtools --cov-report=term-missing
+uv run pytest -m quality       # lint, complexity and size gates (run by default)
 ```
 
 100% line coverage of `src/`. The time-varying covariate fit is deselected by
 default; everything else runs in about three minutes.
+
+Static analysis is one of the tests rather than a separate command, so there is
+a single way to be green. `ruff` runs over `src/`, `tests/`, `tools/` and
+`docs/` with complexity and design limits — mccabe 10, 50 statements, 12
+branches, 12 arguments — and a module-size limit counted in *code* lines,
+docstrings excluded: 37% of `src/` is docstring by design, and a raw line count
+would rank the best-documented modules worst. Every threshold was measured
+against this codebase rather than taken from a default, so each sits just above
+what the code needs and trips on a regression.
 
 The suite is layered: published numbers, agreement with the reference
 implementation expression by expression, internal cross-checks between
@@ -250,6 +305,14 @@ independently derived equations (mixing the individual-level expressions
 numerically to reproduce the marginalised ones), nesting relationships the paper
 asserts (zero covariate effects recover the standard model; `m = 0` recovers
 independence), and every worked example in the docs.
+
+"Published" means the R package's own documentation as well as the paper. Its
+vignettes print a constrained covariate table, a regularized one and an
+`lrtest()` that the paper never prints, and `?pmf` prints a fitted PMF table
+with the empirical frequencies beside it — on CDNOW, which the man pages use
+throughout where the paper uses the apparel data alone. Those are checked under
+`-m rdoc` and collected in `tests/rdoc_values.py`; `docs/vignette.md` walks the
+same ground as an executable document.
 
 `docs/audit.md` records what was compared against the paper and the R package,
 and what each gap turned into.

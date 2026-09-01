@@ -125,9 +125,9 @@ class NewCustomerDynamic(NewCustomer):
     ``first_transaction`` to at least ``num_periods`` beyond it.
     """
 
-    cov_life: "pd.DataFrame"
-    cov_trans: "pd.DataFrame"
-    first_transaction: "pd.Timestamp"
+    cov_life: pd.DataFrame
+    cov_trans: pd.DataFrame
+    first_transaction: pd.Timestamp
     time_unit: str = "week"
 
 
@@ -158,8 +158,8 @@ def newcustomer_static(
 
 def newcustomer_dynamic(
     num_periods: float,
-    cov_life: "pd.DataFrame",
-    cov_trans: "pd.DataFrame",
+    cov_life: pd.DataFrame,
+    cov_trans: pd.DataFrame,
     first_transaction,
     time_unit: str = "week",
 ) -> NewCustomerDynamic:
@@ -303,7 +303,7 @@ def _new_customer_rates(params, spec: NewCustomerStatic) -> dict:
 
 
 def _resolve_prediction_end(
-    clv_data: ClvData, prediction_end: int | float | str | pd.Timestamp | None
+    clv_data: ClvData, prediction_end: float | str | pd.Timestamp | None
 ) -> pd.Timestamp:
     """The last date the prediction covers.
 
@@ -388,7 +388,7 @@ def _predict_dyncov(
     from clvtools.pnbd.dyncov_predict import prediction_table
 
     if not isinstance(clv_data, ClvDataDynCov):
-        raise ValueError(
+        raise TypeError(
             "a time-varying covariate model needs covariate data: build the "
             "data with ClvDataDynCov before predicting"
         )
@@ -424,7 +424,7 @@ def _model_rates(clv_data: ClvData, params) -> dict:
     if not _has_covariates(params):
         return params.as_dict()
     if not isinstance(clv_data, ClvDataStaticCov):
-        raise ValueError(
+        raise TypeError(
             "a covariate model needs covariate data: build the data with "
             "ClvDataStaticCov before predicting"
         )
@@ -472,7 +472,7 @@ def predict(
     clv_data: ClvData,
     params: PnbdParams,
     spending_params: GgParams | None = None,
-    prediction_end: int | float | str | pd.Timestamp | None = None,
+    prediction_end: float | str | pd.Timestamp | None = None,
     continuous_discount_factor: float = DEFAULT_DISCOUNT_FACTOR,
 ) -> pd.DataFrame:
     r"""The combined prediction table of S6.3. Cf. ``predict()``.

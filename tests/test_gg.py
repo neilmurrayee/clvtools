@@ -18,10 +18,9 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from scipy import integrate, special, stats
-
 from conftest import fixture_csv, fixture_json
 from paper_values import GG_MLE, NEWCUSTOMER_SPENDING
+from scipy import integrate, special, stats
 
 from clvtools import gg
 
@@ -52,7 +51,8 @@ class TestPaperTranscriptionErrors:
         assert mass == pytest.approx(1.0, abs=1e-8)
 
         p, nu, r = 3.099, 0.05, 1.4490  # r from the Pareto/NBD fit of S6.2.1
-        as_printed = lambda z: nu**p * z ** (r - 1) * np.exp(-z * nu) / special.gamma(p)
+        def as_printed(z):
+            return nu**p * z ** (r - 1) * np.exp(-z * nu) / special.gamma(p)
         printed_mass, _ = integrate.quad(as_printed, 0, np.inf)
         assert printed_mass != pytest.approx(1.0, abs=1e-3)
 
@@ -121,7 +121,9 @@ class TestDensities:
 
         for z_bar in (10.0, 45.0, 120.0):
             mixed, _ = integrate.quad(
-                lambda nu: gg.spending_pdf_given_x(z_bar, x, p, nu) * gamma_pdf_nu(nu),
+                lambda nu, z_bar=z_bar: (
+                    gg.spending_pdf_given_x(z_bar, x, p, nu) * gamma_pdf_nu(nu)
+                ),
                 0, np.inf, limit=400, epsabs=1e-16, epsrel=1e-13,
             )
             assert float(gg.mean_spending_pdf(z_bar, x, p, q, gamma)) == pytest.approx(
@@ -266,7 +268,7 @@ class TestFitting:
 
         default = optimize.minimize(
             negative_ll, np.zeros(3), method="Nelder-Mead",
-            options=dict(maxiter=100_000, maxfev=100_000, xatol=1e-12, fatol=1e-12),
+            options={"maxiter": 100_000, "maxfev": 100_000, "xatol": 1e-12, "fatol": 1e-12},
         )
         assert default.success                      # it reports success ...
         assert -default.fun < fitted.log_likelihood - 30   # ... at a worse peak

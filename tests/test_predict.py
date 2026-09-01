@@ -19,19 +19,18 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
-
 from conftest import fixture_csv, fixture_json
 from paper_values import (
     DISCOUNT_RATE_ANNUAL,
+    HOLDOUT_ERRORS,
     NEWCUSTOMER_PERIODS,
     NEWCUSTOMER_SPENDING,
     NEWCUSTOMER_TOTAL,
     NEWCUSTOMER_TRANSACTIONS,
-    HOLDOUT_ERRORS,
+    PREDICT_FULL_HEAD,
     PREDICTION_PERIOD_FIRST,
     PREDICTION_PERIOD_LAST,
     PREDICTION_WEEKS,
-    PREDICT_FULL_HEAD,
 )
 
 from clvtools import ClvData, ClvDataStaticCov, load_apparel_trans
@@ -308,8 +307,8 @@ class TestDiscountFactor:
         CLVTools defaults to :math:`\ln(1.1)`, applied per *period*. With weekly
         data that is 52 times heavier than a 10% annual rate.
         """
-        assert DEFAULT_DISCOUNT_FACTOR == pytest.approx(np.log(1.1))
-        assert DEFAULT_DISCOUNT_FACTOR > 50 * discount_factor(0.10)
+        assert pytest.approx(np.log(1.1)) == DEFAULT_DISCOUNT_FACTOR
+        assert 50 * discount_factor(0.10) < DEFAULT_DISCOUNT_FACTOR
 
     def test_rejects_an_unknown_time_unit(self):
         with pytest.raises(ValueError, match="time_unit must be one of"):
@@ -663,7 +662,7 @@ class TestCovariatePredictionForTheOtherFamilies:
             "bgnbd", fixture_json("predict_bgnbd_staticcov_coefficients")
         )
         data = ClvData(transactions, time_unit="week", estimation_split=104)
-        with pytest.raises(ValueError, match="needs covariate data"):
+        with pytest.raises(TypeError, match="needs covariate data"):
             predict(data, params)
 
     @pytest.mark.parametrize("name", ["bgnbd", "ggomnbd"])

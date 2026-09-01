@@ -251,3 +251,295 @@ without the correlation, against a fixture that pins CLVTools doing the same.
 - `plot(..., other.models=, label=)` (Figure 12) — `tracking_data` takes a
   `model_name`, so several frames can be concatenated; only a convenience
   wrapper is missing, folded into task 4.
+
+---
+
+# Round 2: the R package's own documentation
+
+**Status: done**, 2026-09-01. Every tier below is marked with what it turned
+into. Three items were reclassified on contact with the code — two because the
+behaviour was already covered, one because it was not a gap at all — and those
+are marked ☒ with the reason. New fixtures come from
+`tools/oracle/generate_cdnow_fixtures.R`; the published values live in
+`tests/rdoc_values.py` and are checked under `-m rdoc`.
+
+Date: 2026-09-01. The first round worked from the paper and from CLVTools'
+`NAMESPACE`. It did not read the package's *documentation* — the 24 man pages
+that carry `\examples{}`, the walkthrough vignette, and the three PDF vignettes
+shipped in `.Rlib/CLVTools/doc/`. Those turn out to print numbers the paper
+never does, on the same data the paper uses.
+
+**Sources, and what each is worth.**
+
+| Source | Size | What it gives |
+| --- | --- | --- |
+| `CLVTools_advanced_techniques.pdf` | 7 sections | **Three full `summary()` tables and an `lrtest()` table with printed values.** The richest source found. |
+| `?pmf` | 1 page | A published PMF table on `cdnow`, model *and* empirical. |
+| 24 man pages with `\examples{}` | ~1,230 lines | Runnable API examples; almost all use `cdnow`. |
+| `doc/CLVTools.Rmd` (+ `.R`) | 61 chunks | An end-to-end walkthrough, the R analogue of `docs/paper.md`. |
+| `CLVTools_classes.pdf`, `CLVTools_intuitive_explanations.pdf` | 392 / 344 lines | Prose and class diagrams; no oracles. |
+
+Reproduce them with:
+
+    S=/tmp/rdex; mkdir -p $S
+    R_LIBS=.Rlib Rscript -e 'db <- tools::Rd_db("CLVTools", lib.loc=".Rlib");
+      for (n in names(db)) try(tools::Rd2ex(db[[n]],
+        out=file.path(Sys.getenv("S"), sub("\\.Rd$", ".R", n))), silent=TRUE)'
+    pdftotext -layout .Rlib/CLVTools/doc/CLVTools_advanced_techniques.pdf -
+
+**Everything in tier A below was run against this implementation before being
+listed**; the agreement column is measured, not hoped for.
+
+---
+
+## Tier A — published numbers unique to the R documentation
+
+These are the reason this round is worth doing. None of them appear in the
+paper, and none are in `tests/paper_values.py`. All are on `apparelTrans` with
+`estimation_split=104` — the paper's own case study data — or on `cdnow`.
+
+### ☑ A1. Constrained static-covariate Pareto/NBD — advanced techniques §4
+
+Seven estimates, seven standard errors, `LL -5826.5342`, `AIC 11667.0684`,
+`BIC 11697.8469`, from `latentAttrition(~.|., names.cov.constr="Gender")`.
+
+*Measured:* estimates agree to 4.7e-4 relative, standard errors to 6.0e-4
+(both the Pareto/NBD ridge, as in the README's findings); **LL, AIC and BIC
+agree to every printed decimal.**
+
+*Done when:* the table is in `tests/paper_values.py` and a test asserts it, at
+the tolerances above. We currently test only that `constr.Gender` *appears* in
+`names` — never its value.
+
+
+**Done:** `TestConstraintsAgainstTheVignette` in `test_pnbd_advanced.py`, and
+`rdoc_values.CONSTRAINED_*`. Estimates agree to 1e-3, standard errors to 2e-3,
+and LL, AIC and BIC to every printed decimal. Turned up a second finding: the
+vignette prints z-values for `r`, `alpha`, `s` and `beta`, contradicting both
+the paper and `?pnbd`; `test_model_parameters_carry_no_z_value` pins that this
+package reports `NaN` there.
+
+### ☑ A2. `lrtest()` on that constraint — advanced techniques §4
+
+`#Df` 7 and 8, `LogLik` −5826.5 and −5821.1, `Df 1`, `Chisq 10.943`,
+`Pr(>Chisq) 0.0009396`.
+
+*Measured:* **exact to every printed digit**, including the p-value.
+
+*Done when:* `likelihood_ratio_test` is asserted against all five. It has no
+published-number test today.
+
+
+**Done:** `TestLikelihoodRatioTestAgainstTheVignette`. Every field of
+`LikelihoodRatioTest` now answers to a published value; the statistic and the
+p-value match to all the digits printed. Previously the only test of a
+likelihood ratio asserted `p < 0.05` and computed the statistic inline rather
+than through `likelihood_ratio_test` at all.
+
+### ☑ A3. Regularized static-covariate Pareto/NBD — advanced techniques §2
+
+Eight estimates and `LL -9.7313` from `reg.lambdas = c(trans=0.1, life=0.2)`.
+
+*Measured:* estimates to 1.3e-3 relative; **`LL` exact**. That −9.7313 is
+independent confirmation of the mean-versus-sum trap CLAUDE.md warns about.
+
+*Done when:* asserted, **and** the AIC/BIC deviation in "New finding" below is
+pinned by the same test.
+
+
+**Done:** `TestRegularizationAgainstTheVignette`. The first check anywhere of
+*asymmetric* weights -- the paper and every oracle fixture use equal ones -- and
+the AIC/BIC deviation below is pinned in the same class.
+
+### ☑ A4. `?pmf` — the Pareto/NBD PMF on `cdnow`
+
+Eleven values for `x = 0..10` (0.616514, 0.168309, … 0.002877) after fitting
+on `cdnow` with `estimation.split=37`.
+
+*Measured:* every value within 2.0e-5 absolute, against six printed decimals.
+
+*Done when:* asserted. Our per-family `pmf` has doctests but no published-value
+check, and `pmf_data` is tested only structurally.
+
+
+**Done:** `TestProbabilityMassFunction` in the new `tests/test_cdnow.py`,
+against both the printed table and `cdnow_pmf.csv` per customer. The man page's
+0.616514 at `x = 0`, CLVTools 0.12.1's current 0.616551 and this package's
+0.616533 all sit within 4e-5: the ridge, not an error.
+
+### ☑ A5. `?pmf` — the empirical frequencies alongside it
+
+The same page prints the actuals: 1432, 436, 208, 100, 60, 36, 27, 21, 5, 4, 7
+out of 2357 customers.
+
+*Measured:* **all eleven counts exact.**
+
+*Done when:* asserted. This needs no model at all — it validates `load_cdnow`,
+the day-level aggregation, and `customer_summary` in one line, and it is the
+cheapest test on this list.
+
+
+**Done:** `TestEmpiricalFrequencies`. All eleven counts exact, against both the
+man page and `cdnow_frequencies.json`. As predicted, the cheapest test on the
+list and the one that checks the most per line.
+
+---
+
+## Tier B — `cdnow` as a second end-to-end case
+
+`cdnow` is the dataset the R documentation reaches for by default, and it is
+already in `data/`. We test that it loads and has 6,696 rows, and nothing else.
+It is a second, independent dataset for machinery currently exercised on
+`apparelTrans` alone — different size (2,357 customers), different split
+convention, and no covariates.
+
+- **B1.** A Pareto/NBD fit on `cdnow` at `estimation_split=37`, against an
+  oracle fixture. A4 already needs this fit, so the marginal cost is one
+  fixture column.
+- **B2.** The three `?clvdata` constructions: `estimation_split=37`,
+  `estimation_split="1997-10-15"`, and `data_end="1998-12-31"`. The last
+  documents an invariant worth asserting outright — extending `data_end` moves
+  the holdout period and leaves the estimation period untouched.
+- **B3.** The eleven `subset()` expressions in `?subset.clv.data`.
+  `as_data_frame`'s docstring already *claims* the pandas equivalence; these
+  turn the claim into tests.
+
+**☑ Done:** all three, in `tests/test_cdnow.py`. B1 has its own oracle
+(`tools/oracle/generate_cdnow_fixtures.R` → `cdnow_pnbd_fit.json`), checking
+coefficients, standard errors, log-likelihood and both information criteria.
+B3 turned up a trap worth the whole exercise: `query('Date == "1997-02-16"')`
+returns an **empty** frame rather than raising, because pandas 3 does not
+coerce a bare string on the right of `==` — while the range comparisons in the
+same man page do coerce. Two spellings that look alike, one silently wrong, in
+the exact idiom `as_data_frame`'s docstring recommends. That docstring now
+warns about it with a worked doctest, and
+`test_a_bare_date_string_in_query_matches_nothing` pins the behaviour.
+
+---
+
+## Tier C — documented behaviour we implement but never exercise
+
+Each is a documented call whose Python counterpart exists. No new code.
+
+- **C1.** `?plot.clv.data`, five variants: `frequency` with `trans.bins=0:15`
+  and `label.remaining="16+"`; `frequency` with `count.repeat.trans=FALSE` and
+  `trans.bins=1:9`; `spending` with `mean.spending=FALSE`; `timings` with
+  `ids=25`; `timings` with `ids=nobs(...)`. `diagnostics` takes all of these.
+- **C2.** `?predict.clv.fitted.transactions`: predicting with spending omitted;
+  `prediction.end` as a date string; and the documented *failure* when there is
+  no holdout and no `prediction.end`.
+- **C3.** `?newcustomer`: `num.periods=3.68` with `Gender=1, Channel=0` on the
+  static-covariate model, and `newcustomer.spending()` against a Gamma/Gamma
+  fitted with `remove.first.transaction=FALSE`.
+- **C4.** `?clv.bootstrapped.apply`: a custom sampler (50% of customers without
+  replacement) and both `fn.boot.apply=coef` and `=predict`.
+- **C5.** `?summary.clv.fitted`: the "Used Options" block, which reports the
+  regularization lambdas back. Falls out of A3.
+
+**☒ Mostly already covered — this tier was over-estimated.** Checking before
+writing showed the suite already had it: C1's variants are parametrised in
+`test_descriptives.py` (custom bins with a `label_remaining`,
+`count_repeat_transactions=False`, `mean_spending=False`, `timings` sampling
+and its rejection of unknown customers); C2 is `TestSpendingIsOptional` and
+`TestPredictionEnd`, including the failure with neither holdout nor
+`prediction_end`; C3 is `TestProspectiveCustomers`, covariate scenarios and
+all; C4 is `TestBootstrapApply`, custom sampler included. Restating the man
+pages' particular argument values would have added assertions and no coverage.
+
+**☑ What was genuinely missing, and is now done:**
+
+- the man page's own bootstrap sampler shape — half the customers *without*
+  replacement, so the resampled data is **smaller** than the original and
+  carries no duplicates, where every other sampler tested returns as many
+  customers as it was given (`test_a_sampler_may_draw_fewer_customers`), and
+  `fn.boot.apply = coef` as the documented use;
+- the descriptive layer run against a **second dataset**. Every descriptive in
+  S6.1.2 had only ever seen one 600-customer cohort split at 104 weeks;
+  `TestTheDescriptiveLayerOnASecondDataset` runs them on CDNOW, four times
+  larger and 61% zero repeaters. It also cross-checks the tracking series
+  against the model's own inputs: summed over the estimation grid it is
+  exactly the CBS.
+- `?spending`'s two conventions on CDNOW. Dropping the first transaction
+  leaves exactly the 1,432 zero repeaters with nothing to average, which ties
+  `spending_summary` to `?pmf`'s frequency table.
+
+---
+
+## Tier D — documented features with no counterpart here
+
+- **D1.** `summary(clv.data, ids="1219")` — a per-customer transaction summary.
+  `ClvData.summary()` takes no arguments. Smallest of the three.
+- **D2.** `I(log(Channel+2))` in a formula — `parse_formula` splits on `|` and
+  `+` only, and has no notion of a transformed term.
+- **D3.** `as.clv.data(cdnow)` — build from a raw frame with defaults and no
+  holdout. A thin constructor over what `ClvData` already does.
+
+Checked and **not** gaps: `pnbd(clv.static, names.cov.life="Channel")` is our
+`~ Channel | Gender + Channel`, already tested; `remove.first.transaction` is
+already a `spending_summary` argument.
+
+**☑ D1 done.** `ClvData.summary(ids=...)`, threaded through `_descriptives` and
+`mean_interpurchase_times`, against a new oracle fixture
+(`descriptives_summary_ids.csv`). It deviates deliberately: an id the data has
+never seen raises, where CLVTools returns a table of `Inf`, `-Inf` and `NaN`
+with a warning. The deviation is easy to justify — *both* examples in
+`?summary.clv.data` name customers that do not exist, and neither is obviously
+broken from the printed output.
+
+**☑ D2 done.** `I(...)` terms. Two halves: `_split_terms` splits a formula side
+on `+` only at parenthesis depth zero, so the `+` inside `I(log(Channel + 2))`
+stays arithmetic; and `ClvDataStaticCov.with_covariates` evaluates the
+expression through `DataFrame.eval` — not `eval` — and adds the result as a
+column named after the term, so the coefficient carries its own definition. R
+names the column by deparsing, which respaces the expression; nothing here
+reformats it, and the docstring says so.
+
+**☒ D3 was not a gap.** `as.clv.data(x)`'s signature is `clvdata()`'s defaults
+verbatim — `time.unit = "weeks"`, `estimation.split = NULL`, `name.id = "Id"`,
+`name.date = "Date"`, `name.price = "Price"` — which are exactly
+`ClvData.__init__`'s. It exists in R because coercion needs a generic; in
+Python the constructor already is one. Adding an alias would have been API for
+its own sake.
+
+---
+
+## Tier E — the walkthrough as an executable document
+
+**☑ E1 done.** [`docs/vignette.md`](vignette.md), mirroring `docs/paper.md`,
+following `doc/CLVTools.Rmd` and the advanced-techniques vignette. It runs in
+under three seconds and prints the constrained table, the `lrtest` and both
+regularization traps in the same narrative the vignettes use.
+
+**E1.** `docs/vignette.md`, mirroring `docs/paper.md`, following
+`doc/CLVTools.Rmd`'s 61 chunks. It covers ground the paper does not: the
+`estimation_split=40` spending fit, `plot()` before any model is fitted, and
+the order in which the vignette introduces the API. Worth doing after tiers A
+and C, which supply most of the numbers it would print.
+
+---
+
+## Not usable as oracles
+
+`?predict.clv.fitted.transactions` prints two prediction end dates —
+`# ends on 2010-11-28` and `# ends on 2016-12-17`. **Both are stale.** The
+comment says "the 37 weeks fitting period" while the code above it passes
+`estimation.split=52`, and `apparelTrans` runs 2005-01-02 to 2010-12-20, so ten
+weeks past either estimation end is 2006-03-12 or 2011-02-28. Neither printed
+date is reachable from the example that carries it. Do not test against them.
+
+---
+
+## New finding, for the README
+
+**CLVTools computes AIC and BIC of a regularized fit from the penalised mean
+log-likelihood.** The advanced-techniques vignette prints `AIC 35.4626` and
+`BIC 70.6380` for a fit whose unpenalised log-likelihood is −5833.33. Those are
+exactly `2k - 2L` and `k*ln(n) - 2L` for `k = 8`, `n = 600` and `L = -9.7313`,
+the penalised *mean* objective — reproduced here to the last digit. The same
+model without regularization is printed at `AIC 11658.1254`. An information
+criterion computed on a per-customer mean is not comparable with one computed
+on a sum, so CLVTools' two numbers cannot be compared with each other, which is
+the one thing an AIC is for. This implementation reports `AIC 11682.6547` from
+the unpenalised sum, which is comparable across models. The deviation is
+deliberate and should be pinned by a test and recorded in the README, per the
+house rule on deviations.

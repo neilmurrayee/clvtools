@@ -65,8 +65,10 @@ def numerical_hessian(
     out = np.empty((n, n))
     for i in range(n):
         for j in range(i, n):
-            ei = np.zeros(n); ei[i] = h[i]
-            ej = np.zeros(n); ej[j] = h[j]
+            ei = np.zeros(n)
+            ei[i] = h[i]
+            ej = np.zeros(n)
+            ej[j] = h[j]
             out[i, j] = out[j, i] = (
                 fn(at + ei + ej) - fn(at + ei - ej)
                 - fn(at - ei + ej) + fn(at - ei - ej)
@@ -88,7 +90,7 @@ class Fitted:
     @property
     def coefficients(self) -> dict[str, float]:
         """The estimates by name. Cf. ``coef()``."""
-        return dict(zip(self.names, self))
+        return dict(zip(self.names, self, strict=True))
 
     def _covariance(self) -> NDArray[np.float64]:
         if getattr(self, "hessian", None) is None:
@@ -114,7 +116,7 @@ class Fitted:
 
     def standard_errors(self) -> dict[str, float]:
         """Standard errors from the inverse Hessian, by name."""
-        return dict(zip(self.names, np.sqrt(np.diag(self._covariance()))))
+        return dict(zip(self.names, np.sqrt(np.diag(self._covariance())), strict=True))
 
     def confint(self, level: float = 0.95) -> pd.DataFrame:
         r"""Wald confidence intervals. Cf. ``confint()``.

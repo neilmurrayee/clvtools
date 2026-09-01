@@ -35,8 +35,8 @@ __all__ = [
     "discounted_expected_residual_transactions",
     "expectation",
     "likelihood_appendix",
-    "log_likelihood_ind",
     "log_likelihood",
+    "log_likelihood_ind",
     "pmf",
     "probability_alive",
 ]

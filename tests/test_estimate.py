@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from paper_values import GG_MLE, PNBD_MLE, PNBD_STATIC_MLE
 
 from clvtools import (
     ClvData,
@@ -24,7 +25,6 @@ from clvtools import (
     spending,
 )
 from clvtools.estimate import parse_formula
-from paper_values import GG_MLE, PNBD_MLE, PNBD_STATIC_MLE
 
 NAMES_DYN = ["High.Season", "Gender", "Channel"]
 
@@ -72,6 +72,83 @@ class TestFormula:
 
 
 @pytest.mark.slow
+class TestTransformedTerms:
+    """``I(...)`` in a formula -- ``?latentAttrition``.
+
+    ``latentAttrition(formula = ~ Channel + Gender | I(log(Channel + 2)), ...)``
+    passes an *expression* rather than a column name, and R evaluates it
+    against the covariate data. The ``+`` inside it is arithmetic, so the term
+    has to survive the split that separates ``Channel + Gender``.
+    """
+
+    def test_the_inner_plus_does_not_split_the_term(self):
+        assert parse_formula("~ Gender | I(log(Channel + 2))") == (
+            ["Gender"], ["I(log(Channel + 2))"]
+        )
+
+    def test_a_transformed_term_beside_a_plain_one(self):
+        assert parse_formula("~ Channel + Gender | I(log(Channel + 2)) + Gender") == (
+            ["Channel", "Gender"], ["I(log(Channel + 2))", "Gender"]
+        )
+
+    def test_nested_parentheses_survive(self):
+        assert parse_formula("~ . | I(log(exp(Channel) + 2))") == (
+            None, ["I(log(exp(Channel) + 2))"]
+        )
+
+    def test_the_expression_is_evaluated(self, static_data):
+        """``Channel`` is 0 or 1, so ``log(Channel + 2)`` is log 2 or log 3."""
+        derived = static_data.with_covariates(None, ["I(log(Channel + 2))"])
+        assert derived.names_cov_trans == ["I(log(Channel + 2))"]
+        column = derived.design_trans().ravel()
+        assert set(np.round(column, 9)) == {
+            round(float(np.log(2)), 9), round(float(np.log(3)), 9)
+        }
+
+    def test_it_is_the_transform_of_the_original_column(self, static_data):
+        original = static_data.with_covariates(None, ["Channel"]).design_trans()
+        derived = static_data.with_covariates(
+            None, ["I(log(Channel + 2))"]
+        ).design_trans()
+        np.testing.assert_allclose(derived, np.log(original + 2))
+
+    def test_the_original_column_is_left_alone(self, static_data):
+        """Deriving must not disturb the frame it derives from."""
+        before = static_data.design_trans(["Channel"]).copy()
+        static_data.with_covariates(None, ["I(log(Channel + 2))"])
+        np.testing.assert_array_equal(static_data.design_trans(["Channel"]), before)
+        assert "I(log(Channel + 2))" not in static_data.names_cov_trans
+
+    def test_the_two_processes_transform_independently(self, static_data):
+        derived = static_data.with_covariates(
+            ["Gender"], ["I(Channel * 2)"]
+        )
+        assert derived.names_cov_life == ["Gender"]
+        assert derived.names_cov_trans == ["I(Channel * 2)"]
+        np.testing.assert_allclose(
+            derived.design_trans(),
+            2 * static_data.design_trans(["Channel"]),
+        )
+
+    def test_a_transform_reaches_the_fit(self, static_data):
+        """The whole point: the derived column is what gets estimated."""
+        fit = latent_attrition(
+            formula="~ Gender | I(log(Channel + 2))",
+            family=pnbd, data=static_data, hessian=False, maxiter=60,
+        )
+        assert fit.names_cov_trans == ["I(log(Channel + 2))"]
+        assert "trans.I(log(Channel + 2))" in fit.names
+
+    def test_an_unevaluable_expression_is_rejected(self, static_data):
+        with pytest.raises(ValueError, match="cannot evaluate"):
+            static_data.with_covariates(None, ["I(log(NoSuchColumn))"])
+
+    def test_the_expression_cannot_reach_the_interpreter(self, static_data):
+        """It goes to `DataFrame.eval`, not to `eval`."""
+        with pytest.raises(ValueError, match="cannot evaluate"):
+            static_data.with_covariates(None, ["I(__import__('os').getcwd())"])
+
+
 class TestDispatch:
     """The data object's type picks the estimator, as it does in S6.4."""
 

@@ -9,12 +9,10 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from conftest import fixture_csv
 from scipy import special
 
-from conftest import fixture_csv
-
-from clvtools.special import hyp2f1_ratio, kummer_u
-from clvtools.special import _hyp2f1_series
+from clvtools.special import _hyp2f1_series, hyp2f1_ratio, kummer_u
 
 
 @pytest.mark.oracle
@@ -63,7 +61,7 @@ class TestHyp2f1Ratio:
         for a in (0.7, 3.0, 12.0):
             for z in (0.2, 0.6, 0.9):
                 want, _ = integrate.quad(
-                    lambda t, a=a: a * t ** (a - 1) / (1 - t * z), 0, 1
+                    lambda t, a=a, z=z: a * t ** (a - 1) / (1 - t * z), 0, 1
                 )
                 assert hyp2f1_ratio(a, 1.0, z) == pytest.approx(want, rel=1e-9)
 
@@ -77,7 +75,7 @@ class TestHyp2f1Ratio:
 
         for a, b, z in [(0.9, 2.0, 0.4), (4.0, 0.5, 0.85), (25.0, 3.0, 0.7)]:
             want, _ = integrate.quad(
-                lambda t: a * t ** (a - 1) * (1 - t * z) ** (-b), 0, 1
+                lambda t, a=a, b=b, z=z: a * t ** (a - 1) * (1 - t * z) ** (-b), 0, 1
             )
             assert hyp2f1_ratio(a, b, z) == pytest.approx(want, rel=1e-9)
 
@@ -85,7 +83,8 @@ class TestHyp2f1Ratio:
         """The corner that motivates the fallback: large a, z near 1."""
         assert not np.isfinite(special.hyp2f1(200.0, 20.0, 201.0, 0.999))
         got = hyp2f1_ratio(200.0, 20.0, 0.999)
-        assert np.isfinite(got) and got > 0
+        assert np.isfinite(got)
+        assert got > 0
 
     def test_fallback_agrees_with_scipy_where_both_work(self):
         for a, b, z in [(3.0, 2.0, 0.5), (40.0, 1.5, 0.9), (10.0, 6.0, 0.25)]:
@@ -126,7 +125,9 @@ class TestKummerU:
 
         for a, b, z in [(0.5613, 0.5613, 0.21), (2.0, 1.0, 1.5)]:
             want, _ = integrate.quad(
-                lambda t: np.exp(-z * t) * t ** (a - 1) * (1 + t) ** (b - a - 1),
+                lambda t, a=a, b=b, z=z: (
+                    np.exp(-z * t) * t ** (a - 1) * (1 + t) ** (b - a - 1)
+                ),
                 0, np.inf,
             )
             want /= special.gamma(a)

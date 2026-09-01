@@ -17,10 +17,10 @@ nothing in the models needs it.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import numpy as np
 import pandas as pd
-
-from collections.abc import Sequence
 
 from clvtools.data import ClvData
 
@@ -67,7 +67,7 @@ def _period_grid(data: ClvData, end: pd.Timestamp) -> pd.DatetimeIndex:
 def tracking_data(
     data: ClvData,
     expectation=None,
-    prediction_end: int | float | str | pd.Timestamp | None = None,
+    prediction_end: float | str | pd.Timestamp | None = None,
     cumulative: bool = False,
     model_name: str = "Model",
 ) -> pd.DataFrame:

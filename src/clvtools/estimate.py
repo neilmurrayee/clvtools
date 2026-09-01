@@ -43,6 +43,30 @@ FAMILIES: dict[str, dict[str, Any]] = {
 }
 
 
+def _split_terms(side: str) -> list[str]:
+    """Split one side of a formula on ``+``, but not inside parentheses.
+
+    ``I(log(Channel + 2))`` is one term; the ``+`` it contains belongs to the
+    expression. Anything unbalanced is left to the caller to reject by name.
+
+    >>> _split_terms("Gender + Channel")
+    ['Gender ', ' Channel']
+    >>> _split_terms("Gender + I(log(Channel + 2))")
+    ['Gender ', ' I(log(Channel + 2))']
+    """
+    terms, depth, start = [], 0, 0
+    for i, character in enumerate(side):
+        if character == "(":
+            depth += 1
+        elif character == ")":
+            depth -= 1
+        elif character == "+" and depth == 0:
+            terms.append(side[start:i])
+            start = i + 1
+    terms.append(side[start:])
+    return terms
+
+
 def parse_formula(formula: str) -> tuple[list[str] | None, list[str] | None]:
     """Split S6.4's covariate formula into attrition and transaction names.
 
@@ -51,16 +75,22 @@ def parse_formula(formula: str) -> tuple[list[str] | None, list[str] | None]:
     means every covariate the data object carries, as it does in R, and comes
     back as ``None`` for the fit to fill in.
 
+    A term wrapped in ``I(...)`` is an expression rather than a column name,
+    as it is in R, and survives splitting whole -- the ``+`` inside it is
+    arithmetic, not a term separator. :meth:`ClvDataStaticCov.with_covariates`
+    evaluates it.
+
     Examples
     --------
     >>> parse_formula("~ Gender + Channel | Gender")
     (['Gender', 'Channel'], ['Gender'])
     >>> parse_formula("~ . | .")
     (None, None)
+    >>> parse_formula("~ Gender | I(log(Channel + 2))")
+    (['Gender'], ['I(log(Channel + 2))'])
     """
     body = formula.strip()
-    if body.startswith("~"):
-        body = body[1:]
+    body = body.removeprefix("~")
     parts = body.split("|")
     if len(parts) != 2:
         raise ValueError(
@@ -72,7 +102,7 @@ def parse_formula(formula: str) -> tuple[list[str] | None, list[str] | None]:
         side = side.strip()
         if side == ".":
             return None
-        found = [n.strip() for n in side.split("+") if n.strip()]
+        found = [n for n in (t.strip() for t in _split_terms(side)) if n]
         if not found:
             raise ValueError(f"no covariates named in {side!r}")
         return found

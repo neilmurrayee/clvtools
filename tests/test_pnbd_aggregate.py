@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-
 from conftest import fixture_csv, fixture_json
 
 from clvtools.pnbd.aggregate import (
@@ -32,7 +31,7 @@ from clvtools.pnbd.aggregate import (
     probability_alive,
 )
 
-MLE = dict(r=1.4490, alpha=48.6361, s=0.5613, beta=46.8844)
+MLE = {"r": 1.4490, "alpha": 48.6361, "s": 0.5613, "beta": 46.8844}
 GRID = fixture_json("pnbd_nocov_grid")
 CASES = list(GRID["params"])
 #: Cases where CET and DERT are defined; the expression divides by (s - 1).
@@ -48,7 +47,7 @@ def _inputs(case: str):
         cbs["x"].to_numpy(),
         cbs["t.x"].to_numpy(),
         cbs["T.cal"].to_numpy(),
-        dict(r=p["r"], alpha=p["alpha"], s=p["s"], beta=p["beta"]),
+        {"r": p["r"], "alpha": p["alpha"], "s": p["s"], "beta": p["beta"]},
         fixture,
     )
 
@@ -134,7 +133,7 @@ class TestAppendixForm:
 
 
 class TestLikelihoodProperties:
-    def test_zero_purchase_customers_take_the_t_x_equals_T_branch(self):
+    def test_zero_purchase_customers_take_the_t_x_equals_T_branch(self):  # noqa: N802
         r"""With ``x = 0`` the paper sets ``t_x = 0``, but a customer whose last
         purchase coincides with the window end has ``t_x = T``, where the
         died-in-window term is exactly zero."""
@@ -152,7 +151,7 @@ class TestLikelihoodProperties:
 
     def test_alpha_equals_beta_is_continuous_with_its_neighbourhood(self):
         """The ``alpha == beta`` branch must be the limit of the general one."""
-        base = dict(x=4, t_x=60.0, T=104.0, r=1.2, s=0.8)
+        base = {"x": 4, "t_x": 60.0, "T": 104.0, "r": 1.2, "s": 0.8}
         at = log_likelihood_ind(alpha=50.0, beta=50.0, **base)
         near = log_likelihood_ind(alpha=50.0, beta=50.0 + 1e-7, **base)
         assert float(at) == pytest.approx(float(near), rel=1e-7)
@@ -170,9 +169,9 @@ class TestLikelihoodProperties:
         cbs = fixture_csv("cbs_estimation")
         x, t_x, T = cbs["x"], cbs["t.x"], cbs["T.cal"]
         best = log_likelihood(x, t_x, T, **MLE)
-        for name in MLE:
+        for name, value in MLE.items():
             for factor in (0.9, 1.1):
-                worse = dict(MLE, **{name: MLE[name] * factor})
+                worse = dict(MLE, **{name: value * factor})
                 assert log_likelihood(x, t_x, T, **worse) < best
 
 

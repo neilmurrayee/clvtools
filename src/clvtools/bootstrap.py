@@ -78,7 +78,7 @@ def bootstrap_data(data: ClvData, ids: Sequence[str]) -> ClvData:
 
     resampled = pd.concat(frames, ignore_index=True)
 
-    rebuilt = ClvData(
+    return ClvData(
         resampled,
         time_unit=data.time_unit,
         estimation_split=data.estimation_end,
@@ -87,7 +87,6 @@ def bootstrap_data(data: ClvData, ids: Sequence[str]) -> ClvData:
         data_end=data.data_end,
         name_price="Price" if data.has_spending else None,
     )
-    return rebuilt
 
 
 def _resample_covariates(

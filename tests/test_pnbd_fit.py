@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-
 from conftest import fixture_csv, fixture_json
 from paper_values import PNBD_MEAN_ATTRITION_RATE, PNBD_MEAN_PURCHASE_RATE, PNBD_MLE
 
@@ -82,7 +81,7 @@ class TestAgainstTheOracle:
         """The Hessian is differenced numerically, as CLVTools does via numDeriv."""
         want_fit = fixture_json("pnbd_nocov_fit")
         vcov = np.array(want_fit["vcov"]).reshape(4, 4)
-        want = dict(zip(want_fit["vcov.names"], np.sqrt(np.diag(vcov))))
+        want = dict(zip(want_fit["vcov.names"], np.sqrt(np.diag(vcov)), strict=True))
         got = fitted.standard_errors()
         for name, value in want.items():
             # 1% -- these are second derivatives of a flat surface, evaluated at

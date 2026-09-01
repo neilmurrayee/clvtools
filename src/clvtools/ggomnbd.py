@@ -462,7 +462,11 @@ def fit_ggomnbd(
 # -- estimation with time-invariant covariates --------------------------------
 
 
-def log_likelihood_staticcov(
+# The signature every family's covariate likelihood shares -- data, model
+# parameters, both gamma vectors, both design matrices. The GGom/NBD is the
+# one family with five model parameters rather than four, which is the whole
+# of why it lands one argument over the limit.
+def log_likelihood_staticcov(  # noqa: PLR0913, PLR0917
     x: ArrayLike, t_x: ArrayLike, T: ArrayLike,
     r: float, alpha: float, b: float, s: float, beta: float,
     gamma_life: ArrayLike, gamma_trans: ArrayLike,
@@ -496,7 +500,7 @@ class GgomnbdStaticCovParams(Fitted):
     b: float
     s: float
     beta: float
-    covariates: "StaticCovResult"  # noqa: F821
+    covariates: StaticCovResult  # noqa: F821
 
     def __iter__(self) -> Iterator[float]:
         yield from (self.r, self.alpha, self.b, self.s, self.beta)
@@ -504,7 +508,7 @@ class GgomnbdStaticCovParams(Fitted):
 
     @property
     def names(self) -> list[str]:
-        return ["r", "alpha", "b", "s", "beta"] + self.covariates.names
+        return ["r", "alpha", "b", "s", "beta", *self.covariates.names]
 
     @property
     def names_cov_life(self) -> list[str]:
@@ -560,7 +564,7 @@ class GgomnbdStaticCovParams(Fitted):
 
 
 def fit_ggomnbd_staticcov(
-    data: "ClvDataStaticCov",  # noqa: F821
+    data: ClvDataStaticCov,  # noqa: F821
     names_cov_constr: list[str] | None = None,
     reg_lambdas: tuple[float, float] | None = None,
     start: tuple[float, float, float, float, float] | None = None,
@@ -593,7 +597,7 @@ def fit_ggomnbd_staticcov(
     ...     cov_life=data.design_life(), cov_trans=data.design_trans()), 3)
     -5821.067
     """
-    from clvtools._staticcov import fit_static_covariates
+    from clvtools._staticcov import SearchSettings, fit_static_covariates
 
     cbs = data.customer_summary()
 
@@ -611,10 +615,12 @@ def fit_ggomnbd_staticcov(
         names_cov_trans=data.names_cov_trans,
         log_likelihood=objective,
         n_model_params=5, model_start=(1.0, 1.0, 1.0, 1.0, 1.0),
-        names_cov_constr=names_cov_constr, reg_lambdas=reg_lambdas,
-        start=start, start_cov=start_cov,
-        method=method, maxiter=maxiter, hessian=False,
-        polish=polish, options=options,
+        names_cov_constr=names_cov_constr,
+        search=SearchSettings(
+            start=start, start_cov=start_cov, reg_lambdas=reg_lambdas,
+            method=method, maxiter=maxiter, hessian=False,
+            polish=polish, options=options,
+        ),
     )
     r_, alpha_, b_, s_, beta_ = (float(v) for v in result.model)
     return GgomnbdStaticCovParams(

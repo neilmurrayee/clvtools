@@ -476,7 +476,7 @@ class BgnbdStaticCovParams(Fitted):
     alpha: float
     a: float
     b: float
-    covariates: "StaticCovResult"  # noqa: F821
+    covariates: StaticCovResult  # noqa: F821
 
     def __iter__(self) -> Iterator[float]:
         yield from (self.r, self.alpha, self.a, self.b)
@@ -484,7 +484,7 @@ class BgnbdStaticCovParams(Fitted):
 
     @property
     def names(self) -> list[str]:
-        return ["r", "alpha", "a", "b"] + self.covariates.names
+        return ["r", "alpha", "a", "b", *self.covariates.names]
 
     @property
     def names_cov_life(self) -> list[str]:
@@ -541,7 +541,7 @@ class BgnbdStaticCovParams(Fitted):
 
 
 def fit_bgnbd_staticcov(
-    data: "ClvDataStaticCov",  # noqa: F821
+    data: ClvDataStaticCov,  # noqa: F821
     names_cov_constr: list[str] | None = None,
     reg_lambdas: tuple[float, float] | None = None,
     start: tuple[float, float, float, float] | None = None,
@@ -579,7 +579,7 @@ def fit_bgnbd_staticcov(
     >>> bool(fit.log_likelihood > -5857.02)
     True
     """
-    from clvtools._staticcov import fit_static_covariates
+    from clvtools._staticcov import SearchSettings, fit_static_covariates
 
     cbs = data.customer_summary()
 
@@ -597,10 +597,12 @@ def fit_bgnbd_staticcov(
         names_cov_trans=data.names_cov_trans,
         log_likelihood=objective,
         n_model_params=4, model_start=(1.0, 1.0, 1.0, 1.0),
-        names_cov_constr=names_cov_constr, reg_lambdas=reg_lambdas,
-        start=start, start_cov=start_cov,
-        method=method, maxiter=maxiter, hessian=hessian,
-        polish=polish, options=options,
+        names_cov_constr=names_cov_constr,
+        search=SearchSettings(
+            start=start, start_cov=start_cov, reg_lambdas=reg_lambdas,
+            method=method, maxiter=maxiter, hessian=hessian,
+            polish=polish, options=options,
+        ),
     )
     r_, alpha_, a_, b_ = (float(v) for v in result.model)
     return BgnbdStaticCovParams(

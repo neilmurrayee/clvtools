@@ -21,7 +21,6 @@ import time
 
 import numpy as np
 
-from clvtools import ClvDataStaticCov
 from clvtools._staticcov import fit_static_covariates
 from clvtools.pnbd import fit_pnbd
 from clvtools.pnbd.staticcov import log_likelihood as staticcov_log_likelihood
@@ -107,10 +106,12 @@ def main() -> None:
             rng = np.random.default_rng(args.seed)
             covariate = rng.integers(0, 2, size=n).astype(float)
             plain = _time(
-                lambda: fit_pnbd(x, t_x, T, hessian=False), args.repeats
+                lambda x=x, t_x=t_x, T=T: fit_pnbd(x, t_x, T, hessian=False),
+                args.repeats,
             )
             static = _time(
-                lambda: _static_fit(x, t_x, T, covariate), args.repeats
+                lambda x=x, t_x=t_x, T=T, c=covariate: _static_fit(x, t_x, T, c),
+                args.repeats,
             )
             print(f"{n:>10,} {weeks:>6} {plain:>13.2f}s {static:>15.2f}s")
 

@@ -18,7 +18,6 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
-
 from conftest import fixture_csv, fixture_json
 from paper_values import (
     PNBD_STATIC_AIC,
@@ -29,7 +28,12 @@ from paper_values import (
     PNBD_STATIC_Z,
 )
 
-from clvtools import ClvData, ClvDataStaticCov, load_apparel_static_cov, load_apparel_trans
+from clvtools import (
+    ClvData,
+    ClvDataStaticCov,
+    load_apparel_static_cov,
+    load_apparel_trans,
+)
 from clvtools.pnbd import log_likelihood_ind
 from clvtools.pnbd.aggregate import (
     conditional_expected_transactions,
@@ -226,10 +230,10 @@ class TestAgainstOracle:
         ids, x, t_x, T, cov_life, cov_trans = inputs
         model, g_life, g_trans = _params(case)
         want = fixture_csv(f"pnbd_staticcov_{case}").set_index("Id").loc[ids]
-        rates = dict(
-            r=model["r"], alpha=alpha_i(model["alpha"], g_trans, cov_trans),
-            s=model["s"], beta=beta_i(model["beta"], g_life, cov_life),
-        )
+        rates = {
+            "r": model["r"], "alpha": alpha_i(model["alpha"], g_trans, cov_trans),
+            "s": model["s"], "beta": beta_i(model["beta"], g_life, cov_life),
+        }
         np.testing.assert_allclose(
             conditional_expected_transactions(x, t_x, T, 52.0, **rates),
             want["CET"], rtol=1e-10,
@@ -426,11 +430,11 @@ class TestPrediction:
         # at identical (x, t_x, T).
         cbs = data.customer_summary().set_index("Id")
         zero_purchase = cbs.index[cbs["x"] == 0]
-        assert table.loc[zero_purchase, "PAlive"].nunique() > 1
+        assert table.loc[zero_purchase, "PAlive"].nunique() > 1  # noqa: PD101
 
     def test_predict_rejects_data_without_covariates(self, fitted):
         from clvtools.predict import predict
 
         plain = ClvData(load_apparel_trans(), time_unit="week", estimation_split=104)
-        with pytest.raises(ValueError, match="covariate model needs covariate data"):
+        with pytest.raises(TypeError, match="covariate model needs covariate data"):
             predict(plain, fitted, prediction_end=52)

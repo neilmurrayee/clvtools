@@ -38,9 +38,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
-from scipy import optimize, stats
 
-from clvtools._optimize import options_for
 from clvtools.inference import Fitted
 from clvtools.pnbd.aggregate import log_likelihood_ind
 
@@ -213,10 +211,10 @@ class PnbdStaticCovParams(Fitted):
     def __iter__(self) -> Iterator[float]:
         """Estimates in the order :attr:`names` lists them."""
         yield from (self.r, self.alpha, self.s, self.beta)
-        for name, value in zip(self.names_cov_life, self.gamma_life):
+        for name, value in zip(self.names_cov_life, self.gamma_life, strict=True):
             if name not in self.names_cov_constr:
                 yield float(value)
-        for name, value in zip(self.names_cov_trans, self.gamma_trans):
+        for name, value in zip(self.names_cov_trans, self.gamma_trans, strict=True):
             if name not in self.names_cov_constr:
                 yield float(value)
         for name in self.names_cov_constr:
@@ -253,7 +251,7 @@ class PnbdStaticCovParams(Fitted):
         ['r', 'alpha', 's', 'beta', 'life.Gender', 'life.Channel',
          'trans.Gender', 'trans.Channel']
         """
-        return dict(zip(self.names, list(self)))
+        return dict(zip(self.names, list(self), strict=True))
 
     @property
     def n_parameters(self) -> int:
@@ -280,7 +278,7 @@ class PnbdStaticCovParams(Fitted):
 
 
 def fit_pnbd_staticcov(
-    data: "ClvDataStaticCov",  # noqa: F821
+    data: ClvDataStaticCov,  # noqa: F821
     names_cov_constr: list[str] | None = None,
     reg_lambdas: tuple[float, float] | None = None,
     start: tuple[float, float, float, float] | None = None,
@@ -366,7 +364,7 @@ def fit_pnbd_staticcov(
     (``trans.Channel = 0.6241``) but drop out more quickly
     (``life.Channel = 0.7907``)."
     """
-    from clvtools._staticcov import fit_static_covariates
+    from clvtools._staticcov import SearchSettings, fit_static_covariates
 
     cbs = data.customer_summary()
 
@@ -384,10 +382,12 @@ def fit_pnbd_staticcov(
         names_cov_trans=data.names_cov_trans,
         log_likelihood=objective,
         n_model_params=4, model_start=(1.0, 1.0, 1.0, 1.0),
-        names_cov_constr=names_cov_constr, reg_lambdas=reg_lambdas,
-        start=start, start_cov=start_cov,
-        method=method, maxiter=maxiter, hessian=hessian,
-        polish=polish, options=options,
+        names_cov_constr=names_cov_constr,
+        search=SearchSettings(
+            start=start, start_cov=start_cov, reg_lambdas=reg_lambdas,
+            method=method, maxiter=maxiter, hessian=hessian,
+            polish=polish, options=options,
+        ),
     )
     r, alpha, s, beta = (float(v) for v in result.model)
     return PnbdStaticCovParams(

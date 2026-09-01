@@ -11,6 +11,14 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
+from conftest import fixture_csv, fixture_json
+from paper_values import (
+    DESCRIPTIVES,
+    N_CUSTOMERS,
+    N_TRANSACTIONS,
+    N_TRANSACTIONS_AGGREGATED,
+    ZERO_REPEATERS,
+)
 
 from clvtools import ClvData
 from clvtools.diagnostics import (
@@ -19,14 +27,6 @@ from clvtools.diagnostics import (
     spending_data,
     timings_data,
     tracking_data,
-)
-from conftest import fixture_csv, fixture_json
-from paper_values import (
-    DESCRIPTIVES,
-    N_CUSTOMERS,
-    N_TRANSACTIONS,
-    N_TRANSACTIONS_AGGREGATED,
-    ZERO_REPEATERS,
 )
 
 
@@ -53,7 +53,8 @@ class TestSummary:
     def test_matches_every_printed_cell(self, data):
         table = data.summary()
         for name, printed in DESCRIPTIVES.items():
-            for column, want in zip(("Estimation", "Holdout", "Total"), printed):
+            columns = ("Estimation", "Holdout", "Total")
+            for column, want in zip(columns, printed, strict=True):
                 got = table.loc[name, column]
                 if want is None:
                     assert got is None, f"{name}/{column} should not apply"
@@ -67,10 +68,11 @@ class TestSummary:
         want = fixture_csv("descriptives_summary")
         table = data.summary()
         assert len(want) == len(table)
-        for name, row in zip(table.index, want.itertuples()):
+        for name, row in zip(table.index, want.itertuples(), strict=True):
             for column, cell in zip(
                 ("Estimation", "Holdout", "Total"),
                 (row.Estimation, row.Holdout, row.Total),
+                strict=True,
             ):
                 expected = _oracle_value(str(cell))
                 got = table.loc[name, column]
@@ -80,6 +82,76 @@ class TestSummary:
                     assert got == expected, f"{name}/{column}"
                 else:
                     assert got == pytest.approx(expected, rel=1e-12), f"{name}/{column}"
+
+    def test_a_summary_of_named_customers(self, data):
+        """``summary(clv.data, ids = ...)`` -- ``?summary.clv.data``.
+
+        The same table, restricted to the customers named. Nothing in the
+        paper prints it; the man page demonstrates it with ``ids = "1219"``
+        and ``ids = c("1", "10", "100", "1000")`` on a data set whose ids stop
+        at 600, so both of its examples name customers that do not exist.
+        """
+        table = data.summary(ids=["1", "10", "100"])
+        assert list(table.index) == list(data.summary().index)
+        assert table.loc["Number of customers", "Total"] == 3
+        assert table.loc["Total # Transactions", "Total"] == 21
+
+    @pytest.mark.oracle
+    def test_a_summary_of_named_customers_matches_the_oracle(self, data):
+        want = fixture_csv("descriptives_summary_ids")
+        table = data.summary(ids=["1", "10", "100"])
+        assert len(want) == len(table)
+        for name, row in zip(table.index, want.itertuples(), strict=True):
+            for column, cell in zip(
+                ("Estimation", "Holdout", "Total"),
+                (row.Estimation, row.Holdout, row.Total),
+                strict=True,
+            ):
+                got = table.loc[name, column]
+                text = str(cell).strip()
+                if text == "-":
+                    # CLVTools prints one dash for both "does not apply" and
+                    # "undefined"; this package keeps them apart as None and
+                    # NaN, so either is right here.
+                    assert got is None or pd.isna(got), f"{name}/{column}"
+                    continue
+                expected = _oracle_value(text)
+                if isinstance(expected, pd.Timestamp):
+                    assert got == expected, f"{name}/{column}"
+                else:
+                    # The fixture is summary()'s printed form, three decimals.
+                    assert got == pytest.approx(expected, abs=5e-4), (
+                        f"{name}/{column}"
+                    )
+
+    def test_one_customer_is_a_legal_summary(self, data):
+        table = data.summary(ids="1")
+        assert table.loc["Number of customers", "Total"] == 1
+        assert table.loc["Total # Transactions", "Total"] == 7
+
+    def test_naming_a_customer_that_does_not_exist_is_rejected(self, data):
+        """A deviation from CLVTools, and the reason for it.
+
+        ``summary(clv, ids = "1219")`` on this data returns a table of ``Inf``,
+        ``-Inf`` and ``NaN`` with a warning rather than an error -- and that is
+        the example ``?summary.clv.data`` ships, on data whose ids run 1..600.
+        A summary of nobody is not an answer to any question worth asking.
+        """
+        with pytest.raises(ValueError, match="no transactions for"):
+            data.summary(ids="1219")
+        with pytest.raises(ValueError, match="no transactions for"):
+            data.summary(ids=["1", "10", "100", "1000"])
+
+    def test_the_named_customers_agree_with_the_whole(self, data):
+        """Every customer named individually sums to the whole."""
+        everyone = data.summary()
+        named = data.summary(ids=sorted(set(data.transactions["Id"])))
+        assert named.loc["Total # Transactions", "Total"] == pytest.approx(
+            everyone.loc["Total # Transactions", "Total"]
+        )
+        assert named.loc["Number of customers", "Total"] == pytest.approx(
+            everyone.loc["Number of customers", "Total"]
+        )
 
     def test_row_order_follows_the_paper(self, data):
         assert list(data.summary().index) == list(DESCRIPTIVES)
