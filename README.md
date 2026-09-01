@@ -306,9 +306,10 @@ counts *operations*: `hyp2f1_ratio` runs twice per likelihood evaluation over al
 cold (0 of 348,000 elements in a `fit_pnbd` on the apparel data), a fit stays in
 a measured band of 200-400 likelihood evaluations, and the work per customer is
 identical at 1,178 and 2,357 customers -- O(*n*) by construction rather than by
-stopwatch. Wall-clock stays in `tools/benchmark.py`, reported and not asserted;
+stopwatch. Wall-clock stays in `tools/benchmark.py` and the question of *where*
+the time goes in `tools/profile.py`, both reported and neither asserted;
 `docs/performance.md` explains why a timing assertion would be the first flaky
-gate here.
+gate here, and carries the profiles that `tools/profile.py` regenerates.
 
 The suite is layered: published numbers, agreement with the reference
 implementation expression by expression, internal cross-checks between
@@ -348,6 +349,20 @@ Comparable at ten thousand customers and several times slower at a hundred
 thousand, on a different machine from the paper's. The likelihood is vectorised
 over customers; what grows is the number of NumPy passes per evaluation against
 CLVTools' single C++ sweep.
+
+Where that time goes is a second question, and `tools/profile.py` answers it —
+a cProfile summary of `summary()`, `fit_pnbd`, `fit_pnbd_staticcov` and one
+evaluation of the time-varying likelihood, emitted as markdown with call counts
+and shares rather than seconds so two versions diff cleanly:
+
+```bash
+uv run tools/profile.py
+```
+
+`docs/performance.md` is its output plus the reading of it: the vectorised
+models sit at the floor of what SciPy costs, and the time-varying covariate
+likelihood spends 0.325 s of interpreter overhead on 600,000 calls for one
+number.
 
 ## Dependencies
 

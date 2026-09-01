@@ -159,12 +159,12 @@ def cdnow_cbs() -> pd.DataFrame:
 class TestHyp2f1StaysVectorised:
     r""":func:`clvtools.special.hyp2f1_ratio` is the hot spot, and is fine.
 
-    ``docs/performance.md``: it is 57% of a ``fit_pnbd``, but 580 bare
-    ``scipy.special.hyp2f1`` calls on 600-element arrays cost all of that on
-    their own, so there is no overhead to remove. What there *is* to protect is
-    the shape of the call: one SciPy call per :math:`A` term over the whole
-    sample. Rewriting the ``np.where`` in ``log_likelihood_ind`` as a loop over
-    customers would keep every number identical and cost about 100x.
+    ``docs/performance.md``: it is half the self-time of a ``fit_pnbd``, but
+    580 bare ``scipy.special.hyp2f1`` calls on 600-element arrays cost all of
+    that on their own, so there is no overhead to remove. What there *is* to
+    protect is the shape of the call: one SciPy call per :math:`A` term over
+    the whole sample. Rewriting the ``np.where`` in ``log_likelihood_ind`` as a
+    loop over customers would keep every number identical and cost about 100x.
     """
 
     def test_a_bounded_number_of_calls_per_likelihood_evaluation(self, apparel_fit):

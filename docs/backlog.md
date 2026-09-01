@@ -10,6 +10,10 @@ speculation.
 stop. Do not add items without evidence, and do not work an item marked
 `[needs-decision]` — those need the maintainer.
 
+**Nothing is open.** All eight items are closed, item 8 last; the loop has no
+topmost unchecked item to work. A ninth needs evidence, in the sense the
+paragraph above means it — something measured, not something imagined.
+
 Definition of done for every item: `uv run pytest` green (901 tests at the time
 of writing), `uv run ruff check src tests tools docs` clean, and 100% line
 coverage of `src/`. Anything that changes behaviour also needs a test and, if it
@@ -334,7 +338,7 @@ Verified: 900 passed, 1 deselected, `TOTAL 2666 0 100%` in 4:36 with coverage,
 ruff clean over `src tests tools docs`, `ty check src` clean. `README.md`,
 `CLAUDE.md` and `docs/performance.md` carry the new marker and the new count.
 
-## 8. `[ ]` A committed profile report
+## 8. `[x]` A committed profile report
 
 `tools/benchmark.py` reports Appendix B's wall-clock. Nothing reports *where*
 the time goes, so every question about it starts from scratch — as
@@ -346,6 +350,68 @@ likelihood evaluation) in a form that can be pasted into `docs/performance.md`
 and diffed between versions. Informational, not a gate — it must not be able to
 fail CI.
 
+**Done:** `tools/profile.py`, a sibling of `tools/benchmark.py` in structure,
+argument style and register. **6.0-6.6 s** for all four paths. It emits markdown —
+a header naming the machine, the interpreter and the numpy/scipy/pandas
+versions, then one section per path with its unprofiled median wall clock, its
+profiled total, and a table of the hottest functions — so its output goes into
+`docs/performance.md` verbatim.
+
+Built to be *diffed*, which drove three choices. Rows carry **call counts and
+shares of `tottime`**, not seconds: a call count is a property of the code and
+moves only when the code does. Labels drop the absolute path and the line
+number and keep `clvtools/pnbd/dyncov.py:_hyp_beta_gt_alpha`, so a diff survives
+both another machine and an edit above the function; entries that then share a
+label are summed. And ordering is `tottime` descending with **ties broken by
+name**, without which the cool rows shuffle every run.
+
+Where a path has a natural denominator the table reports calls *per likelihood
+evaluation* as well as calls, taken from the profile's own count for the
+likelihood rather than from the fitter, so it works the same for the static
+covariate fit, which exposes none. `fit_pnbd` reports 290 evaluations and
+`hyp2f1_ratio` at 2 per evaluation, matching `tests/test_performance.py`
+exactly. The dyncov path is **one** likelihood evaluation and never the fit;
+`build_walks` is setup, timed and reported separately at 0.432 s.
+
+Nothing about it can fail CI: no test imports it, no workflow runs it, it
+asserts nothing and exits 0. It is in `tools/`, which ruff checks, and it is
+clean. Its four doctests are correct but *not* collected -- `testpaths` is
+`src tests docs` -- so they were run once by hand through `doctest.testmod`;
+wiring them into the suite would have made the tool a test, which this item
+forbids.
+
+One trap, and it is fatal rather than subtle: **`tools/profile.py` shadows the
+standard library's `profile`**, which `cProfile` imports and reads at import
+time. Running the script puts `tools/` first on `sys.path`, so `import
+cProfile` re-executes this very file as `profile` and dies with
+`AttributeError: partially initialized module 'cProfile' has no attribute
+'Profile'` -- confirmed against a stub before writing a line of the tool.
+`_import_cprofile` drops the script's own directory for the duration of that
+one import and puts it back, which is what makes the filename this item asks
+for safe. A local import rather than a `# noqa: E402`, in the house style
+already recorded for `PLC0415`.
+
+Running it immediately paid for itself: `docs/performance.md` credited
+`_hyp_beta_gt_alpha` with **39,754** calls per dyncov evaluation, which is
+`_hyp_term`'s count -- the dispatcher, splitting 38,542 onto `beta > alpha` and
+1,212 onto `alpha >= beta`. Every other count in that table reproduced to the
+digit (`elem` 155,418, `sum_from_to` 77,110, `first` 99,647, `n_elem` 114,978,
+`d_i` and `b_i` 39,755), so the document was right except where it named a
+function, and the profile it was written from no longer existed to check. That
+is the item in miniature. The document now carries the correction and says the
+table is regenerable.
+
+Two figures changed with the denominator rather than with the code. The old
+"57% of a `fit_pnbd` is `hyp2f1_ratio`" divided a *profiled* `tottime` by an
+*unprofiled* wall clock; against the profiled run's own total it is 50%. The
+tool prints both totals on every path so the two cannot be mixed again. Wall
+clocks moved 0-13% (`fit_pnbd` 0.065 -> 0.063 s, `summary()` 0.111 -> 0.103 s,
+dyncov 0.290 -> 0.328 s, `build_walks` 0.454 -> 0.432 s) under numpy 2.5, scipy
+1.18 and pandas 3.0; all refreshed from one run, median of five, so the
+document is a single coherent paste rather than a stitch of several.
+
+Verified: 901 passed, 1 deselected, `TOTAL 2666 0 100%`, ruff clean over
+`src tests tools docs`, `ty check src` clean.
 
 ---
 
