@@ -10,11 +10,11 @@ speculation.
 stop. Do not add items without evidence, and do not work an item marked
 `[needs-decision]` — those need the maintainer.
 
-**Nothing is open.** All eight items are closed, item 8 last; the loop has no
-topmost unchecked item to work. A ninth needs evidence, in the sense the
+**Nothing is open.** All nine items are closed, item 9 last; the loop has no
+topmost unchecked item to work. A tenth needs evidence, in the sense the
 paragraph above means it — something measured, not something imagined.
 
-Definition of done for every item: `uv run pytest` green (901 tests at the time
+Definition of done for every item: `uv run pytest` green (906 tests at the time
 of writing), `uv run ruff check src tests tools docs` clean, and 100% line
 coverage of `src/`. Anything that changes behaviour also needs a test and, if it
 deviates from CLVTools, a README findings entry — the house rule.
@@ -412,6 +412,94 @@ document is a single coherent paste rather than a stitch of several.
 
 Verified: 901 passed, 1 deselected, `TOTAL 2666 0 100%`, ruff clean over
 `src tests tools docs`, `ty check src` clean.
+
+## 9. `[x]` Spike: vectorise the dyncov likelihood over covariate intervals
+
+`docs/performance.md` measures one evaluation of the time-varying covariate
+likelihood at ~0.33 s, and roughly **600,000 Python-level calls into this
+package for one number** — 39,754 dispatches to `_hyp_term`, 155,418 to
+`Walk.elem`, all of it interpreter overhead rather than library work. The
+computation is a sum over covariate intervals, which is the shape that
+vectorises. A fit is 1,870 evaluations, so this is the whole 13.5 minutes.
+
+**This is a spike, not a commitment.** The upside is plausible and unproven.
+Abandoning it with a written finding — "vectorising the inner loop gains X%,
+here is where the rest goes" — is a perfectly good outcome and worth more than
+the guess in `performance.md` is now.
+
+Deliberately deferred until items 3 and 7 existed. It is safe to attempt only
+because the likelihood is pinned against oracle fixtures expression by
+expression at several parameter vectors, and because there are now counters
+that can show a rewrite changed no arithmetic.
+
+*Done when:* either the inner loop is vectorised with every oracle fixture
+still green **expression by expression, not merely in total**, and the measured
+gain is recorded; or the attempt is abandoned and `docs/performance.md` records
+what was learned about why. Three constraints, each of which has already caught
+something:
+
+- **Order of operations is load-bearing.** `CLAUDE.md`: whole-day arithmetic
+  shifts `d1` and `tjk` by ~4e-13 if done in nanoseconds, which breaks the
+  exact cancellation that makes `F2.2` vanish. Preserve the order, not just the
+  algebra.
+- **Both hypergeometric arms must be exercised.** The `alpha >= beta` arm is
+  reached only near the optimum — at a convenient starting vector it takes
+  **zero** of 39,754 dispatches (see `performance.md`), so a rewrite validated
+  there could ship a broken arm and pass. Measure and test at the *fitted*
+  parameters.
+- **The gated invariants in `tests/test_performance.py` cover `fit_pnbd`, not
+  this path.** Nothing currently counts the dyncov likelihood, so a regression
+  here is invisible to them; consider whether the spike should leave one behind.
+
+**Done: the spike paid, and it also corrected the guess that motivated it.**
+`_f2`'s per-interval loop is now `_f2_middle`, which builds `B_i`, `D_i` and
+both hypergeometric arms as arrays over all ~66 of a customer's covariate
+intervals at once; the arms take batches and dispatch per element, so a customer
+whose intervals straddle the `alpha >= beta` branch is handled in one call.
+39,754 scalar arm dispatches became 2,385, and 232,528
+`Walk.elem`/`Walk.sum_from_to` calls became one `cumsum` per walk.
+
+**Per evaluation, 3.3-5.1x. On the fit, 1.33x — 13:27 to 10:07.** The second
+number is the finding. Timing all 1,925 evaluations of a fit shows the cost
+stepping up sevenfold at the fourth decile and staying there, and at the vector
+the search then dwells on (`life.High.Season = -8.12`, the coefficient this
+implementation's optimum is already known to differ on) **84% of self-time is
+inside `scipy.special.hyp2f1`** and the rewrite buys 1.5x rather than 5x. So the
+time-varying likelihood is Python-bound in the easy part of the parameter space
+and library-bound in the part the optimiser spends two thirds of its time in.
+`docs/performance.md` has the deciles, the four-vector comparison and the
+profile. The next lever on this fit is `hyp2f1`, not Python.
+
+Against the three constraints:
+
+- **Order of operations.** 27 of the 30 per-customer intermediates are
+  **bit-identical** at both oracle parameter vectors, `F2.1` and `F2.2` among
+  them. `F2.3` moves by up to 2.2e-15 relative and carries `F2` and `LL` with
+  it. One cause, isolated by rerunning with the prefixes summed the old way:
+  `ndarray.sum` adds pairwise, `np.cumsum` left to right. Substituting a
+  pairwise `_prefix_sums` makes all thirty columns bit-identical again, which
+  proves nothing else moved. It was not substituted: the shift is an order of
+  magnitude *smaller* than the package's existing disagreement with CLVTools
+  (2.3e-13 on `F2.3`), pairwise is an artefact of numpy's blocking rather than
+  anyone's specification, and it costs 37% of a single evaluation. It is a close
+  call — over a whole fit the two are within 3% — and `_prefix_sums` is one
+  function with the argument in its docstring.
+- **Both arms.** Exercised, and now asserted. The `mle` grid case splits
+  1,212 / 38,542 and the `offset` case 12,331 / 27,423, so the oracle suite was
+  already covering both — the *profile* was the thing that wasn't.
+- **Fixtures green expression by expression.** All 30 columns, both vectors,
+  unchanged tolerances.
+
+Left behind: `tests/test_performance.py::TestDyncovStaysVectorised` (three
+counted invariants, demonstrated to fail at 66.3 dispatches per customer against
+a deliberately unrolled `_hyp_terms`) and
+`test_the_batched_middle_sum_matches_the_scalar_one`, which holds `_f2_middle`
+against the loop it replaced for all 600 customers at both vectors, with both of
+`d_i`'s branches asserted to have been taken.
+
+One figure was left stale on purpose: `CLAUDE.md` still says the dyncov fit is
+`~13.5 min`. It is 10:07 now, but `CLAUDE.md` is the maintainer's file.
+
 
 ---
 

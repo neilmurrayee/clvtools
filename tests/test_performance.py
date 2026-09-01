@@ -50,6 +50,7 @@ from conftest import fixture_json
 import clvtools.pnbd.aggregate as pnbd_aggregate
 import clvtools.special
 from clvtools import ClvData, load_cdnow
+from clvtools.pnbd import dyncov
 from clvtools.pnbd.fit import fit_pnbd
 
 pytestmark = pytest.mark.performance
@@ -365,3 +366,132 @@ class TestCostIsFlatInN:
             "growing with n."
         )
         assert large <= 2.0  # measured: exactly 2.0 at both sizes
+
+
+@dataclass
+class DyncovCounts:
+    """What one evaluation of the time-varying likelihood dispatched."""
+
+    n_customers: int
+    intervals: int
+    between: int
+    ge: Count
+    gt: Count
+    batch: Count
+
+
+@pytest.fixture(scope="module")
+def dyncov_counts(dyncov_walks) -> DyncovCounts:
+    """One instrumented evaluation, at CLVTools' own fitted parameters.
+
+    The parameters matter. Which hypergeometric arm a covariate interval takes
+    depends on where in the parameter space the evaluation happens: at a
+    convenient starting vector every one of the 39,754 intervals takes the
+    ``beta > alpha`` arm and the other is never entered, so a broken arm would
+    pass unnoticed. At the fitted point both run. See ``docs/performance.md``.
+    """
+    coefficients = fixture_json("dyncov_fit")["coefficients"]
+    names = fixture_json("dyncov_fit")["names.cov"]
+    with (
+        # Installed on the module that calls them -- `_hyp_terms` and the two
+        # arms are looked up as globals of `clvtools.pnbd.dyncov`, so this is
+        # where a patch is seen. See this module's docstring.
+        counted(dyncov, "_hyp_alpha_ge_beta") as ge,
+        counted(dyncov, "_hyp_beta_gt_alpha") as gt,
+        counted(dyncov, "_hyp_terms") as batch,
+    ):
+        dyncov.log_likelihood(
+            dyncov_walks,
+            *(coefficients[k] for k in ("r", "alpha", "s", "beta")),
+            gamma_life=[coefficients[f"life.{n}"] for n in names],
+            gamma_trans=[coefficients[f"trans.{n}"] for n in names],
+        )
+    info = dyncov_walks.walkinfo_aux_trans
+    lengths = (info[:, 1] - info[:, 0] + 1).astype(int)
+    return DyncovCounts(
+        n_customers=dyncov_walks.n_customers,
+        intervals=int(lengths.sum()),
+        between=int(np.maximum(lengths - 2, 0).sum()),
+        ge=ge, gt=gt, batch=batch,
+    )
+
+
+class TestDyncovStaysVectorised:
+    r"""The time-varying likelihood is batched over covariate intervals.
+
+    ``docs/performance.md``: this was the one real finding of the profile --
+    0.33 s and 600,000 Python-level calls for one number, because every one of
+    a customer's ~66 covariate intervals took its own scalar trip through
+    :func:`~clvtools.pnbd.dyncov._hyp_term`. Backlog item 9 replaced that inner
+    loop with array work and the evaluation fell to 0.097 s.
+
+    Nothing else in the suite would notice it going back: the oracle fixtures
+    check the numbers, and a scalar loop would produce the same ones. So the
+    shape of the call is gated here, in the same way and for the same reason as
+    :class:`TestHyp2f1StaysVectorised` gates the plain model's.
+    """
+
+    def test_the_arms_are_called_a_bounded_number_of_times_per_customer(
+        self, dyncov_counts
+    ):
+        """Four per customer, not one per covariate interval.
+
+        Measured: 2,385 dispatches over 600 customers, i.e. 3.98 each --
+        :math:`Y_1` and :math:`Y_{k_T}` one apiece, and one batched call per
+        arm for everything in between. Before the rewrite it was 39,754, i.e.
+        66.3 per customer, and it scaled with the length of the walks.
+        """
+        dead = (
+            "the hypergeometric arm counters never fired, so this test "
+            "measured nothing. They patch the names in clvtools.pnbd.dyncov, "
+            "which is where `_hyp_terms` looks them up."
+        )
+        assert dyncov_counts.ge.fired, dead
+        assert dyncov_counts.gt.fired, dead
+        calls = dyncov_counts.ge.calls + dyncov_counts.gt.calls
+        per_customer = calls / dyncov_counts.n_customers
+        assert per_customer <= 4.0, (  # measured: 3.975
+            f"the hypergeometric arms ran {per_customer:.1f} times per "
+            f"customer ({calls} calls over {dyncov_counts.n_customers} "
+            f"customers) against {dyncov_counts.intervals} covariate "
+            "intervals. Anything near the interval count means the batched "
+            "call in `_f2_middle` has been unrolled back into a loop."
+        )
+
+    def test_every_covariate_interval_is_still_evaluated_once(self, dyncov_counts):
+        """Batched, but not fewer terms: 39,754 elements for 39,754 intervals.
+
+        The count above would also fall if the rewrite quietly dropped
+        intervals. This is the other half: the arms between them see one
+        element per interval the auxiliary walks cross, and
+        :func:`~clvtools.pnbd.dyncov._hyp_terms` sees exactly the 38,555 that
+        lie between the first and the last.
+        """
+        assert dyncov_counts.ge.elements + dyncov_counts.gt.elements == (
+            dyncov_counts.intervals
+        ), (
+            f"{dyncov_counts.ge.elements + dyncov_counts.gt.elements} "
+            f"hypergeometric evaluations for {dyncov_counts.intervals} "
+            "covariate intervals; there should be exactly one each."
+        )
+        assert dyncov_counts.batch.elements == dyncov_counts.between
+        assert dyncov_counts.batch.calls <= dyncov_counts.n_customers  # 593
+
+    def test_both_arms_are_exercised_at_the_fitted_parameters(self, dyncov_counts):
+        r"""Which is true here and false at any convenient starting vector.
+
+        Measured: 1,212 intervals take :math:`\alpha \ge \beta` and 38,542 take
+        :math:`\beta > \alpha`. The split itself is not asserted -- it is a
+        property of where in the parameter space the evaluation sits, and the
+        comparison it comes from is between two floats. That *both* are
+        non-empty is asserted, because a batched implementation that handles
+        one arm and mangles the other is the failure this rewrite invited, and
+        a profile or a test taken at ``r=0.5, alpha=10, s=0.6, beta=12`` would
+        never enter the smaller one.
+        """
+        assert dyncov_counts.ge.elements > 0, (  # measured: 1,212
+            "no covariate interval took the alpha >= beta arm, so this "
+            "evaluation cannot say whether it works. Check the parameters: "
+            "away from the optimum every interval takes the other arm."
+        )
+        assert dyncov_counts.gt.elements > 0  # measured: 38,542

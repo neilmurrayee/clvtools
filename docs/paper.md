@@ -512,7 +512,7 @@ At CLVTools' own fitted parameters the likelihood agrees exactly:
 
 ```
 
-Fitting takes about 13.5 minutes, so it is marked `dyncov_fit` and deselected by
+Fitting takes about ten minutes, so it is marked `dyncov_fit` and deselected by
 default:
 
 ```bash

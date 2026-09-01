@@ -17,7 +17,7 @@
 #     under test really is the matrix one rather than the 3.12 pinned by the
 #     repo's `.python-version`.
 #
-# Not run here: the `dyncov_fit` marker, the ~13.5-minute time-varying covariate
+# Not run here: the `dyncov_fit` marker, the ~10-minute time-varying covariate
 # MLE. `addopts` deselects it by default and this job keeps that default; giving
 # it a schedule of its own is backlog item 6.
 name: CI

@@ -191,6 +191,20 @@ def b_i(i: int, t_x: float, aux_walk: TransactionWalk) -> float:
 # -- the attrition process ----------------------------------------------------
 
 
+def _real_life_sum(real_walk: Walk, d_omega: float) -> float:
+    r"""The real lifetime walk's contribution to :math:`D_i`, the same for every ``i``.
+
+    Split out because :func:`d_i` recomputes it per interval while
+    :func:`_f2_middle` needs it once for the whole sweep; both must get the
+    same number in the same order of operations.
+    """
+    if real_walk.n_elem == 1:
+        return real_walk.first * d_omega
+    if real_walk.n_elem == 2:
+        return real_walk.first * d_omega + real_walk.last
+    return real_walk.first * d_omega + real_walk.sum_middle() + real_walk.last
+
+
 def d_i(i: int, real_walk: Walk, aux_walk: Walk, d_omega: float) -> float:
     r"""The attrition-rate integral from coming alive to interval ``i``.
 
@@ -213,12 +227,7 @@ def d_i(i: int, real_walk: Walk, aux_walk: Walk, d_omega: float) -> float:
             + aux_walk.elem(i - 1) * last_mult
         )
 
-    if real_walk.n_elem == 1:
-        sum_real = real_walk.first * d_omega
-    elif real_walk.n_elem == 2:
-        sum_real = real_walk.first * d_omega + real_walk.last
-    else:
-        sum_real = real_walk.first * d_omega + real_walk.sum_middle() + real_walk.last
+    sum_real = _real_life_sum(real_walk, d_omega)
 
     # +1 to count the interval containing the last transaction, which opens the
     # auxiliary walk.
@@ -244,8 +253,8 @@ def d_i(i: int, real_walk: Walk, aux_walk: Walk, d_omega: float) -> float:
 
 def _hyp_alpha_ge_beta(
     r: float, s: float, x: float,
-    alpha_1: float, beta_1: float, alpha_2: float, beta_2: float,
-) -> float:
+    alpha_1: ArrayLike, beta_1: ArrayLike, alpha_2: ArrayLike, beta_2: ArrayLike,
+) -> NDArray[np.float64]:
     r"""The :math:`\alpha \ge \beta` arm of each :math:`F_2` term.
 
     .. math::
@@ -257,52 +266,71 @@ def _hyp_alpha_ge_beta(
     Where the series will not converge, CLVTools substitutes the limiting form
     :math:`(1-z)^{r+x} C / \beta^{r+s+x}`; the same fallback is used here so the
     two agree everywhere, including where neither is accurate.
+
+    ``alpha_1`` and its siblings may each be a float or an array of one value
+    per covariate interval; :func:`_hyp_terms` passes whole batches through.
     """
+    # numpy arithmetic throughout, even for a single term: `alpha ** (r+s+x)`
+    # overflows on the arguments the fallback exists for, and a Python float
+    # raises there where an array yields the `inf` the fallback selects on.
+    alpha_1, beta_1 = np.asarray(alpha_1, float), np.asarray(beta_1, float)
+    alpha_2, beta_2 = np.asarray(alpha_2, float), np.asarray(beta_2, float)
     a = r + s + x
     out = 0.0
     for alpha, beta, sign in ((alpha_1, beta_1, 1.0), (alpha_2, beta_2, -1.0)):
         z = 1.0 - beta / alpha
         value = special.hyp2f1(a, s + 1.0, a + 1.0, z)
-        if np.isfinite(value):
-            term = value / alpha**a
-        else:
+        term = value / alpha**a
+        failed = ~np.isfinite(value)
+        if np.any(failed):
             # Computed here rather than up front: the fallback fires rarely,
             # and four gammaln calls on every term is most of this function.
             log_c = (
                 special.gammaln(a + 1.0) + special.gammaln(s)
                 - special.gammaln(a) - special.gammaln(s + 1.0)
             )
-            term = (1.0 - z) ** (r + x) * np.exp(log_c) / beta**a
-        out += sign * term
-    return float(out)
+            term = np.where(
+                failed, (1.0 - z) ** (r + x) * np.exp(log_c) / beta**a, term
+            )
+        out = out + sign * term
+    return out
 
 
 def _hyp_beta_gt_alpha(
     r: float, s: float, x: float,
-    alpha_1: float, beta_1: float, alpha_2: float, beta_2: float,
-) -> float:
+    alpha_1: ArrayLike, beta_1: ArrayLike, alpha_2: ArrayLike, beta_2: ArrayLike,
+) -> NDArray[np.float64]:
     r"""The :math:`\beta > \alpha` arm, with the roles exchanged.
 
     .. math::
         \frac{{}_2F_1(r{+}s{+}x,\, r{+}x,\, r{+}s{+}x{+}1;\, z_1)}
              {\beta_1^{r+s+x}} - \cdots,
         \qquad z_j = 1 - \alpha_j/\beta_j
+
+    Vectorised over covariate intervals in the same way as its sibling.
     """
+    # numpy arithmetic throughout, even for a single term: `alpha ** (r+s+x)`
+    # overflows on the arguments the fallback exists for, and a Python float
+    # raises there where an array yields the `inf` the fallback selects on.
+    alpha_1, beta_1 = np.asarray(alpha_1, float), np.asarray(beta_1, float)
+    alpha_2, beta_2 = np.asarray(alpha_2, float), np.asarray(beta_2, float)
     a = r + s + x
     out = 0.0
     for alpha, beta, sign in ((alpha_1, beta_1, 1.0), (alpha_2, beta_2, -1.0)):
         z = 1.0 - alpha / beta
         value = special.hyp2f1(a, r + x, a + 1.0, z)
-        if np.isfinite(value):
-            term = value / beta**a
-        else:
+        term = value / beta**a
+        failed = ~np.isfinite(value)
+        if np.any(failed):
             log_c = (
                 special.gammaln(a + 1.0) + special.gammaln(r + x - 1.0)
                 - special.gammaln(a) - special.gammaln(r + x)
             )
-            term = (1.0 - z) ** (s + 1.0) * np.exp(log_c) / alpha**a
-        out += sign * term
-    return float(out)
+            term = np.where(
+                failed, (1.0 - z) ** (s + 1.0) * np.exp(log_c) / alpha**a, term
+            )
+        out = out + sign * term
+    return out
 
 
 def _hyp_term(
@@ -312,7 +340,119 @@ def _hyp_term(
 ) -> float:
     """One :math:`F_2` term: the scaled difference of two hypergeometrics."""
     branch = _hyp_alpha_ge_beta if alpha_1 >= beta_1 else _hyp_beta_gt_alpha
-    return ratio**s * branch(r, s, x, alpha_1, beta_1, alpha_2, beta_2)
+    return float(ratio**s * branch(r, s, x, alpha_1, beta_1, alpha_2, beta_2))
+
+
+def _hyp_terms(
+    r: float, s: float, x: float,
+    alpha_1: NDArray[np.float64], beta_1: NDArray[np.float64],
+    alpha_2: NDArray[np.float64], beta_2: NDArray[np.float64],
+    ratio: NDArray[np.float64],
+) -> NDArray[np.float64]:
+    r""":func:`_hyp_term` for a whole batch of covariate intervals at once.
+
+    The arm is chosen per interval, not per batch: :math:`\alpha_1 \ge \beta_1`
+    holds for some intervals of a customer and not others, and near the optimum
+    both happen. Each arm is therefore handed the sub-batch that selected it --
+    possibly an empty one, which the arms handle without a special case, so
+    neither is skipped by a branch that a test could fail to reach.
+    """
+    out = np.empty(np.shape(alpha_1))
+    ge = alpha_1 >= beta_1
+    for chosen, branch in ((ge, _hyp_alpha_ge_beta), (~ge, _hyp_beta_gt_alpha)):
+        out[chosen] = branch(
+            r, s, x,
+            alpha_1[chosen], beta_1[chosen], alpha_2[chosen], beta_2[chosen],
+        )
+    return ratio**s * out
+
+
+def _prefix_sums(values: NDArray[np.float64]) -> NDArray[np.float64]:
+    r"""``sum_from_to(1, i-2)`` for every :math:`i` from 2 to ``len(values) - 1``.
+
+    :func:`b_i` and :func:`d_i` each re-sum a growing prefix of the walk for
+    every covariate interval, which is quadratic in the length of the walk and
+    is where a fifth of this package's calls went. These are the same prefixes,
+    accumulated once.
+
+    ``np.cumsum`` adds strictly left to right; ``ndarray.sum``, which
+    :meth:`~clvtools.pnbd.dyncov_walks.Walk.sum_from_to` calls, adds pairwise.
+    On a walk of more than eight intervals the two therefore agree to a
+    rounding unit rather than bit for bit -- see ``docs/performance.md``. The
+    scalar path is left in place for :math:`B_1, B_T, D_1, D_T`, which is what
+    keeps ``F2.2``'s exact cancellation exact.
+
+    >>> import numpy as np
+    >>> _prefix_sums(np.array([1.0, 2.0, 4.0, 8.0, 16.0]))
+    array([0., 2., 6.])
+    """
+    return np.concatenate(([0.0], np.cumsum(values[1:-2])))
+
+
+def _f2_middle(
+    r: float, alpha_0: float, s: float, beta_0: float,
+    c: Customer, dT: float, Bjsum: float,
+) -> float:
+    r""":math:`\sum_{i=2}^{k_T-1} Y_i` -- every covariate interval in between, at once.
+
+    This is the same sum the scalar :func:`b_i`, :func:`d_i` and
+    :func:`_hyp_term` used to build one interval at a time. There are about 66
+    of those per customer, and removing the loop took an evaluation on the
+    apparel cohort from 0.328 s to 0.097 s -- so roughly 70% of the cost of the
+    time-varying likelihood was here. The same 39,754 hypergeometrics are still
+    evaluated; they arrive in four ``scipy.special.hyp2f1`` calls per customer
+    rather than two per interval.
+    """
+    aux_trans, aux_life = c.aux_walk_trans, c.aux_walk_life
+    # `Walk.values` is the numpy array of covariate multipliers; the pandas
+    # rule that fires on the name does not apply.
+    A, C = aux_trans.values, aux_life.values  # noqa: PD011
+    n = A.size
+    if n < 3:
+        # The first interval is also the last; there is nothing in between.
+        return 0.0
+
+    i = np.arange(2.0, n)
+    Ai, Ci = A[1 : n - 1], C[1 : n - 1]
+    elapsed = c.t_x + dT + (i - 2.0)
+
+    # B_i, in the order `b_i` writes it.
+    Bi = (
+        A[0] * aux_trans.d1
+        + _prefix_sums(A)
+        + Ai * (-c.t_x - aux_trans.d1 - (i - 2.0))
+    )
+    ai = Bjsum + Bi + Ai * elapsed
+
+    # D_i, likewise. Which of `d_i`'s two forms applies is a property of the
+    # customer rather than of the interval, so the choice is made once.
+    if c.real_walk_life.n_elem == 0:
+        Di = (
+            C[0] * c.d_omega
+            + _prefix_sums(C)
+            + Ci * (-c.d_omega - (1.0 + i - 3.0))
+        )
+    else:
+        k0x = c.real_walk_life.n_elem + 1.0
+        Di = _real_life_sum(c.real_walk_life, c.d_omega) + (
+            C[0] + _prefix_sums(C) + Ci * (-c.d_omega - (k0x + i - 3.0))
+        )
+    bi = Di + Ci * elapsed
+
+    terms = _hyp_terms(
+        r, s, c.x,
+        ai + alpha_0, (bi + beta_0) * Ai / Ci,
+        ai + Ai + alpha_0, (bi + Ci + beta_0) * Ai / Ci,
+        Ai / Ci,
+    )
+    # The scalar loop stopped at the first running total that stopped being
+    # finite and returned it. `cumsum` accumulates in that same order, so the
+    # same partial sum is still there to return.
+    running = np.cumsum(terms)
+    failed = ~np.isfinite(running)
+    if failed.any():
+        return float(running[int(np.argmax(failed))])
+    return float(running[-1])
 
 
 # The arguments are the terms of F2 itself, in the paper's notation. They are
@@ -390,24 +530,7 @@ def _f2(  # noqa: PLR0913, PLR0917
         return f2_2, parts
 
     # The intervals in between.
-    f2_3 = 0.0
-    for i in range(2, c.aux_walk_trans.n_elem):
-        Ai = c.aux_walk_trans.elem(i - 1)
-        Bi = b_i(i, c.t_x, c.aux_walk_trans)
-        ai = Bjsum + Bi + Ai * (c.t_x + dT + (i - 2.0))
-
-        Ci = c.aux_walk_life.elem(i - 1)
-        Di = d_i(i, c.real_walk_life, c.aux_walk_life, c.d_omega)
-        bi = Di + Ci * (c.t_x + dT + (i - 2.0))
-
-        f2_3 += _hyp_term(
-            r, s, c.x,
-            ai + alpha_0, (bi + beta_0) * Ai / Ci,
-            ai + Ai + alpha_0, (bi + Ci + beta_0) * Ai / Ci,
-            Ai / Ci,
-        )
-        if not np.isfinite(f2_3):
-            break
+    f2_3 = _f2_middle(r, alpha_0, s, beta_0, c, dT, Bjsum)
 
     parts["F2.3"] = f2_3
     return f2_1 + f2_2 + f2_3, parts

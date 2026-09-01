@@ -36,8 +36,11 @@ a test and never runs in CI. The invariants that *are* gated -- vectorisation,
 evaluations per fit, cost per customer -- are counted deterministically in
 ``tests/test_performance.py``, which looks at no clock at all.
 
-The fit itself of the time-varying model is 13.5 minutes and is not run here;
-one likelihood evaluation is, at CLVTools' own fitted parameters.
+The fit itself of the time-varying model is ten minutes and is not run here;
+one likelihood evaluation is, at CLVTools' own fitted parameters. Read that
+one evaluation with the caution ``docs/performance.md`` records: the search
+spends two thirds of its time at parameters several times more expensive
+than this vector, so this is not a scale model of a fit.
 """
 
 from __future__ import annotations
@@ -183,7 +186,7 @@ def _setup_pnbd_staticcov() -> tuple[Callable[[], object], str]:
 def _setup_dyncov() -> tuple[Callable[[], object], str]:
     """S6.4.2: **one** evaluation of the time-varying covariate likelihood.
 
-    Never the fit. That is 1,870 evaluations and 13.5 minutes, and it has a
+    Never the fit. That is ~1,900 evaluations and ten minutes, and it has a
     home already: the ``dyncov_fit`` marker, run nightly.
 
     Building the walks is setup rather than part of the path -- it happens once
@@ -367,8 +370,8 @@ def _header() -> str:
         "counts and shares are what to diff between versions; the seconds on",
         "each path's own line move with the machine. cProfile charges every",
         "Python-level call, so a profiled run is slower than an unprofiled one",
-        "-- by half on the vectorised paths and by several times on the dyncov",
-        "likelihood, which is exactly the finding.",
+        "-- by roughly half here. It used to be several times on the dyncov",
+        "likelihood, and that gap was the finding; backlog item 9 closed it.",
     ])
 
 

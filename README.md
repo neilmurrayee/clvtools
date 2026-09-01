@@ -277,12 +277,12 @@ which it reported successful convergence on the Gamma-Gamma at a local optimum
 ## Testing
 
 ```bash
-uv run pytest                  # 901 tests, including doctests in src/ and docs/
+uv run pytest                  # 906 tests, including doctests in src/ and docs/
 uv run pytest -m paper         # 24 numbers printed in the paper
 uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
 uv run pytest -m oracle        # 229 checks against R CLVTools fixtures
 uv run pytest -m slow          # 138 full-dataset MLE fits
-uv run pytest -m dyncov_fit    # the time-varying covariate MLE; ~13.5 minutes
+uv run pytest -m dyncov_fit    # the time-varying covariate MLE; ~10 minutes
 uv run pytest --cov=clvtools --cov-report=term-missing
 uv run pytest -m quality       # lint, complexity and size gates (run by default)
 uv run pytest -m performance   # vectorisation and O(n) gates (run by default)
@@ -304,9 +304,11 @@ Efficiency is gated the same way, and without a clock. `tests/test_performance.p
 counts *operations*: `hyp2f1_ratio` runs twice per likelihood evaluation over all
 *n* customers rather than *n* times on scalars, its scalar series fallback stays
 cold (0 of 348,000 elements in a `fit_pnbd` on the apparel data), a fit stays in
-a measured band of 200-400 likelihood evaluations, and the work per customer is
+a measured band of 200-400 likelihood evaluations, the work per customer is
 identical at 1,178 and 2,357 customers -- O(*n*) by construction rather than by
-stopwatch. Wall-clock stays in `tools/benchmark.py` and the question of *where*
+stopwatch -- and the time-varying covariate likelihood stays batched over
+covariate intervals, four hypergeometric dispatches per customer rather than
+one per interval, with both branches of the hypergeometric exercised. Wall-clock stays in `tools/benchmark.py` and the question of *where*
 the time goes in `tools/profile.py`, both reported and neither asserted;
 `docs/performance.md` explains why a timing assertion would be the first flaky
 gate here, and carries the profiles that `tools/profile.py` regenerates.
@@ -359,10 +361,17 @@ and shares rather than seconds so two versions diff cleanly:
 uv run tools/profile.py
 ```
 
-`docs/performance.md` is its output plus the reading of it: the vectorised
-models sit at the floor of what SciPy costs, and the time-varying covariate
-likelihood spends 0.325 s of interpreter overhead on 600,000 calls for one
-number.
+`docs/performance.md` is its output plus the reading of it. The vectorised
+models sit at the floor of what SciPy costs. The time-varying covariate
+likelihood did not -- it spent 0.328 s of interpreter overhead on 600,000 calls
+for one number, because each of a customer's ~66 covariate intervals took its
+own scalar trip through the hypergeometric. Batching those intervals into array
+work made an evaluation 3.3-5.1x faster, with 27 of the 30 oracle intermediates
+bit-identical and the rest moving in the sixteenth significant digit. The fit
+fell by only 1.33x, 13:27 to 10:07, and that gap is the more interesting
+result: two thirds of a fit is spent at parameters where 84% of the time is
+inside `scipy.special.hyp2f1` and there is no interpreter overhead left to
+remove. `docs/performance.md` has the deciles and the argument.
 
 ## Dependencies
 

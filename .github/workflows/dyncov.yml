@@ -5,7 +5,7 @@
 # -- the time-varying covariate MLE, ~1,870 likelihood evaluations over 600
 # customers, the most intricate estimator in the package -- is deselected from
 # every routine run, including `ci.yml`. That default is deliberate and stays:
-# ~13.5 minutes on an M-series Mac is too long to put in front of a push. The
+# ~10 minutes on an M-series Mac is too long to put in front of a push. The
 # consequence is that the *fit* has no gate at all. Its likelihood and its
 # prediction are pinned against fixtures at fixed parameters by the rest of
 # `test_pnbd_dyncov.py`; where the optimiser stops is pinned by nothing.
@@ -56,8 +56,9 @@ jobs:
   dyncov-fit:
     name: Fit the Pareto/NBD with time-varying covariates
     runs-on: ubuntu-latest
-    # Measured at 13.5 minutes on an M-series Mac, twice, agreeing to two
-    # seconds. A GitHub-hosted runner is
+    # Measured at 10:07 on an M-series Mac, twice, agreeing to a second --
+    # down from 13.5 before the likelihood was vectorised. A GitHub-hosted
+    # runner is
     # markedly slower at single-threaded floating point, so budget ~3x and add
     # room on top: 120 minutes is roughly double the worst plausible honest run
     # and still far under the 6-hour default, which would burn an entire

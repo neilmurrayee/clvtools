@@ -259,6 +259,69 @@ class TestAgainstOracle:
         both = np.isfinite(f2) & np.isfinite(f2_2) & (f2 > 0)
         assert np.all(f2_2[both] < 1e-6 * f2[both])
 
+    def test_the_batched_middle_sum_matches_the_scalar_one(self, dyncov_walks):
+        r"""The vectorised :math:`\sum_{i=2}^{k_T-1} Y_i` against the loop it replaced.
+
+        ``_f2_middle`` builds every in-between covariate interval's term as
+        arrays. The oracle comparison above already holds it to CLVTools, but
+        only through ``F2.3``; this holds it against the scalar ``b_i``,
+        ``d_i`` and ``_hyp_term`` directly, which is what it was derived from.
+        It is also what keeps ``d_i(2, ...)`` exercised: the likelihood itself
+        now calls ``d_i`` only at :math:`i = 1` and :math:`i = k_T`.
+
+        Not asserted bit-for-bit, and the reason is worth stating.
+        ``Walk.sum_from_to`` calls ``ndarray.sum``, which adds pairwise, while
+        the batched version accumulates the same prefixes left to right with
+        ``np.cumsum``. On walks of more than eight intervals the two agree to a
+        rounding unit rather than exactly -- measured at 2.2e-15 relative over
+        all 600 customers, against a 2.3e-13 disagreement with CLVTools itself.
+        ``docs/performance.md`` records the measurement and why this order was
+        the one kept.
+        """
+        from clvtools.pnbd.dyncov import _f2_middle, _hyp_term
+
+        def scalar_middle(r, alpha_0, s, beta_0, c, dT, Bjsum):
+            """`_f2_middle` as it was written before the rewrite."""
+            total = 0.0
+            for i in range(2, c.aux_walk_trans.n_elem):
+                Ai = c.aux_walk_trans.elem(i - 1)
+                Bi = b_i(i, c.t_x, c.aux_walk_trans)
+                ai = Bjsum + Bi + Ai * (c.t_x + dT + (i - 2.0))
+                Ci = c.aux_walk_life.elem(i - 1)
+                Di = d_i(i, c.real_walk_life, c.aux_walk_life, c.d_omega)
+                bi = Di + Ci * (c.t_x + dT + (i - 2.0))
+                total += _hyp_term(
+                    r, s, c.x,
+                    ai + alpha_0, (bi + beta_0) * Ai / Ci,
+                    ai + Ai + alpha_0, (bi + Ci + beta_0) * Ai / Ci,
+                    Ai / Ci,
+                )
+            return total
+
+        for case in CASES:
+            r, alpha, s, beta, g_life, g_trans = _split(case)
+            customers = dyncov_walks.customers(g_life, g_trans)
+            with_real = without_real = 0
+            for c in customers:
+                dT = c.aux_walk_trans.d1
+                Bjsum = bjsum(c.real_walks_trans)
+                want = scalar_middle(r, alpha, s, beta, c, dT, Bjsum)
+                got = _f2_middle(r, alpha, s, beta, c, dT, Bjsum)
+                assert got == pytest.approx(want, rel=1e-12, abs=1e-300), case
+                if c.aux_walk_trans.n_elem > 2:
+                    if c.real_walk_life.n_elem:
+                        with_real += 1
+                    else:
+                        without_real += 1
+            # Both of `d_i`'s forms have to have been taken, or half of what
+            # this test claims to compare was never compared.
+            both = (
+                f"{case}: {with_real} customers with a real lifetime walk and "
+                f"{without_real} without; both `d_i` branches must be reached."
+            )
+            assert with_real > 0, both
+            assert without_real > 0, both
+
     def test_the_log_likelihood_matches(self, compared):
         _case, got, want = compared
         np.testing.assert_allclose(got["LL"], want["LL"], rtol=1e-10)
@@ -637,12 +700,13 @@ class TestFit:
 
     S6.4 warns about this: "the model estimation with time-varying covariates
     is computationally much more demanding than the previously detailed
-    alternatives." Each likelihood evaluation sweeps 600 customers and makes
-    some 80,000 scalar hypergeometric calls.
+    alternatives." Each likelihood evaluation sweeps 600 customers and evaluates
+    some 80,000 hypergeometrics, batched over each customer's covariate
+    intervals since ``docs/backlog.md`` item 9.
     """
 
     def test_reaches_at_least_the_oracles_optimum(self, dyncov_walks):
-        r"""Runs in about 13.5 minutes, over 1,870 likelihood evaluations.
+        r"""Runs in about ten minutes, over some 1,900 likelihood evaluations.
 
         The assertion is one-sided. This implementation attains -5752.623
         against CLVTools' -5752.937 -- 0.31 log-likelihood units better -- and
