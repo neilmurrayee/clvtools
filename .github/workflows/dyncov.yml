@@ -1,0 +1,93 @@
+# The one fit the ordinary gate never runs.
+#
+# `addopts` in `pyproject.toml` carries `-m 'not dyncov_fit'`, so
+# `tests/test_pnbd_dyncov.py::TestFit::test_reaches_at_least_the_oracles_optimum`
+# -- the time-varying covariate MLE, ~1,870 likelihood evaluations over 600
+# customers, the most intricate estimator in the package -- is deselected from
+# every routine run, including `ci.yml`. That default is deliberate and stays:
+# ~13.5 minutes on an M-series Mac is too long to put in front of a push. The
+# consequence is that the *fit* has no gate at all. Its likelihood and its
+# prediction are pinned against fixtures at fixed parameters by the rest of
+# `test_pnbd_dyncov.py`; where the optimiser stops is pinned by nothing.
+#
+# This job is that gate, moved off the push path and onto a clock.
+#
+# Nothing here has ever executed. There is no remote and nothing has been
+# pushed, so -- exactly as with `ci.yml` -- this file is a statement of what
+# should run, verified locally, not a record of a run that happened. One
+# further consequence of that, which is easy to miss: GitHub only fires
+# `schedule:` from the workflow file on the **default branch**. Until this
+# lands on `main` the cron below is inert, and `workflow_dispatch` is the only
+# trigger that will do anything.
+name: Time-varying covariate MLE
+
+on:
+  # Nightly, at 03:17 UTC. Backlog item 6 asks that "a regression in the dyncov
+  # optimiser is caught within a day", and only a daily run says that literally
+  # -- weekly would leave a week of commits to bisect for a fit that takes the
+  # better part of an hour to evaluate once, which is precisely the bisect you
+  # do not want. The cost is one job a night; there is no matrix below for the
+  # same reason. The odd minute is the usual courtesy: the top of the hour is
+  # the busiest slot on GitHub's scheduler and the least likely to start on
+  # time.
+  #
+  # Note that GitHub disables scheduled workflows on a repository with no
+  # activity for 60 days, and mails the maintainer when it does. A silent
+  # schedule is a real failure mode for a job like this one, whose whole value
+  # is that nobody has to remember it.
+  schedule:
+    - cron: "17 3 * * *"
+  # So it can be run on demand -- before a release, or after touching
+  # `pnbd/dyncov.py`, without waiting for the night.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A manual dispatch landing on top of a running nightly should queue, not
+# cancel it: `cancel-in-progress: true` would throw away most of an hour's
+# work, and unlike `ci.yml` there is no newer commit here making the older
+# run's answer uninteresting.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  dyncov-fit:
+    name: Fit the Pareto/NBD with time-varying covariates
+    runs-on: ubuntu-latest
+    # Measured at 13.5 minutes on an M-series Mac, twice, agreeing to two
+    # seconds. A GitHub-hosted runner is
+    # markedly slower at single-threaded floating point, so budget ~3x and add
+    # room on top: 120 minutes is roughly double the worst plausible honest run
+    # and still far under the 6-hour default, which would burn an entire
+    # afternoon of runner time before reporting that the optimiser had hung.
+    # If this limit is ever hit, that is itself the finding.
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # One interpreter, not the 3.12/3.13 matrix of `ci.yml`. What is under
+      # test here is where SciPy's optimiser stops on this likelihood, not
+      # whether the package imports on both versions -- `ci.yml` already
+      # answers that, on every push, in minutes.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10
+        with:
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Sync the environment
+        run: uv sync --locked
+
+      # The second `-m` wins over the `-m 'not dyncov_fit'` in `addopts`, which
+      # is the whole trick: the marker is selected rather than merely
+      # un-deselected, so this run is the single `TestFit` case and nothing
+      # else. Verified by collection -- `1/892 tests collected (891
+      # deselected)`. No `--cov` here: coverage of one test cannot clear the
+      # 100% bar `ci.yml` enforces, and asking it to would only teach us to
+      # loosen the bar.
+      - name: Fit
+        run: uv run pytest -m dyncov_fit

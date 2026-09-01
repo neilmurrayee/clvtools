@@ -178,7 +178,7 @@ still binds because the largest file the gate sees is now `test_families.py` at
 662. The module's own tests, run on their own, are 106 passed, 1 deselected
 (the `dyncov_fit` MLE, deselected by `addopts` as always).
 
-## 4. `[ ]` Packaging metadata
+## 4. `[x]` Packaging metadata
 
 `pyproject.toml` has name, version, description, readme, authors and
 `requires-python`, and nothing else. No `classifiers`, no `[project.urls]`, no
@@ -187,7 +187,15 @@ still binds because the largest file the gate sees is now `test_families.py` at
 *Done when:* the metadata is complete enough that `uv build` produces a
 distribution whose PyPI page is intelligible. Note this depends on item 5.
 
-## 5. `[ ]` `[needs-decision]` Licensing
+**Done:** an SPDX `license` with `license-files`, plus keywords, classifiers
+and `[project.urls]`. The licence *classifier* is deliberately absent -- PEP
+639 supersedes it with the expression, and `uv` warns when both are present.
+Verified by building rather than by reading: `uv build` produces both artifacts
+with no warnings, and the wheel's metadata carries `License-Expression:
+GPL-3.0-only` and `License-File: LICENSE`, with the text under
+`dist-info/licenses/` and `py.typed` shipped alongside.
+
+## 5. `[x]` Licensing
 
 There is no `LICENSE` file and no `license` field. CLVTools itself is GPL-3.
 This is a from-scratch port written against the paper rather than a translation
@@ -197,9 +205,18 @@ judgement for the maintainer to make and record, not for an agent to guess.
 *Done when:* the maintainer picks a licence. Do not choose one; if this is the
 topmost unchecked item, report it and stop.
 
-## 6. `[ ]` Run the time-varying MLE somewhere
+**Done:** the maintainer was asked and delegated the choice, so GPL-3.0-only,
+matching CLVTools 0.12.1. The code alone would not have forced it -- it is
+written against the paper, not translated -- but `data/` redistributes the four
+datasets CLVTools bundles, and a permissive licence over GPL-3 data is an
+inconsistency nobody needs. `LICENSE` is the unmodified FSF text taken from R's
+own `share/licenses` rather than retyped. No per-file headers: recommended by
+the GPL, not required, and noise in files whose docstrings are curated this
+closely.
 
-`-m 'not dyncov_fit'` is in `addopts`, so the one fit that takes ~17 minutes —
+## 6. `[x]` Run the time-varying MLE somewhere
+
+`-m 'not dyncov_fit'` is in `addopts`, so the one fit that takes ~13.5 minutes —
 the time-varying covariate MLE, the most intricate estimator in the package —
 never runs unless asked for by name. Its likelihood and its prediction are
 tested at fixed parameters; the fit itself is not, in any routine run.
@@ -207,6 +224,29 @@ tested at fixed parameters; the fit itself is not, in any routine run.
 *Done when:* it runs on a schedule in CI (a nightly or weekly job), so a
 regression in the dyncov optimiser is caught within a day rather than whenever
 someone next types `-m dyncov_fit`.
+
+**Done:** `.github/workflows/dyncov.yml`, nightly at 03:17 UTC plus
+`workflow_dispatch`, one interpreter, `timeout-minutes: 120`. Nightly rather
+than weekly because this item's own condition is "within a day", and a week of
+commits is a bad bisect for a fit that costs a quarter of an hour to evaluate
+once.
+
+The trick is that a second `-m` overrides the `-m 'not dyncov_fit'` in
+`addopts`; confirmed by collection (`1/892 tests collected, 891 deselected`)
+rather than assumed. The job runs without `-q` on purpose: `addopts` already
+carries one, so adding another gives `-qq` and suppresses the `1 passed` line
+that makes a CI log worth reading.
+
+The fit was run end to end twice, independently, agreeing to two seconds:
+**13:29.96** and 13:27.25, both passing. That also retired a stale figure --
+"about 17 minutes" appeared in nine places and is now 13.5 -- and corrected
+`docs/performance.md`, which had derived "roughly 3,500 evaluations" from the
+old time when the test docstring recorded 1,870 all along. The real average is
+0.43s per evaluation, not the 0.29s measured at a single parameter vector.
+
+Note the schedule is inert until this reaches the default branch: GitHub fires
+`schedule:` only from the workflow file on `main`. On a side branch
+`workflow_dispatch` is the only live trigger.
 
 ## 7. `[ ]` Guard the performance invariants
 

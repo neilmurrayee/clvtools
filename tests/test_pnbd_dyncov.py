@@ -642,7 +642,7 @@ class TestFit:
     """
 
     def test_reaches_at_least_the_oracles_optimum(self, dyncov_walks):
-        r"""Runs in about 17 minutes, over 1,870 likelihood evaluations.
+        r"""Runs in about 13.5 minutes, over 1,870 likelihood evaluations.
 
         The assertion is one-sided. This implementation attains -5752.623
         against CLVTools' -5752.937 -- 0.31 log-likelihood units better -- and

@@ -1,6 +1,6 @@
 # Performance
 
-Everything in this repo is gated on being *correct* — 888 tests, the paper's
+Everything in this repo is gated on being *correct* — 891 tests, the paper's
 numbers, the R package's numbers, oracle fixtures expression by expression —
 and on being *tidy*: ruff, complexity, module size, 100% line coverage. Nothing
 has ever asked whether it is *fast*. This document is the first pass at that
@@ -73,8 +73,11 @@ not automatically a problem, and this one is not.
 ## The time-varying covariate likelihood is Python-bound
 
 This is the finding worth acting on. One evaluation of the dyncov
-`log_likelihood` on 600 customers takes **0.290 s**, which puts the
-~17-minute fit at roughly **3,500 evaluations**. Where that 0.29 s goes:
+`log_likelihood` on 600 customers takes **0.290 s** at the parameters measured.
+The fit itself is 13.5 minutes over the 1,870 evaluations the test docstring
+records -- an average of **0.43 s** each, so the single-point figure below
+understates the cost at the parameters the optimiser actually visits. Where
+that 0.29 s goes:
 
 | Function | Calls **per evaluation** | `tottime` |
 |---|---|---|
@@ -152,4 +155,4 @@ Wall-clock still belongs in `tools/benchmark.py`, reported and not asserted.
   reviewable rather than rediscovered.
 - The dyncov vectorisation spike is deliberately *not* a backlog item yet. It
   should not be started until item 7 exists to prove it changed nothing, and
-  not at all unless someone wants the 17 minutes back.
+  not at all unless someone wants the 13.5 minutes back.
