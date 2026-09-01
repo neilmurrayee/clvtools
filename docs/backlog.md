@@ -10,7 +10,7 @@ speculation.
 stop. Do not add items without evidence, and do not work an item marked
 `[needs-decision]` — those need the maintainer.
 
-Definition of done for every item: `uv run pytest` green (891 tests at the time
+Definition of done for every item: `uv run pytest` green (900 tests at the time
 of writing), `uv run ruff check src tests tools docs` clean, and 100% line
 coverage of `src/`. Anything that changes behaviour also needs a test and, if it
 deviates from CLVTools, a README findings entry — the house rule.
@@ -248,7 +248,7 @@ Note the schedule is inert until this reaches the default branch: GitHub fires
 `schedule:` only from the workflow file on `main`. On a side branch
 `workflow_dispatch` is the only live trigger.
 
-## 7. `[ ]` Guard the performance invariants
+## 7. `[x]` Guard the performance invariants
 
 Correctness and tidiness are gated; efficiency is not. `docs/performance.md`
 profiles the package and finds nothing slow — but nothing stops it becoming
@@ -274,6 +274,65 @@ analysis is a test" — or a sibling module asserts, on the standard fits:
 
 Choose each band by measurement, exactly as the ruff limits were chosen, and
 record the measured value in a comment beside it.
+
+**Done:** `tests/test_performance.py`, a sibling of `test_code_quality.py`
+rather than an addition to it — these count operations rather than read source
+— under a new `performance` marker. Eight tests and a doctest, **1.0 s** on
+every `uv run pytest`. The subject is `fit_pnbd` on the apparel data (600
+customers, no Hessian, 0.065 s) and `cdnow` at two sizes; nothing marked `slow`
+or `dyncov_fit` runs. No assertion looks at a clock.
+
+The invariants, each with what it measured on 2026-09-01:
+
+- **`hyp2f1_ratio` is called a bounded number of times per likelihood
+  evaluation** — measured 580 calls over 290 evaluations, i.e. exactly two, the
+  `A_1` and `A_2` terms of Appendix A. The gate is `<= 2`, a bound rather than
+  an equality, so folding the two into one stays legal.
+- **Every call covers the whole sample** — measured 348,000 elements over 580
+  calls on 600 customers, so `elements == calls * n` exactly. This is the
+  assertion a per-customer loop fails hardest: it reports one element per call.
+- **The scalar series fallback stays cold** — 0 of 348,000 elements.
+- **Likelihood evaluations per fit stay in a band** — 290 measured, 200 to 400
+  allowed. The width is set from the two regressions worth catching rather than
+  from a round percentage: relaxing `ftol` to SciPy's own 1e-8 gives **150**,
+  and Nelder-Mead — the fallback S6.2.1 recommends, and a plausible accidental
+  default — gives **489**. Both bounds sit ~1.4x from 290, far more room than a
+  SciPy point release moves a converged line search and far less than either
+  regression needs.
+- **Cost per customer is flat in *n*** — hypergeometric elements per customer
+  per likelihood evaluation is 2.0 at 2,357 customers (330 calls, 777,810
+  elements, 165 evaluations) and 2.0 at 1,178 (400 calls, 471,200 elements,
+  200). The *evaluation* count is deliberately not compared across sizes: it is
+  a property of the optimiser's path, not of *n*, and the smaller problem here
+  took more of them.
+
+The instrumentation is the part that can silently measure nothing.
+`pnbd/aggregate.py` does `from clvtools.special import hyp2f1_ratio`, binding
+the function at import time, so patching `clvtools.special.hyp2f1_ratio`
+records **zero** and every test passes while watching an empty room. The
+counters go on the module that *calls* the function; `Count.fired` makes a
+counter that never ran a failure; and a test named for the trap pins it, by
+asserting that a counter on
+`clvtools.special` sees nothing while the one on `aggregate` fires.
+
+Every gate was watched to fail, by breaking what it guards and reverting:
+
+| Break | Test | Result |
+|---|---|---|
+| the two `hyp2f1_ratio` calls looped scalar-wise | bounded calls; whole sample | 348,000 calls of 1 element (1,200 per evaluation, against a bound of 2) |
+| `unresolved` forced to all-true in `special` | fallback stays cold | series ran 324,000 times |
+| `ftol` 1e-16 → 1e-8 | evaluation band | 150 evaluations, below 200 |
+| default method → Nelder-Mead | evaluation band | 489 evaluations, above 400 |
+| one `hyp2f1_ratio` call repeated `n // 100` times | flat in *n* | 12.0 per customer at 1,178 against 24.0 at 2,357 |
+| `aggregate` reaching the function through the module | counters installed where the calls happen | the call-site counter recorded nothing |
+
+Every one of those breaks leaves the fitted parameters and the log-likelihood
+exactly right, which is the whole argument for the module: nothing else in the
+suite moves.
+
+Verified: 900 passed, 1 deselected, `TOTAL 2666 0 100%` in 4:36 with coverage,
+ruff clean over `src tests tools docs`, `ty check src` clean. `README.md`,
+`CLAUDE.md` and `docs/performance.md` carry the new marker and the new count.
 
 ## 8. `[ ]` A committed profile report
 

@@ -33,7 +33,7 @@ Module ↔ paper mapping lives in `src/clvtools/__init__.py` and the README tabl
 ## Commands
 
 ```bash
-uv run pytest                  # 891 tests inc. doctests in src/ and docs/; ~3:20 on an M-series
+uv run pytest                  # 900 tests inc. doctests in src/ and docs/; ~3:20 on an M-series
 uv run pytest -m paper         # 24 numbers printed in the paper
 uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
 uv run pytest -m oracle        # 229 checks against R CLVTools fixtures
@@ -43,6 +43,7 @@ uv run pytest --cov=clvtools --cov-report=term-missing
 uv run pytest docs/paper.md    # the paper's case study alone
 uv run pytest docs/vignette.md # the R package's own walkthrough
 uv run pytest -m quality       # the static-analysis gate alone (runs by default)
+uv run pytest -m performance   # the operation-count gates alone (runs by default; ~1s)
 ```
 
 Static analysis is part of the suite, not a separate step:

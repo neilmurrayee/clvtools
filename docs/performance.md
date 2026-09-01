@@ -1,11 +1,12 @@
 # Performance
 
-Everything in this repo is gated on being *correct* — 891 tests, the paper's
+Everything in this repo is gated on being *correct* — 900 tests, the paper's
 numbers, the R package's numbers, oracle fixtures expression by expression —
 and on being *tidy*: ruff, complexity, module size, 100% line coverage. Nothing
 has ever asked whether it is *fast*. This document is the first pass at that
-question. Nothing here is a gate yet; `docs/backlog.md` items 7 and 8 are what
-would make it one.
+question. The invariants in "What a performance gate should look like" below
+*are* now a gate — `tests/test_performance.py`, backlog item 7. The profile
+report of item 8 is still open.
 
 Measured 2026-09-01 on an M-series Mac, Python 3.12, against `apparelTrans`
 (600 customers) and `cdnow` (2,357). Reproduce with:
@@ -150,9 +151,11 @@ Wall-clock still belongs in `tools/benchmark.py`, reported and not asserted.
 
 ## Next
 
-- `docs/backlog.md` item 7 — the deterministic invariants above, as tests.
+- ~~`docs/backlog.md` item 7~~ — done: `tests/test_performance.py`, marker
+  `performance`. The four invariants above, 1.0 s on every run, and each one
+  demonstrated to fail against a deliberately broken implementation.
 - `docs/backlog.md` item 8 — a committed profile report, so hot spots are
   reviewable rather than rediscovered.
 - The dyncov vectorisation spike is deliberately *not* a backlog item yet. It
-  should not be started until item 7 exists to prove it changed nothing, and
-  not at all unless someone wants the 13.5 minutes back.
+  now has item 7's counters to prove it changed nothing structural, but it
+  should not be started at all unless someone wants the 13.5 minutes back.

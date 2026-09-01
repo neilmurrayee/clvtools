@@ -277,7 +277,7 @@ which it reported successful convergence on the Gamma-Gamma at a local optimum
 ## Testing
 
 ```bash
-uv run pytest                  # 891 tests, including doctests in src/ and docs/
+uv run pytest                  # 900 tests, including doctests in src/ and docs/
 uv run pytest -m paper         # 24 numbers printed in the paper
 uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
 uv run pytest -m oracle        # 229 checks against R CLVTools fixtures
@@ -285,6 +285,7 @@ uv run pytest -m slow          # 138 full-dataset MLE fits
 uv run pytest -m dyncov_fit    # the time-varying covariate MLE; ~13.5 minutes
 uv run pytest --cov=clvtools --cov-report=term-missing
 uv run pytest -m quality       # lint, complexity and size gates (run by default)
+uv run pytest -m performance   # vectorisation and O(n) gates (run by default)
 ```
 
 100% line coverage of `src/`. The time-varying covariate fit is deselected by
@@ -298,6 +299,16 @@ docstrings excluded: 37% of `src/` is docstring by design, and a raw line count
 would rank the best-documented modules worst. Every threshold was measured
 against this codebase rather than taken from a default, so each sits just above
 what the code needs and trips on a regression.
+
+Efficiency is gated the same way, and without a clock. `tests/test_performance.py`
+counts *operations*: `hyp2f1_ratio` runs twice per likelihood evaluation over all
+*n* customers rather than *n* times on scalars, its scalar series fallback stays
+cold (0 of 348,000 elements in a `fit_pnbd` on the apparel data), a fit stays in
+a measured band of 200-400 likelihood evaluations, and the work per customer is
+identical at 1,178 and 2,357 customers -- O(*n*) by construction rather than by
+stopwatch. Wall-clock stays in `tools/benchmark.py`, reported and not asserted;
+`docs/performance.md` explains why a timing assertion would be the first flaky
+gate here.
 
 The suite is layered: published numbers, agreement with the reference
 implementation expression by expression, internal cross-checks between

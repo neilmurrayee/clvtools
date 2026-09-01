@@ -81,6 +81,7 @@ markers = [
   "slow: full-dataset MLE fits",
   "dyncov_fit: the time-varying covariate MLE; minutes, not seconds",
   "quality: static analysis -- lint, complexity and size limits",
+  "performance: operation-count invariants -- vectorisation, evaluations, O(n)",
 ]
 
 # ---------------------------------------------------------------------------
