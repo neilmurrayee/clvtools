@@ -7,6 +7,28 @@ authors = [
     { name = "neilmurrayee", email = "132654876+neilmurrayee@users.noreply.github.com" }
 ]
 requires-python = ">=3.12"
+# GPL-3.0-only, matching CLVTools 0.12.1. The code here is written from scratch
+# against the paper rather than translated from that package -- R never enters
+# `src/`, and the oracle runs out-of-process -- but `data/` redistributes the
+# four datasets CLVTools bundles, exported to CSV by `tools/extract_data.R`.
+# Matching the upstream licence is what makes that redistribution unambiguous.
+license = "GPL-3.0-only"
+license-files = ["LICENSE"]
+keywords = [
+    "customer-lifetime-value", "clv", "pareto-nbd", "bg-nbd", "ggom-nbd",
+    "gamma-gamma", "buy-till-you-die", "marketing-analytics",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Typing :: Typed",
+]
+
 # Everything `src/` imports, and nothing else. The R package CLVTools serves as
 # the oracle for the test suite but is invoked out-of-process by the fixture
 # generators in `tools/oracle/`; nothing in `src/` depends on it.
@@ -15,6 +37,11 @@ dependencies = [
     "pandas>=2.2",
     "scipy>=1.13",
 ]
+
+[project.urls]
+Repository = "https://github.com/neilmurrayee/clvtools"
+Documentation = "https://github.com/neilmurrayee/clvtools/blob/main/docs/paper.md"
+Changelog = "https://github.com/neilmurrayee/clvtools/blob/main/docs/audit.md"
 
 [build-system]
 requires = ["uv_build>=0.12.5,<0.13.0"]

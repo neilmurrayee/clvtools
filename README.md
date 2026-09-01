@@ -357,3 +357,14 @@ window, which §6.4.2 needs — and `cdnow`.
 
 The paper's LaTeX source and PDF are in `arXiv-2602.09845v1/` and
 `2602.09845v1.pdf`.
+
+## Licence
+
+GPL-3.0-only. See [`LICENSE`](LICENSE).
+
+The code here is written from scratch against the paper rather than translated
+from CLVTools: R never enters `src/`, and the oracle is invoked out-of-process
+by the fixture generators. The licence nonetheless matches CLVTools 0.12.1's
+own, because `data/` redistributes the four datasets that package bundles.
+`cdnow` is the CDNOW cohort of Fader and Hardie (*Interfaces*, 2001) and
+predates it; the three `apparel*` tables come from CLVTools itself.
