@@ -136,3 +136,27 @@ beyond those listed, B5 (two degenerate oracles), B7 (restricted samples
 presented as general), and DY-22's seven weekday splits. `docs/backlog.md` items
 27 and 28 are also open, and item 28's cheap route was tried and reverted — the
 finding is recorded there.
+
+---
+
+## Outcome, round 2 — findings D5 and D6
+
+The audit's suggested order stopped at D3. The rest of section D, and section
+C's leftovers, were worked next; `tests/test_invariants.py` is what came of
+D5 and D6.
+
+| | Claim | Verdict |
+|---|---|---|
+| X-01 | all-zero covariate data fits the plain estimates | **holds** — to 3e-5, well inside R's 0.001; the two coefficients are then unidentified and are not compared |
+| X-04 | γ = 0 predicts the plain table, three ways | **holds exactly** — `exp(0) = 1`, so `check_exact=True` rather than a tolerance |
+| X-05 | γ = 0 gives the plain PMF and tracking plots | **holds** — the PMF exactly; the tracking series to 1e-13, because `600 × E[X(t)]` and a sum of 600 copies of it part company in the last two bits |
+| PR-08 | `predict()`'s spending column is the Gamma-Gamma's own | **holds bit for bit** |
+| FI-12 | the spending cbs `x` equals the Pareto/NBD's | **holds**, with and without a holdout — two different methods on `ClvData`, separately oracle-pinned, agreement stated nowhere until now |
+| B-02 / B-11 | drawing every customer once returns the original | **holds bit for bit** — cbs, spending summary, periods, both design matrices, and the estimate |
+
+The nesting tests discriminate: perturbing `alpha_i` by 0.01 fails five of
+them, and by 1e-9 fails none, which is why the three that can be exact are.
+
+Still open from the audit: B3 (a self-referential doctest), B5 (two degenerate
+dyncov oracles), B7 (restricted samples presented as general), and D4 —
+DY-22's seven weekday splits.
