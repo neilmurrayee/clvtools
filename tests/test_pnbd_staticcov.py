@@ -456,3 +456,69 @@ class TestPrediction:
         plain = ClvData(load_apparel_trans(), time_unit="week", estimation_split=104)
         with pytest.raises(TypeError, match="covariate model needs covariate data"):
             predict(plain, fitted, prediction_end=52)
+
+
+class TestTheCovariateJoinDoesNotDependOnOrder:
+    """X-07 and X-08: nothing in the suite ever shuffled or reversed them.
+
+    Every oracle frame arrives in the order the implementation sorts into, so
+    a design matrix mis-joined to the customer summary, or ``names_cov_*``
+    drifting from column *position*, would be invisible — and
+    ``get_dummies`` moving generated dummies to the end is exactly that
+    mechanism. Finding D2 of ``docs/spec-audit.md``.
+
+    Neither test needs an oracle: the fit is compared with itself under a
+    permutation that must not matter.
+    """
+
+    @staticmethod
+    def _fit(covariates, names):
+        data = ClvData(load_apparel_trans(), time_unit="week", estimation_split=104)
+        static = ClvDataStaticCov(
+            data, covariates, names_cov_life=names, names_cov_trans=names
+        )
+        return fit_pnbd_staticcov(static, hessian=False)
+
+    def test_shuffling_the_covariate_rows_changes_nothing(self):
+        """A row is joined to a customer by id, not by position."""
+        covariates = load_apparel_static_cov()
+        shuffled = covariates.sample(frac=1.0, random_state=20260902)
+        assert not shuffled.index.equals(covariates.index)
+
+        names = ["Gender", "Channel"]
+        canonical = self._fit(covariates, names)
+        permuted = self._fit(shuffled, names)
+
+        assert permuted.coefficients.keys() == canonical.coefficients.keys()
+        for name, value in canonical.coefficients.items():
+            assert permuted.coefficients[name] == pytest.approx(value, rel=1e-9), name
+
+    def test_reversing_the_covariate_columns_changes_nothing(self):
+        """A coefficient follows its name, not the column it arrived in.
+
+        ``names_cov_life=["Channel", "Gender"]`` on a frame whose columns are
+        in the other order must give the same ``life.Gender`` as the canonical
+        fit -- if the design matrix were built by position, the two
+        coefficients would swap and this would fail.
+        """
+        covariates = load_apparel_static_cov()
+        reversed_columns = covariates[["Id", "Channel", "Gender"]]
+
+        canonical = self._fit(covariates, ["Gender", "Channel"])
+        reversed_fit = self._fit(reversed_columns, ["Channel", "Gender"])
+
+        # 1e-5 rather than 1e-9: reversing the columns reverses the order of
+        # the sums inside the design-matrix product, so the search follows a
+        # slightly different path and stops 1e-7 away on this flat ridge. What
+        # the test is for survives that by four orders of magnitude -- if the
+        # coefficients followed *position* instead of name, `life.Gender` and
+        # `life.Channel` would swap, and they differ by 1.43.
+        for name, value in canonical.coefficients.items():
+            assert reversed_fit.coefficients[name] == pytest.approx(
+                value, rel=1e-5
+            ), name
+
+        assert abs(
+            canonical.coefficients["life.Gender"]
+            - canonical.coefficients["life.Channel"]
+        ) > 1.0

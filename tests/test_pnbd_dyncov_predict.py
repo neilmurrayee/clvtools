@@ -15,6 +15,9 @@ Fitting is never involved: every parameter here is read from a fixture.
 
 from __future__ import annotations
 
+from dataclasses import replace
+from typing import ClassVar
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -423,3 +426,113 @@ class TestGuardsOnTheCovariateSeries:
             newcustomer_dynamic(
                 periods, covariates, covariates, want["first.transaction"]
             )
+
+
+class TestStaticCovariatesSuppliedAsDynamic:
+    r"""DY-07: the cleanest cross-check of the dyncov machinery, needing no R.
+
+    If a covariate never changes, a time-varying model must reduce to the
+    time-invariant one, and the walk quantities say so exactly. Supplying
+    constant covariates as dynamic data, CLVTools' own suite asserts three
+    things of the CET input table
+    (``test_correctness_pnbd_dyncov.R:208``, asserted at line 224):
+
+    * :math:`A_i` and :math:`C_i` equal the static covariate values;
+    * :math:`\bar{D}_i = 0`;
+    * :math:`\bar{B}_i = -T_{cal} A_i`.
+
+    None of it needs a fixture: the input is constructed and the output is
+    determined by it. Finding D1 of ``docs/spec-audit.md``, and the reason it
+    matters is that the dyncov path is otherwise checked only against oracle
+    tables that CLVTools produced with the same arrangement of the arithmetic.
+    """
+
+    NAMES: ClassVar[list[str]] = ["Gender", "Channel"]
+
+    @staticmethod
+    @pytest.fixture(scope="class")
+    def constant_covariates():
+        """One row per customer per week, never changing within a customer."""
+        from clvtools import load_apparel_static_cov
+
+        static = load_apparel_static_cov().set_index("Id")
+        weeks = pd.date_range("2005-01-02", "2013-01-06", freq="7D")
+        frames = []
+        for customer, row in static.iterrows():
+            frames.append(pd.DataFrame({
+                "Id": customer,
+                "Cov.Date": weeks,
+                "Gender": float(row["Gender"]),
+                "Channel": float(row["Channel"]),
+            }))
+        return static, pd.concat(frames, ignore_index=True)
+
+    @staticmethod
+    @pytest.fixture(scope="class")
+    def table(apparel_trans, constant_covariates):
+        _, covariates = constant_covariates
+        data = ClvDataDynCov(
+            ClvData(apparel_trans, time_unit="week", estimation_split=104),
+            covariates,
+            names_cov_life=TestStaticCovariatesSuppliedAsDynamic.NAMES,
+            names_cov_trans=TestStaticCovariatesSuppliedAsDynamic.NAMES,
+        )
+        params = _params("dyncov_fit")
+        # The fixture's parameters carry three covariates; this data has two.
+        two = replace(
+            params,
+            gamma_life=params.gamma_life[:2],
+            gamma_trans=params.gamma_trans[:2],
+            names_cov_life=TestStaticCovariatesSuppliedAsDynamic.NAMES,
+            names_cov_trans=TestStaticCovariatesSuppliedAsDynamic.NAMES,
+        )
+        table = abcd(data, two, pd.Timestamp("2007-12-29"))
+        # Asserted here because three of the checks below are `assert_allclose`
+        # against constants, and every one of them passes on an empty frame:
+        # the first draft of this used a prediction end *before* the
+        # estimation end and looked green.
+        assert len(table) > 0
+        assert table["Id"].nunique() == 600
+        return data, two, table
+
+    def test_the_multipliers_are_the_static_values(self, table, constant_covariates):
+        r""":math:`A_i = e^{\gamma' x}` with the customer's own covariates."""
+        static, _ = constant_covariates
+        _, params, got = table
+        design = np.column_stack([
+            static.loc[got["Id"], name].to_numpy(dtype=float)
+            for name in self.NAMES
+        ])
+        np.testing.assert_allclose(
+            got["Ai"].to_numpy(),
+            np.exp(design @ params.gamma_trans),
+            rtol=1e-12,
+        )
+        np.testing.assert_allclose(
+            got["Ci"].to_numpy(),
+            np.exp(design @ params.gamma_life),
+            rtol=1e-12,
+        )
+
+    def test_the_multipliers_never_change_within_a_customer(self, table):
+        """Which is the premise: a constant covariate is a constant multiplier."""
+        _, _, got = table
+        for column in ("Ai", "Ci"):
+            spread = got.groupby("Id")[column].agg(lambda s: s.max() - s.min())
+            assert spread.max() < 1e-12, column
+
+    def test_the_integrated_lifetime_multiplier_is_zero(self, table):
+        r""":math:`\bar{D}_i = 0` when nothing varies."""
+        _, _, got = table
+        np.testing.assert_allclose(got["Dbar_i"].to_numpy(), 0.0, atol=1e-9)
+
+    def test_the_integrated_transaction_multiplier_is_minus_t_cal(self, table):
+        r""":math:`\bar{B}_i = -T_{cal} A_i`, the offset the sums are written
+        around."""
+        data, _, got = table
+        T_cal = data.customer_summary().set_index("Id")["T"]
+        np.testing.assert_allclose(
+            got["Bbar_i"].to_numpy(),
+            -T_cal.loc[got["Id"]].to_numpy() * got["Ai"].to_numpy(),
+            rtol=1e-9,
+        )

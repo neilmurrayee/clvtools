@@ -1020,3 +1020,73 @@ class TestTheF2TermsDoNotOverflowBeforeTheyUnderflow:
         got = float(_hyp_alpha_ge_beta(0.5, 0.6, x, 200.0, 190.0, 210.0, 195.0))
         assert got == 0.0
         assert not np.isnan(got)
+
+
+class TestTheHypergeometricBranchIsContinuous:
+    r"""DY-10: only one side of ``alpha_1 >= beta_1`` was ever taken here.
+
+    ``dyncov.py`` chooses between two arms of the :math:`F_2` term on that
+    comparison, and every test in this repository ran on data where one side
+    wins. R exercises the boundary directly, at :math:`\alpha = \beta =
+    1.234`. Finding D3 of ``docs/spec-audit.md``.
+
+    The boundary is the strongest available check on the pair, and it needs no
+    oracle: at :math:`\alpha = \beta` both arms describe the same quantity,
+    so they must agree — and if one had a sign or an argument transposed, this
+    is where it would show, because nothing else in the expression differs.
+    """
+
+    ARGUMENTS = (0.5, 0.6, 3.0)  # r, s, x
+
+    @pytest.mark.parametrize("value", [1.234, 0.5, 10.0, 200.0])
+    def test_both_arms_agree_where_they_meet(self, value):
+        from clvtools.pnbd.dyncov import _hyp_alpha_ge_beta, _hyp_beta_gt_alpha
+
+        r, s, x = self.ARGUMENTS
+        ge = float(_hyp_alpha_ge_beta(r, s, x, value, value, value * 1.1, value * 1.1))
+        gt = float(_hyp_beta_gt_alpha(r, s, x, value, value, value * 1.1, value * 1.1))
+        assert np.isfinite(ge)
+        assert ge == pytest.approx(gt, rel=1e-12)
+
+    def test_the_dispatcher_takes_the_first_arm_at_equality(self):
+        """``>=`` rather than ``>``, so equality is the alpha arm. Which one it
+        picks does not matter numerically -- the test above says so -- but it
+        should be the documented one."""
+        from clvtools.pnbd.dyncov import _hyp_alpha_ge_beta, _hyp_term
+
+        r, s, x = self.ARGUMENTS
+        value = 1.234
+        assert float(_hyp_term(r, s, x, value, value, value * 1.1, value * 1.1, 1.0)) \
+            == pytest.approx(
+                float(_hyp_alpha_ge_beta(
+                    r, s, x, value, value, value * 1.1, value * 1.1
+                )),
+                rel=1e-15,
+            )
+
+    def test_a_batch_straddling_the_boundary_uses_both(self):
+        """``_hyp_terms`` splits a customer's intervals between the arms.
+
+        The sub-batches can be empty, which is why the arms are written to
+        handle that -- but a batch that straddles the boundary must be handled
+        elementwise, not by whichever arm the first element chose.
+        """
+        from clvtools.pnbd.dyncov import _hyp_terms
+
+        r, s, x = self.ARGUMENTS
+        alpha_1 = np.array([2.0, 1.0, 1.234])
+        beta_1 = np.array([1.0, 2.0, 1.234])
+        got = _hyp_terms(
+            r, s, x, alpha_1, beta_1, alpha_1 * 1.1, beta_1 * 1.1,
+            np.ones(3),
+        )
+        assert np.all(np.isfinite(got))
+        # Elementwise: each is what its own arm gives on its own.
+        from clvtools.pnbd.dyncov import _hyp_alpha_ge_beta, _hyp_beta_gt_alpha
+
+        assert got[0] == pytest.approx(
+            float(_hyp_alpha_ge_beta(r, s, x, 2.0, 1.0, 2.2, 1.1)), rel=1e-15
+        )
+        assert got[1] == pytest.approx(
+            float(_hyp_beta_gt_alpha(r, s, x, 1.0, 2.0, 1.1, 2.2)), rel=1e-15
+        )
