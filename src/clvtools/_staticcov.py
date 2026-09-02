@@ -89,6 +89,76 @@ class StaticCovResult(Fitted):
         return out
 
 
+class DelegatesToCovariates(Fitted):
+    """A family's covariate fit, holding a :class:`StaticCovResult` and forwarding.
+
+    The BG/NBD and the GGom/NBD keep their covariate estimates in a
+    ``StaticCovResult`` rather than spreading them across their own fields, so
+    everything except the model parameters is that object's to answer. Both
+    wrote the same ten forwarding properties out; they live here instead.
+
+    A subclass supplies its model parameters as dataclass fields, a
+    ``covariates`` field, and the two things that genuinely differ between
+    families -- :attr:`~clvtools.inference.Fitted.names` and ``__iter__``,
+    which are where the model parameters go in front of the covariate ones.
+
+    The Pareto/NBD deliberately does not inherit this: its covariate class
+    predates ``StaticCovResult`` and carries the estimates as its own fields,
+    which its ``__iter__`` and the constrained-covariate handling in its
+    ``names`` are written against.
+    """
+
+    #: Supplied by each subclass as a dataclass field. An annotation rather
+    #: than a property, so that the field is not shadowed by a descriptor.
+    covariates: StaticCovResult
+
+    @property
+    def names_cov_life(self) -> list[str]:
+        return self.covariates.names_cov_life
+
+    @property
+    def names_cov_trans(self) -> list[str]:
+        return self.covariates.names_cov_trans
+
+    @property
+    def gamma_life(self):
+        return self.covariates.gamma_life
+
+    @property
+    def gamma_trans(self):
+        return self.covariates.gamma_trans
+
+    @property
+    def log_likelihood(self) -> float:
+        return self.covariates.log_likelihood
+
+    @property
+    def unpenalised_log_likelihood(self) -> float:
+        return self.covariates.unpenalised_log_likelihood
+
+    @property
+    def _comparable_log_likelihood(self) -> float:
+        """A regularized fit's :attr:`log_likelihood` is the penalised mean.
+
+        :class:`StaticCovResult` always carries the unpenalised sum beside it,
+        so AIC and BIC are built on that one and stay comparable with an
+        unregularized model's.
+        """
+        return self.unpenalised_log_likelihood
+
+    @property
+    def converged(self) -> bool:
+        return self.covariates.converged
+
+    @property
+    def n_customers(self) -> int:
+        return self.covariates.n_customers
+
+    @property
+    def hessian(self):
+        """Curvature over :attr:`names`, from the covariate fit."""
+        return self.covariates.hessian
+
 
 @dataclass(frozen=True)
 class SearchSettings:
