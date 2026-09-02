@@ -24,6 +24,7 @@ error, this implementation's 1e-22 against that 0 reports a failure of 1e273.
 from __future__ import annotations
 
 import warnings
+from typing import ClassVar
 
 import numpy as np
 import pandas as pd
@@ -373,14 +374,39 @@ class TestWalkAssembly:
 
     def test_zero_coefficients_make_every_multiplier_one(self, dyncov_walks):
         r"""``exp(0'x) = 1``, so every walk is all ones and the walk integrals
-        collapse to elapsed time."""
+        collapse to elapsed time.
+
+        Over all 600 customers and all four walks, not the first twenty and the
+        two auxiliary ones -- finding B7 of ``docs/spec-audit.md``, a restricted
+        sample presented as general. The real transaction walks are the half
+        that was missing and the one with something to say: there are 1,266 of
+        them, each with its own ``d1`` and ``tjk``, and it is
+        :func:`walk_integral`'s three-branch arithmetic that has to collapse.
+        """
         customers = dyncov_walks.customers(np.zeros(3), np.zeros(3))
-        for customer in customers[:20]:
-            assert np.allclose(customer.aux_walk_trans.values, 1.0)
-            assert np.allclose(customer.aux_walk_life.values, 1.0)
-            assert walk_integral(customer.aux_walk_trans) == pytest.approx(
-                customer.aux_walk_trans.tjk
-            )
+        assert len(customers) == 600
+
+        integrals = 0
+        for customer in customers:
+            for walk in (
+                customer.aux_walk_trans, customer.aux_walk_life,
+                customer.real_walk_life, *customer.real_walks_trans,
+            ):
+                assert np.array_equal(walk.values, np.ones(walk.n_elem))
+            for walk in (customer.aux_walk_trans, *customer.real_walks_trans):
+                assert walk_integral(walk) == pytest.approx(walk.tjk)
+                integrals += 1
+
+        # The auxiliary walk of every customer, and one real walk per repeat
+        # purchase: enough of them to have reached all three branches.
+        assert integrals == 600 + int(dyncov_walks.x.sum()) == 1866
+        widths = {
+            w.n_elem
+            for c in customers
+            for w in (c.aux_walk_trans, *c.real_walks_trans)
+        }
+        assert {1, 2}.issubset(widths)
+        assert max(widths) > 2
 
     def test_a_real_lifetime_walk_exists_exactly_for_repeat_buyers(self):
         """Renamed to what it asserts, and made a biconditional.
@@ -576,6 +602,76 @@ class TestWalkConstruction:
             0,
         )
         np.testing.assert_array_equal(counts, built.x)
+
+
+class TestDOmegaOffTheBoundary:
+    r"""``d_omega`` where the apparel data cannot take it.
+
+    Finding B5 of ``docs/spec-audit.md``: every one of the 600 apparel
+    customers made their first purchase on a **Sunday**, and the covariate grid
+    starts on a Sunday too, so ``d_omega`` is 1 for all of them. Comparing that
+    column against the oracle discriminates nothing, and the second branch of
+    :func:`~clvtools.pnbd.dyncov_walks._distance_to_interval_end` -- the one
+    that measures a real distance -- is never reached through it.
+
+    ``d_omega`` is the fraction of their first covariate interval a customer is
+    alive for, so it is determined by the calendar alone. Four synthetic
+    customers born on four different weekdays fix all four answers without an
+    oracle, and CLVTools' own rule for the boundary -- "d shall be 1 if it is
+    exactly on the time unit lower boundary" -- is the first of them.
+    """
+
+    #: Sunday, Wednesday, Friday, Saturday. The covariate grid below is the
+    #: weeks beginning Sunday, so the days left in the birth week are 7, 4, 2
+    #: and 1 -- and the Sunday customer gets a whole period, not zero.
+    BIRTHS: ClassVar[dict[str, str]] = {
+        "sunday": "2020-01-05",
+        "wednesday": "2020-01-08",
+        "friday": "2020-01-10",
+        "saturday": "2020-01-11",
+    }
+
+    @staticmethod
+    @pytest.fixture(scope="class")
+    def walks():
+        from clvtools import ClvData
+        from clvtools.data import ClvDataDynCov
+
+        grid = pd.date_range("2020-01-05", periods=30, freq="7D")
+        rows = [
+            (customer, date, price)
+            for customer, birth in TestDOmegaOffTheBoundary.BIRTHS.items()
+            for date, price in (
+                (birth, 10.0), ("2020-03-01", 20.0), ("2020-06-07", 30.0)
+            )
+        ]
+        transactions = pd.DataFrame(rows, columns=["Id", "Date", "Price"])
+        transactions["Date"] = pd.to_datetime(transactions["Date"])
+        covariates = pd.DataFrame(
+            [(c, d, 1.0) for c in TestDOmegaOffTheBoundary.BIRTHS for d in grid],
+            columns=["Id", "Cov.Date", "Marketing"],
+        )
+        data = ClvDataDynCov(
+            ClvData(transactions, time_unit="week", estimation_split="2020-04-05"),
+            covariates, names_cov_life=["Marketing"], names_cov_trans=["Marketing"],
+        )
+        return data.walks()
+
+    def test_the_days_left_in_the_birth_week_are_the_multiplier(self, walks):
+        # The ids come back sorted, as everywhere else, so the answers are
+        # looked up by name rather than by position.
+        days = dict(zip(walks.ids, walks.d_omega * 7.0, strict=True))
+        assert days == pytest.approx(
+            {"sunday": 7.0, "wednesday": 4.0, "friday": 2.0, "saturday": 1.0},
+            rel=1e-12,
+        )
+
+    def test_the_apparel_data_could_not_have_said_this(self):
+        """The reason this class exists, asserted rather than described."""
+        from clvtools import load_apparel_trans
+
+        first = load_apparel_trans().groupby("Id")["Date"].min()
+        assert set(first.dt.day_name()) == {"Sunday"}
 
 
 class TestWalkConstructionValidation:

@@ -157,6 +157,16 @@ D5 and D6.
 The nesting tests discriminate: perturbing `alpha_i` by 0.01 fails five of
 them, and by 1e-9 fails none, which is why the three that can be exact are.
 
-Still open from the audit: B3 (a self-referential doctest), B5 (two degenerate
-dyncov oracles), B7 (restricted samples presented as general), and D4 —
-DY-22's seven weekday splits.
+### B3, B5 and B7, same round
+
+| | Claim | Verdict |
+|---|---|---|
+| B3 | `fitted_data`'s doctest is self-referential and reachable from no test file | **confirmed** — and `fitted_pnbd.csv`, R's own `fitted()` over all 313 periods, was committed and orphaned; wired in at rtol 1e-10 |
+| B5 / `d_omega` | the oracle is degenerate | **confirmed, and the cause is the data**: all 600 apparel customers were born on a **Sunday**, and the covariate grid starts on one, so `d_omega ≡ 1` and the distance branch of `_distance_to_interval_end` was never reached through it. Four synthetic births fix 7/7, 4/7, 2/7 and 1/7 |
+| B5 / `d1` | `d1 ≡ 1` throughout the ABCD table | **confirmed** — the apparel split lands on a covariate boundary. A Wednesday split gives `d1 = 4/7`, and the window is unmoved: the grid is the covariates', not the split's |
+| B7 / DY-03 | zero coefficients checked over `customers[:20]`, auxiliary walks only | **confirmed** — now all 600, all four walks, and the 1,866 walk integrals reach all three branches of `walk_integral` |
+| B7 / DY-06 | `i` and the window start compared only over the fixture's sample ids | **confirmed** — now over all 600, which needs no oracle |
+| B7 / B-02, B-08 | four hand-picked ids, and a `(600, 2)` shape assertion | **superseded** by the bootstrap identity above, which compares both design matrices row for row |
+
+Still open from the audit: D4 — DY-22's seven weekday splits — and the `weak`
+verdicts beyond those already worked.
