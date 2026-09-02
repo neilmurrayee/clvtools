@@ -247,6 +247,38 @@ TIME_UNITS: dict[str, TimeUnit] = {
 }
 
 
+def _resolve(name: str) -> str | None:
+    """The unit ``name`` refers to, in CLVTools' spelling or any of R's.
+
+    ``clvdata()`` matches its ``time.unit`` the way R's ``match.arg`` does:
+    case-insensitively, and on any unambiguous prefix. Asked, it accepts
+    ``"w"``, ``"week"``, ``"weeks"``, ``"Weeks"`` and ``"WEEK"`` alike, and
+    this package took only the exact lowercase singular -- so code that works
+    against CLVTools failed here on a spelling. Finding A5 of
+    ``docs/spec-audit.md``, spec T-07.
+
+    An ambiguous prefix is refused rather than guessed:
+
+    >>> _resolve("Weeks"), _resolve("d"), _resolve("YEAR")
+    ('week', 'day', 'year')
+    >>> _resolve("fortnight") is None
+    True
+
+    Note the one place the two differ in the *other* direction: CLVTools has no
+    month unit at all -- it rejects ``"month"`` and ``"months"`` -- while this
+    package implements calendar months, which S5 describes. That is a
+    deliberate extension and is recorded in the README's findings.
+    """
+    lowered = name.strip().lower()
+    if lowered in TIME_UNITS:
+        return lowered
+    singular = lowered.removesuffix("s")
+    if singular in TIME_UNITS:
+        return singular
+    matches = [unit for unit in TIME_UNITS if unit.startswith(singular)]
+    return matches[0] if len(matches) == 1 and singular else None
+
+
 def get(name: str) -> TimeUnit:
     """Look up a unit by name.
 
@@ -272,8 +304,10 @@ def get(name: str) -> TimeUnit:
     >>> year.elapsed(pd.Timestamp("2004-02-29"), pd.Timestamp("2005-03-01"))
     1.0
     """
-    if name not in TIME_UNITS:
+    resolved = _resolve(name)
+    if resolved is None:
         raise ValueError(
             f"time_unit must be one of {sorted(TIME_UNITS)}, got {name!r}"
         )
+    name = resolved
     return TIME_UNITS[name]

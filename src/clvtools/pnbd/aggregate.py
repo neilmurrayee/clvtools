@@ -398,8 +398,18 @@ def discounted_expected_residual_transactions(
     ...     x, t_x, T, delta, 1.4490, 48.6361, 0.5613, 46.8844), 4)
     array([16.025 ,  7.6997,  0.9167])
     """
-    if continuous_discount_factor <= 0:
-        raise ValueError("continuous_discount_factor must be strictly positive")
+    if not 0.0 <= continuous_discount_factor < 1.0:
+        # CLVTools admits [0, 1) and this admitted (0, inf): zero was refused
+        # where R returns the undiscounted expectation, and 1.5 or 100 were
+        # accepted silently, returning a number for a per-period discount rate
+        # of 10,000%. The parameter carries CLVTools' exact semantics --
+        # ``DEFAULT_DISCOUNT_FACTOR`` is ``log(1.1)`` -- so its range transfers
+        # with it. Finding A3 of ``docs/spec-audit.md``, spec PR-11.
+        raise ValueError(
+            "continuous_discount_factor must lie in [0, 1); got "
+            f"{continuous_discount_factor}. It is a *per-period* rate -- see "
+            "clvtools.predict.discount_factor to convert an annual one"
+        )
     x, t_x, T = _as_arrays(x, t_x, T)
     x, t_x, T = np.broadcast_arrays(x, t_x, T)
     alpha_i, beta_i = _broadcast_rates(alpha, beta, x)

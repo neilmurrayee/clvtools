@@ -288,6 +288,16 @@ were wrong in the fourth digit; at a *relative* 1e-4 they agree with
 GGom/NBD's `b = 8.1e-07` from being stepped negative, where the likelihood does
 not exist.
 
+**The discount factor's range was wrong in both directions, and a test pinned
+it that way.** CLVTools admits `[0, 1)`; this admitted `(0, inf)`, so `0` was
+refused where R returns the undiscounted expectation (`Inf`, correctly — a
+customer who may never die has unbounded residual value) and `100` was accepted
+silently, returning a number for a per-period discount rate of 10,000%. Every
+boundary was checked against CLVTools 0.12.1 rather than reasoned about, and it
+errors at 1.0 with "needs to be in the interval [0,1)". The test covering this
+asserted that *zero is rejected* — our divergence rather than the claim — which
+is why nothing caught it.
+
 **`continuous.discount.factor` defaults to an unscaled annual rate.** CLVTools
 uses `log(1.1)` per *period* regardless of the time unit; §6.3.2 is explicit that
 scaling is the caller's job. On weekly data the raw default discounts 52 times

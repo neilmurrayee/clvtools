@@ -744,3 +744,50 @@ class TestArgumentsThatCannotBeUsedAreRejected:
         from clvtools import newcustomer, predict
 
         assert predict(newcustomer(52), fits[0]) > 0
+
+
+class TestTheDiscountFactorRange:
+    """A3: the range was ``(0, inf)`` where CLVTools admits ``[0, 1)``.
+
+    Zero was refused and 100 was accepted, returning a number for a per-period
+    discount rate of 10,000%. The parameter carries CLVTools' exact semantics
+    -- ``DEFAULT_DISCOUNT_FACTOR`` is ``log(1.1)`` -- so its range transfers
+    with it. Spec PR-11.
+
+    Every boundary here was checked against R rather than reasoned about, and
+    the odd one is why: **CLVTools accepts zero and returns ``Inf``**, which is
+    right -- with no discounting the residual value of a customer who may never
+    die does not converge -- and is not what I would have chosen unprompted. It
+    errors at 1.0 with "needs to be in the interval [0,1)".
+    """
+
+    @staticmethod
+    @pytest.fixture(scope="class")
+    def fits(transactions):
+        from clvtools import ClvData, gg, latent_attrition, pnbd, spending
+
+        data = ClvData(transactions, time_unit="week", estimation_split=104)
+        return data, (
+            latent_attrition(family=pnbd, data=data, hessian=False),
+            spending(family=gg, data=data, hessian=False),
+        )
+
+    @pytest.mark.parametrize("factor", [1.0, 1.5, 100.0, -0.1])
+    def test_outside_the_interval_is_refused(self, fits, factor):
+        data, (fit, spend) = fits
+        with pytest.raises(ValueError, match=r"\[0, 1\)"):
+            predict(data, fit, spend, continuous_discount_factor=factor)
+
+    def test_zero_is_accepted_and_diverges_as_it_does_in_r(self, fits):
+        """R: ``sum(DERT) = Inf``. Undiscounted residual value of an
+        immortal customer is unbounded, and saying so beats refusing."""
+        data, (fit, spend) = fits
+        got = predict(data, fit, spend, continuous_discount_factor=0.0)
+        assert np.isinf(got["DERT"]).all()
+
+    @pytest.mark.oracle
+    def test_a_middling_factor_matches_r(self, fits):
+        """``sum(DERT) = 18.2282`` at 0.5, from CLVTools 0.12.1."""
+        data, (fit, spend) = fits
+        got = predict(data, fit, spend, continuous_discount_factor=0.5)
+        assert float(got["DERT"].sum()) == pytest.approx(18.2282, abs=5e-4)

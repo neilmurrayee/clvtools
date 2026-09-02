@@ -428,3 +428,52 @@ class TestClvDataWithCalendarUnits:
         assert in_days.s == pytest.approx(in_weeks.s, rel=1e-3)
         assert in_days.alpha == pytest.approx(in_weeks.alpha * 7, rel=1e-3)
         assert in_days.beta == pytest.approx(in_weeks.beta * 7, rel=1e-3)
+
+
+class TestTheSpellingsCLVToolsAccepts:
+    """A5: only the exact lowercase singular was admitted. Spec T-07.
+
+    ``clvdata()`` matches ``time.unit`` the way R's ``match.arg`` does, so code
+    written against CLVTools could fail here on a spelling alone. Asked
+    directly, R accepts every form below and rejects ``month`` -- which is the
+    one place the two differ in the other direction, because this package
+    implements calendar months and CLVTools has no month unit at all.
+    """
+
+    @pytest.mark.parametrize(
+        "spelling,expected",
+        [
+            ("w", "week"), ("week", "week"), ("weeks", "week"),
+            ("Weeks", "week"), ("WEEK", "week"), ("  week  ", "week"),
+            ("d", "day"), ("day", "day"), ("days", "day"),
+            ("y", "year"), ("year", "year"), ("YEARS", "year"),
+            ("h", "hour"), ("hours", "hour"),
+        ],
+    )
+    def test_r_spellings_resolve(self, spelling, expected):
+        from clvtools.timeunit import TIME_UNITS, get
+
+        assert type(get(spelling)) is type(TIME_UNITS[expected])
+
+    @pytest.mark.parametrize("spelling", ["m", "month", "months", "Months"])
+    def test_months_resolve_here_though_clvtools_has_none(self, spelling):
+        """CLVTools rejects ``month`` and ``months``; S5 describes them and
+        this package implements them, which is a deliberate extension."""
+        from clvtools.timeunit import Months, get
+
+        assert isinstance(get(spelling), Months)
+
+    @pytest.mark.parametrize("spelling", ["fortnight", "", "  ", "wk", "decade"])
+    def test_nonsense_is_still_refused(self, spelling):
+        from clvtools.timeunit import get
+
+        with pytest.raises(ValueError, match="time_unit must be one of"):
+            get(spelling)
+
+    def test_the_data_layer_takes_them_too(self):
+        """The point of the fix: ``ClvData(time_unit="weeks")`` works."""
+        from clvtools import ClvData, load_apparel_trans
+
+        plain = ClvData(load_apparel_trans(), time_unit="week", estimation_split=104)
+        spelled = ClvData(load_apparel_trans(), time_unit="Weeks", estimation_split=104)
+        assert spelled.estimation_end == plain.estimation_end

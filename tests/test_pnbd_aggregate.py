@@ -229,9 +229,25 @@ class TestDertProperties:
         )
         assert heavy < light
 
-    def test_rejects_a_nonpositive_discount_factor(self):
-        with pytest.raises(ValueError, match="strictly positive"):
-            discounted_expected_residual_transactions(1, 10.0, 104.0, 0.0, **MLE)
+    @pytest.mark.parametrize("factor", [1.0, 1.5, 100.0, -0.1])
+    def test_rejects_a_discount_factor_outside_the_unit_interval(self, factor):
+        """CLVTools admits ``[0, 1)`` and this admitted ``(0, inf)``.
+
+        The old assertion was that *zero* is rejected, which pinned the
+        divergence rather than the claim -- finding A3 of
+        ``docs/spec-audit.md``. Asked directly, R errors at 1.0 with "needs to
+        be in the interval [0,1)" and accepts 0, so a discount factor of 100
+        used to return a number here for a per-period rate of 10,000%.
+        """
+        with pytest.raises(ValueError, match=r"\[0, 1\)"):
+            discounted_expected_residual_transactions(1, 10.0, 104.0, factor, **MLE)
+
+    def test_accepts_zero_and_diverges_as_r_does(self):
+        """R returns ``Inf``: undiscounted, a customer who may never die has
+        unbounded residual value, and that is the answer rather than an
+        error."""
+        got = discounted_expected_residual_transactions(1, 10.0, 104.0, 0.0, **MLE)
+        assert np.isinf(float(got))
 
 
 class TestExpectationProperties:
