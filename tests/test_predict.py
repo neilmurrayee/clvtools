@@ -620,6 +620,43 @@ class TestProspectiveCustomers:
         with pytest.raises(ValueError, match="must not be negative"):
             newcustomer_static(periods, {}, {})
 
+    def test_a_horizon_that_is_not_a_number_says_so(self):
+        """Spec NC-13: "``num.periods`` must be numeric and ``>= 0``".
+
+        A string reached ``<`` directly and raised Python's own "'<' not
+        supported between instances of 'str' and 'int'", which names neither
+        the argument nor the requirement. CLVTools 0.12.1, asked directly,
+        answers "num.periods has to be numeric!" -- so ``"52"`` is refused
+        rather than coerced.
+        """
+        with pytest.raises(TypeError, match="num_periods must be a number"):
+            newcustomer("52")
+        with pytest.raises(TypeError, match="num_periods must be a number"):
+            newcustomer_static(None, {}, {})
+
+    def test_a_nan_horizon_is_refused_rather_than_propagated(self):
+        """The other half of NC-13, and the worse half: ``nan < 0`` is
+        ``False``, so a ``NaN`` passed the negativity check and became a
+        ``NaN`` prediction several frames away from its cause. R gives ``NA``
+        the same answer it gives a string."""
+        with pytest.raises(ValueError, match="got NaN"):
+            newcustomer(float("nan"))
+
+    def test_a_covariate_this_fit_does_not_carry_is_refused(self):
+        """NC-13's "covariate data must have the right format".
+
+        An unknown name used to be dropped, so a typo returned a plausible
+        number computed from the covariates that *were* recognised. CLVTools
+        0.12.1 refuses it -- "The Lifetime covariate data has to contain
+        exactly the following columns: Gender, Channel!" -- and *exactly* is
+        the operative word: both directions are errors there. They have
+        different messages here because they are different mistakes.
+        """
+        _, params = self._static_fit()
+        scenario = {"Gender": 0, "Channel": 1, "Gendre": 1}
+        with pytest.raises(ValueError, match="not covariates of this fit"):
+            predict(newcustomer_static(52, scenario, scenario), params)
+
     @pytest.mark.paper
     def test_reproduces_the_printed_totals(self, transactions):
         """S6.3.4: 2.218635 transactions, 39.1372 per order, 86.83115 total."""

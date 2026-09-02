@@ -205,7 +205,31 @@ full fitting signature. The package has moved past the paper there, so M-13's
 "scope question: is the BG/BB model in or out?" is answered by the port's own
 rule — it follows the paper.
 
+### D-17 and NC-13, the two items the audit never reached
+
+Both were marked `—` rather than given a verdict. Both are reachable.
+
+**D-17** holds, and the reason is worth stating: dropping first transactions
+and cutting at the split commute *because* the estimation period contains every
+customer's first transaction — the estimation start is the earliest of them.
+The 1,266 repeat transactions are now reached three ways in
+`tests/test_invariants.py`: by construction, by `customer_summary()`'s `x`, and
+by the descriptive tracking series restricted to the estimation period.
+
+**NC-13** found two silent acceptances, both settled by asking CLVTools rather
+than by argument.
+
+| Input | Was | CLVTools 0.12.1 | Now |
+|---|---|---|---|
+| `newcustomer("52")` | `TypeError: '<' not supported between instances of 'str' and 'int'` | `num.periods has to be numeric!` | named `TypeError` |
+| `newcustomer(nan)` | **accepted** — `nan < 0` is `False` — and became a `NaN` prediction frames later | same error as a string | named `ValueError` |
+| a covariate the fit does not carry | **silently dropped**, so a typo returned a plausible number from the covariates that *were* recognised | "has to contain **exactly** the following columns" | named `ValueError` |
+
+The third is the same shape as A4's: a scenario built on `{"Gender", "Channel",
+"Gendre"}` answered 2.234 with nothing said. R's word is *exactly*, so both
+directions are errors there; only the missing one was an error here.
+
 **Every finding in `docs/spec-audit.md` has now been worked**: A1–A7, B1–B7,
-C, D1–D6, and the six `out-of-scope` decisions. What remains of that document
+C, D1–D6, the six `out-of-scope` decisions, and D-17 and NC-13. What remains of that document
 is the `weak` verdicts it did not individually list, which its own caveat calls
 its least certain class — a judgement call rather than a task list.

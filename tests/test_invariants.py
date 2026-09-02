@@ -250,6 +250,58 @@ class TestCrossModelAgreements:
         np.testing.assert_array_equal(cbs["x"].to_numpy(), spend["x"].to_numpy())
 
 
+class TestRepeatTransactionsInTheEstimationPeriod:
+    r"""D-17: dropping first transactions and cutting at the split commute.
+
+    One of the two spec items the audit never reached. It is a set equality
+    with no oracle behind it, and it holds because the estimation period always
+    contains every customer's first transaction -- the estimation *start* is
+    the earliest of them. Were that not so, a customer whose first purchase
+    fell outside the window would have a different "first" on each side and the
+    two sets would part company.
+    """
+
+    def test_dropping_firsts_and_cutting_at_the_split_commute(self, data):
+        transactions = data.transactions
+        cut = transactions["Date"] <= data.estimation_end
+
+        first_overall = transactions.groupby("Id")["Date"].transform("min")
+        repeats_then_cut = transactions[(transactions["Date"] > first_overall) & cut]
+
+        within = transactions[cut]
+        first_within = within.groupby("Id")["Date"].transform("min")
+        cut_then_repeats = within[within["Date"] > first_within]
+
+        pd.testing.assert_frame_equal(
+            repeats_then_cut.reset_index(drop=True),
+            cut_then_repeats.reset_index(drop=True),
+        )
+
+    def test_the_three_counts_of_them_agree(self, data):
+        """The same 1,266, reached three ways: by construction above, by
+        ``customer_summary``'s ``x``, and by the descriptive tracking series
+        restricted to the estimation period. Three code paths, one answer."""
+        transactions = data.transactions
+        first_overall = transactions.groupby("Id")["Date"].transform("min")
+        constructed = int(
+            (
+                (transactions["Date"] > first_overall)
+                & (transactions["Date"] <= data.estimation_end)
+            ).sum()
+        )
+
+        summarised = int(data.customer_summary()["x"].sum())
+        tracked = diagnostics.tracking_data(data)
+        plotted = float(
+            tracked.loc[
+                tracked["period.until"] <= data.estimation_end, "value"
+            ].sum()
+        )
+
+        assert constructed == summarised == 1266
+        assert plotted == 1266.0
+
+
 # -- the bootstrap identity: B-02, B-11 --------------------------------------
 
 
