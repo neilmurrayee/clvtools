@@ -483,7 +483,7 @@ which it reported successful convergence on the Gamma-Gamma at a local optimum
 ## Testing
 
 ```bash
-uv run pytest                  # 1,118 tests, including doctests in src/ and docs/
+uv run pytest                  # 1,141 tests, including doctests in src/ and docs/
 uv run pytest -m paper         # 25 numbers printed in the paper
 uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
 uv run pytest -m literature    # 13 numbers published in the CLV literature

@@ -168,5 +168,27 @@ them, and by 1e-9 fails none, which is why the three that can be exact are.
 | B7 / DY-06 | `i` and the window start compared only over the fixture's sample ids | **confirmed** — now over all 600, which needs no oracle |
 | B7 / B-02, B-08 | four hand-picked ids, and a `(600, 2)` shape assertion | **superseded** by the bootstrap identity above, which compares both design matrices row for row |
 
-Still open from the audit: D4 — DY-22's seven weekday splits — and the `weak`
-verdicts beyond those already worked.
+### D4, and the audit is worked through
+
+DY-22, "all walks are basically correct for an `estimation.split` on every day
+of the week". Every dyncov test in this repository ran at
+`estimation_split=104`, which lands exactly on the weekly covariate grid, so
+all 600-customer oracle comparisons had been made at one alignment out of
+seven. No oracle is needed for the other six: S3.3's nesting holds at any
+split, so the plain Pareto/NBD's closed form gives each alignment an
+independent answer. All seven agree to 1e-12, the cbs the walks carry is the
+split's own, one real transaction walk stands per repeat purchase, `d_omega` is
+unmoved (it is fixed by the customer's birth) and `T_cal` moves by a day at a
+time. The seven likelihoods fall monotonically from −5848.1 to −5879.7, which
+is asserted so that a split that never reached the walks would show as one
+number repeated.
+
+Splitting the module was part of it: `test_pnbd_dyncov.py` reached 748 code
+lines against the 700 limit, and CLAUDE.md's rule is to split rather than
+raise. `tests/test_pnbd_dyncov_walks.py` now holds walk *construction* — the
+oracle tables, the calendar, the validation — and the shared parameter grid
+moved to `conftest.py`.
+
+**Every finding in `docs/spec-audit.md` has now been worked**: A1–A7, B1–B7,
+C, D1–D6. What remains of that document is the `weak` verdicts it did not
+individually list, which is a judgement call rather than a task list.
