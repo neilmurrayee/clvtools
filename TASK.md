@@ -189,6 +189,23 @@ raise. `tests/test_pnbd_dyncov_walks.py` now holds walk *construction* — the
 oracle tables, the calendar, the validation — and the shared parameter grid
 moved to `conftest.py`.
 
+### The six `out-of-scope` items, decided
+
+The audit's closing note: "Items marked `out-of-scope` in `docs/spec.md` need a
+recorded decision rather than a test — the audit could not otherwise tell a gap
+from a choice." Nothing recorded them. The README's *What it implements* now
+carries a **Deliberately not ported** list: `bgbb`, `as.clv.data()`, `newdata`
+as a keyword, `predict.spending = TRUE`, a specification-carrying bootstrap,
+and a named-parameter likelihood accessor.
+
+One of the six turned out to be a discrepancy rather than a decision, and it
+runs the other way. The paper states that BG/BB "is not currently included in
+CLVTools"; `.Rlib/CLVTools/NAMESPACE` exports `bgbb` and `args(bgbb)` returns a
+full fitting signature. The package has moved past the paper there, so M-13's
+"scope question: is the BG/BB model in or out?" is answered by the port's own
+rule — it follows the paper.
+
 **Every finding in `docs/spec-audit.md` has now been worked**: A1–A7, B1–B7,
-C, D1–D6. What remains of that document is the `weak` verdicts it did not
-individually list, which is a judgement call rather than a task list.
+C, D1–D6, and the six `out-of-scope` decisions. What remains of that document
+is the `weak` verdicts it did not individually list, which its own caveat calls
+its least certain class — a judgement call rather than a task list.
