@@ -29,11 +29,14 @@ uncertainty)."
 
 from __future__ import annotations
 
+import inspect
+import warnings
 from collections.abc import Callable, Sequence
 
 import numpy as np
 import pandas as pd
 
+from clvtools._validate import ConvergenceWarning
 from clvtools.data import ClvData, ClvDataStaticCov
 
 __all__ = [
@@ -66,17 +69,31 @@ def bootstrap_data(data: ClvData, ids: Sequence[str]) -> ClvData:
             f"{len(missing)} sampled ids are not in the data, e.g. {missing[:3]}"
         )
 
+    # One pass over the frame, then positional lookups. Filtering
+    # ``transactions["Id"] == customer`` inside the loop walked all 6,696 CDNOW
+    # rows once per drawn customer: 0.965 s a draw against 0.134 s for the
+    # summary and the Pareto/NBD fit together, so a hundred draws spent about
+    # 95 seconds rebuilding data and 13 fitting it. Finding 11 of
+    # ``docs/review-2026-09-02.md``.
+    positions = transactions.groupby("Id", sort=False).indices
+
     seen: dict[str, int] = {}
-    frames = []
+    rows: list[np.ndarray] = []
+    labels: list[np.ndarray] = []
     for customer in ids:
         occurrence = seen.get(customer, 0)
         seen[customer] = occurrence + 1
-        block = transactions[transactions["Id"] == customer].copy()
-        if occurrence:
-            block["Id"] = f"{customer}{BOOTSTRAP_SUFFIX}{occurrence}"
-        frames.append(block)
+        where = positions[customer]
+        rows.append(where)
+        label = (
+            customer if not occurrence
+            else f"{customer}{BOOTSTRAP_SUFFIX}{occurrence}"
+        )
+        labels.append(np.full(where.size, label, dtype=object))
 
-    resampled = pd.concat(frames, ignore_index=True)
+    resampled = transactions.iloc[np.concatenate(rows)].copy()
+    resampled["Id"] = np.concatenate(labels)
+    resampled = resampled.reset_index(drop=True)
 
     return ClvData(
         resampled,
@@ -118,7 +135,11 @@ def bootstrap_apply(
     data: ClvData,
     apply: Callable[[ClvData], object],
     num_boots: int = 100,
-    sample: Callable[[np.ndarray], np.ndarray] | None = None,
+    # Either ``sample(pool)`` or ``sample(pool, rng)``; the second is offered
+    # so that ``seed`` reaches a caller's own sampler, and the first is what
+    # ``?clv.bootstrapped.apply``'s example has. ``...`` rather than a union of
+    # two signatures because that is exactly what is accepted here.
+    sample: Callable[..., np.ndarray] | None = None,
     seed: int | None = None,
 ) -> list:
     r"""Resample customers, rebuild the data, and apply a function each time.
@@ -171,14 +192,48 @@ def bootstrap_apply(
     if sample is None:
         def sample(pool, rng=rng):
             return rng.choice(pool, size=len(pool), replace=True)
+        draw = sample
+    else:
+        # A user-supplied sampler used to be called with the pool alone, so
+        # ``seed`` did nothing whenever one was given -- the runs were not
+        # reproducible and nothing said so. It is offered the generator, and
+        # falls back for a one-argument sampler, which is the shape
+        # ``?clv.bootstrapped.apply``'s own example has.
+        takes_rng = len(inspect.signature(sample).parameters) >= 2
+
+        def draw(pool, _sample=sample, _rng=rng, _takes=takes_rng):
+            return _sample(pool, _rng) if _takes else _sample(pool)
 
     results = []
-    for _ in range(num_boots):
-        drawn = list(sample(ids))
-        rebuilt = bootstrap_data(data, drawn)
-        if isinstance(data, ClvDataStaticCov):
-            rebuilt = _resample_covariates(data, rebuilt, drawn)
-        results.append(apply(rebuilt))
+    failures: list[str] = []
+    for attempt in range(num_boots):
+        drawn = list(draw(ids))
+        try:
+            rebuilt = bootstrap_data(data, drawn)
+            if isinstance(data, ClvDataStaticCov):
+                rebuilt = _resample_covariates(data, rebuilt, drawn)
+            results.append(apply(rebuilt))
+        except Exception as error:
+            # An exception on draw 3 of 5 used to discard the two that had
+            # already succeeded. A resample is a random object: some of them
+            # are degenerate, and losing the whole run to one of those is the
+            # wrong trade. What is not acceptable is losing it silently, so
+            # every failure is counted and named at the end.
+            failures.append(f"draw {attempt + 1}: {type(error).__name__}: {error}")
+
+    if not results:
+        raise ValueError(
+            f"all {num_boots} bootstrap draws failed. First: {failures[0]}"
+        )
+    if failures:
+        # Only where something survived: if nothing did, the exception above
+        # has already said so and a warning beside it is noise.
+        warnings.warn(
+            f"{len(failures)} of {num_boots} bootstrap draws failed and were "
+            f"dropped; {len(results)} were kept. First: {failures[0]}",
+            ConvergenceWarning,
+            stacklevel=2,
+        )
     return results
 
 

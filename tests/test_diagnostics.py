@@ -692,3 +692,78 @@ class TestPredictIntervals:
         width = (intervals["CET.CI.95"] - intervals["CET.CI.5"]).median()
         outcomes = refit(data)["actual.x"].std()
         assert width < outcomes
+
+
+class TestTheBootstrapReportsWhatHappened:
+    """Finding 11: three silences and a rebuild that dominated the run.
+
+    The rebuild is measured rather than gated -- 0.965 s a draw on CDNOW
+    against 0.134 s for the summary and fit together, now 0.016 s -- because
+    this repo gates operations rather than clocks. What is asserted here is the
+    behaviour: a failed draw is reported instead of discarding the run, and a
+    caller's own sampler receives the seeded generator.
+    """
+
+    @staticmethod
+    @pytest.fixture(scope="class")
+    def small():
+        from clvtools import ClvData, load_apparel_trans
+
+        trans = load_apparel_trans()
+        ids = sorted(trans["Id"].unique())[:40]
+        return ClvData(
+            trans[trans["Id"].isin(ids)], time_unit="week", estimation_split=104
+        )
+
+    def test_one_failed_draw_does_not_lose_the_others(self, small):
+        """It used to propagate out of the loop, discarding every draw before
+        it -- a resample is a random object and some are degenerate, so losing
+        five minutes of refits to the third one is the wrong trade."""
+        from clvtools._validate import ConvergenceWarning
+        from clvtools.bootstrap import bootstrap_apply
+
+        calls = {"n": 0}
+
+        def flaky(data):
+            calls["n"] += 1
+            if calls["n"] == 2:
+                raise RuntimeError("degenerate resample")
+            return data.nobs()
+
+        with pytest.warns(ConvergenceWarning, match="1 of 3 bootstrap draws failed"):
+            got = bootstrap_apply(small, flaky, num_boots=3, seed=1)
+        assert len(got) == 2
+
+    def test_every_draw_failing_is_an_error(self, small):
+        from clvtools.bootstrap import bootstrap_apply
+
+        def always(data):
+            raise RuntimeError("no")
+
+        with pytest.raises(ValueError, match="all 2 bootstrap draws failed"):
+            bootstrap_apply(small, always, num_boots=2, seed=1)
+
+    def test_a_custom_sampler_is_given_the_seeded_generator(self, small):
+        """``seed`` used to be silently ignored whenever ``sample`` was passed,
+        so runs that looked reproducible were not."""
+        from clvtools.bootstrap import bootstrap_apply
+
+        def half(pool, rng):
+            return rng.choice(pool, size=len(pool) // 2, replace=False)
+
+        first = bootstrap_apply(small, lambda d: d.nobs(), num_boots=2,
+                                sample=half, seed=7)
+        again = bootstrap_apply(small, lambda d: d.nobs(), num_boots=2,
+                                sample=half, seed=7)
+        assert first == again
+        assert all(n == small.nobs() // 2 for n in first)
+
+    def test_a_one_argument_sampler_still_works(self, small):
+        """``?clv.bootstrapped.apply``'s own example has that shape."""
+        from clvtools.bootstrap import bootstrap_apply
+
+        def half(pool):
+            return pool[: len(pool) // 2]
+
+        got = bootstrap_apply(small, lambda d: d.nobs(), num_boots=1, sample=half)
+        assert got == [small.nobs() // 2]

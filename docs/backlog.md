@@ -1044,13 +1044,28 @@ that cannot do is make an unrepresentable number representable, so at `x = 160`
 the term is honestly 0, and `log_likelihood_customer` still takes the
 alive-only branch there without saying so.
 
-## 24. `[ ]` Bootstrap: report failures, and rebuild once — finding 11
+## 24. `[x]` Bootstrap: report failures, and rebuild once — finding 11
 
 One exception on draw 3 of 5 loses every draw; non-converged refits are pooled
 silently; a user-supplied `sample` never receives the seeded generator, so
 `seed` is ignored with it; and `bootstrap_data` filters the whole frame per
 drawn customer — 0.95 s a draw on CDNOW against 0.16 s for the summary and fit
 together.
+
+**Done, all four.** The rebuild does one `groupby(...).indices` pass and then
+positional lookups: **0.965 s a draw on CDNOW becomes 0.016 s**, so a hundred
+draws stop spending 95 seconds rebuilding data against 13 fitting it. Measured
+rather than gated, because this repo counts operations and not seconds.
+
+A failed draw is collected and counted rather than propagating — losing five
+minutes of refits to one degenerate resample is the wrong trade, and losing
+them silently is worse — and only if *every* draw fails does it raise, with the
+first failure quoted either way. A caller's own sampler is offered the seeded
+generator, so `seed` is no longer ignored whenever `sample` is passed (runs that
+looked reproducible were not); a one-argument sampler, which is the shape
+`?clv.bootstrapped.apply`'s example has, still works. Non-converged refits now
+announce themselves from inside the refit, through item 21's
+`ConvergenceWarning`, which is a better place for it than the pooling code.
 
 ## 25. `[ ]` Suite hygiene — findings 14, 15, 16, 17
 
