@@ -475,3 +475,48 @@ class TestATransactionMustSayWhoAndWhen:
         """A list of dicts gave ``AttributeError`` from inside pandas."""
         with pytest.raises(TypeError, match="must be a pandas DataFrame"):
             ClvData([{"Id": "1", "Date": "2005-01-02"}], time_unit="week")
+
+
+class TestTheColumnRenameActuallyRenames:
+    """Finding B4: it was only ever exercised as the identity.
+
+    The three uses in the suite were the default passed explicitly
+    (``name_id="Id"``), a misspelling checked for raising, and ``None``. So the
+    mapping in ``ClvData.__init__`` never renamed anything, and a mapping that
+    pointed at the wrong column -- or silently dropped one -- would have passed
+    every test in this repository. Spec D-14.
+    """
+
+    @staticmethod
+    @pytest.fixture(scope="class")
+    def renamed():
+        return load_apparel_trans().rename(
+            columns={"Id": "customer", "Date": "when", "Price": "amount"}
+        )
+
+    def test_a_full_rename_gives_the_same_data(self, renamed):
+        plain = ClvData(load_apparel_trans(), time_unit="week", estimation_split=104)
+        got = ClvData(
+            renamed, time_unit="week", estimation_split=104,
+            name_id="customer", name_date="when", name_price="amount",
+        )
+        assert got.nobs() == plain.nobs()
+        assert got.has_spending
+        pd.testing.assert_frame_equal(
+            got.transactions.reset_index(drop=True),
+            plain.transactions.reset_index(drop=True),
+        )
+
+    def test_the_summary_is_identical_too(self, renamed):
+        """Not just the frame: everything derived from it."""
+        plain = ClvData(load_apparel_trans(), time_unit="week", estimation_split=104)
+        got = ClvData(
+            renamed, time_unit="week", estimation_split=104,
+            name_id="customer", name_date="when", name_price="amount",
+        )
+        pd.testing.assert_frame_equal(got.summary(), plain.summary())
+
+    def test_naming_a_column_that_is_not_there_raises(self, renamed):
+        """The mapping is checked, rather than quietly producing nothing."""
+        with pytest.raises(ValueError, match="missing columns"):
+            ClvData(renamed, time_unit="week", name_id="Id", name_date="when")

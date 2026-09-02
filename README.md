@@ -293,6 +293,18 @@ uses `log(1.1)` per *period* regardless of the time unit; §6.3.2 is explicit th
 scaling is the caller's job. On weekly data the raw default discounts 52 times
 too fast. `discount_factor()` does the scaling.
 
+**`reg_lambdas=(0, 0)` was not the same fit as no regularization.** A zero
+weight still selected eq. (13)'s *mean* objective, so the likelihood was divided
+by `n` before the penalty of zero was added to it. The estimates were
+unaffected — scaling an objective does not move its optimum — but the Hessian
+was 1/600 of the unregularized one, and every standard error came back
+`sqrt(600) = 24.5` times too large: `r` at 8.47 against 0.346. Nothing caught it
+because the test for this claim compared a single log-likelihood at `abs=1e-4`,
+while CLVTools' own suite asserts that `lambda = 0` reproduces the coefficient
+vector *and* the summary table. A weight that contributes nothing should not
+change which objective is minimised, so it no longer does, and the test now
+compares both.
+
 **A regularized fit's standard errors are almost entirely the penalty's.**
 They are now differenced on the objective that was actually minimised — eq.
 (13)'s penalised *mean* — rather than on the unpenalised sum, so that the

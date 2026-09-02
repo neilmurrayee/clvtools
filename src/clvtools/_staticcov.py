@@ -317,9 +317,19 @@ def _penalised(
     >>> float(_penalised(-100.0, g, g, (0.5, 0.5), 10))
     -5.0
     """
-    if reg_lambdas is None:
+    lam_life, lam_trans = reg_lambdas or (0.0, 0.0)
+    if not (lam_life or lam_trans):
+        # A zero penalty is no penalty. Without this, ``reg_lambdas=(0, 0)``
+        # still divided the likelihood by ``n`` -- eq. (13)'s mean convention
+        # -- so the *estimates* matched an unregularized fit (scaling does not
+        # move an optimum) while its Hessian was 1/600 of one and every
+        # standard error came out sqrt(600) = 24.5 times too large: 8.47
+        # against 0.346 for `r`. The R suite asserts that lambda = 0
+        # reproduces the unpenalised fit including its summary table, and it
+        # is right to: which objective is minimised should not turn on a
+        # weight that contributes nothing. Finding B6 of
+        # ``docs/spec-audit.md``, spec X-06.
         return negative_ll
-    lam_life, lam_trans = reg_lambdas
     penalty = lam_life * np.sum(g_life**2) + lam_trans * np.sum(g_trans**2)
     return negative_ll / n_customers + penalty
 

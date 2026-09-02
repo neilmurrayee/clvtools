@@ -133,7 +133,7 @@ class Fitted:
         # number should be told what it is made of. See the README's findings
         # and docs/backlog.md item 22.
         lambdas = getattr(self, "reg_lambdas", None)
-        if lambdas is not None:
+        if lambdas is not None and any(lambdas):
             warnings.warn(
                 f"these standard errors come from the regularized objective "
                 f"(reg_lambdas={tuple(lambdas)}), whose curvature is dominated "

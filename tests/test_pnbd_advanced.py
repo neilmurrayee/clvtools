@@ -452,11 +452,45 @@ class TestRegularization:
             ), name
 
     def test_zero_weight_reproduces_the_unpenalised_fit(self, static_data):
-        plain = fit_pnbd_staticcov(static_data, hessian=False)
-        zero = fit_pnbd_staticcov(static_data, reg_lambdas=(0.0, 0.0), hessian=False)
+        """R's claim is the whole fit, not one scalar of it.
+
+        This compared a single log-likelihood at ``abs=1e-4`` -- about 1.7e-8
+        relative on a value near -5821, which is loose enough that a
+        coefficient could move in its third decimal and go unnoticed. The R
+        suite asserts the coefficient *vector* and the summary table with
+        ``expect_equal`` and no loosened tolerance. Finding B6 of
+        ``docs/spec-audit.md``, spec X-06.
+
+        1e-6 relative rather than exact equality: `reg_lambdas=(0, 0)` adds
+        ``0 * sum(gamma**2)`` to the objective, which is arithmetically zero
+        but reaches the optimiser as a different expression, so the search can
+        stop a step earlier or later on a flat ridge. That is a property of
+        floating-point addition, not of the penalty.
+        """
+        # With Hessians, because the claim includes the summary table and a
+        # table without standard errors is not the thing R compares.
+        plain = fit_pnbd_staticcov(static_data)
+        zero = fit_pnbd_staticcov(static_data, reg_lambdas=(0.0, 0.0))
+
         assert zero.unpenalised_log_likelihood == pytest.approx(
-            plain.log_likelihood, abs=1e-4
+            plain.log_likelihood, rel=1e-9
         )
+        assert zero.names == plain.names
+        for name in plain.names:
+            assert zero.coefficients[name] == pytest.approx(
+                plain.coefficients[name], rel=1e-6
+            ), name
+
+        # And the table a caller reads, column by column.
+        got, want = zero.summary(), plain.summary()
+        assert list(got.index) == list(want.index)
+        assert list(got.columns) == list(want.columns)
+        for column in ("Estimate", "Std. Error"):
+            np.testing.assert_allclose(
+                got[column].to_numpy(dtype=float),
+                want[column].to_numpy(dtype=float),
+                rtol=1e-5,
+            )
 
     def test_a_heavier_weight_shrinks_the_coefficients(self, static_data):
         """S6.5.1: "The larger this regularization weight, the stronger the
