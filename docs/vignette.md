@@ -95,7 +95,7 @@ exactly as the R generic does. With no covariates, no formula is given.
 >>> from clvtools import latent_attrition, pnbd as pnbd_family
 >>> fit = latent_attrition(family=pnbd_family, data=data)
 >>> {name: round(value, 4) for name, value in fit.coefficients.items()}
-{'r': 1.4489, 'alpha': 48.6348, 's': 0.5613, 'beta': 46.8837}
+{'r': 1.4489, 'alpha': 48.634..., 's': 0.5613, 'beta': 46.88...}
 
 ```
 
@@ -110,7 +110,7 @@ Every generic the vignette calls — `summary()`, `coef()`, `confint()`,
 r        1.4489      0.2434    NaN       NaN
 alpha   48.6348      7.4889    NaN       NaN
 s        0.5613      0.2711    NaN       NaN
-beta    46.8837     35.6152    NaN       NaN
+beta    46.8837     35.61...  NaN       NaN
 
 ```
 
@@ -122,12 +122,12 @@ unconstrained, do carry them — see below.
 ```python
 >>> [round(float(v), 4) for v in (fit.log_likelihood, fit.aic, fit.bic)]
 [-5848.0978, 11704.1957, 11721.7834]
->>> print(fit.confint().round(4).to_string())
-         2.5 %    97.5 %
-r       0.9718    1.9260
-alpha  33.9569   63.3128
-s       0.0300    1.0926
-beta  -22.9209  116.6883
+>>> print(fit.confint().round(3).to_string())
+        2.5 %   97.5 %
+r       0.972    1.926
+alpha  33.957   63.313
+s       0.030    1.093
+beta  -22.92...  116.68...
 
 ```
 
@@ -144,7 +144,7 @@ bootstrap intervals of §6.3.3.
 >>> from clvtools import spending, predict, gg as gg_family
 >>> gg = spending(family=gg_family, data=data)
 >>> [round(v, 4) for v in gg]
-[3.099, 5.6537, 56.5042]
+[3.099, 5.6537, 56.504...]
 >>> columns = ["PAlive", "CET", "DERT", "predicted.mean.spending", "predicted.CLV"]
 >>> print(predict(data, fit, gg)[columns].head(3).round(4).to_string())
      PAlive     CET    DERT  predicted.mean.spending  predicted.CLV
@@ -239,7 +239,7 @@ The constrained covariate is then reported once, as `constr.Gender`:
 r                1.7939      0.3318     NaN       NaN
 alpha           94.7355     17.2223     NaN       NaN
 s                0.4286      0.1417     NaN       NaN
-beta            59.0656     34.5065     NaN       NaN
+beta            59.065...   34.506...   NaN       NaN
 life.Channel     1.0233      0.3542  2.8888    0.0039
 trans.Channel    0.6386      0.1064  5.9991    0.0000
 constr.Gender    0.3285      0.1074  3.0578    0.0022
@@ -276,7 +276,7 @@ this package takes them in the order `(life, trans)`.
 ...     formula="~ . | .", family=pnbd_family, data=static,
 ...     reg_lambdas=(0.2, 0.1), hessian=False)
 >>> {n: round(v, 5) for n, v in regularized.coefficients.items()}
-{'r': 1.73758, 'alpha': 69.79931, 's': 0.53392, 'beta': 39.73356, 'life.Gender': -0.04438, 'life.Channel': 0.02464, 'trans.Gender': 0.17175, 'trans.Channel': 0.23671}
+{'r': 1.73758, 'alpha': 69.7993..., 's': 0.53392, 'beta': 39.7335..., 'life.Gender': -0.04438, 'life.Channel': 0.02464, 'trans.Gender': 0.17175, 'trans.Channel': 0.23671}
 
 ```
 

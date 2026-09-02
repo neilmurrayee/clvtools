@@ -262,6 +262,30 @@ express an estimation split in years from a 29 February start. Its own
 the convention taken here in both directions, so `add` and `elapsed` stay
 mutually inverse.
 
+**The convergence tolerances were tighter than double precision, and only
+macOS forgave it.** `_optimize` set `ftol = 1e-16` for L-BFGS-B. SciPy turns
+that into `factr = ftol / eps = 0.45`, a demand for a relative reduction better
+than machine epsilon, which no line search can report satisfying; `gtol = 1e-14`
+was unreachable for the same reason, since the gradient of an objective of order
+5e3 cannot be resolved below about 1e-9. The only exits left were an impossible
+test and a failed line search. On macOS/ARM the reduction reached exactly zero
+and the fits reported success; on x86-64 Linux the line search failed first and
+the *same optimum, to twelve significant figures*, came back with
+`converged = False`. The first CI run found it — a Gamma-Gamma fit on CDNOW at
+`p = 7.4875, q = 3.5829, gamma = 12.2457` in both places, `success` differing.
+The tolerances are now `ftol = 1e-14` (`factr = 45`, still 200,000x tighter than
+SciPy's default) and `gtol = 1e-10`, and every published number is unchanged.
+
+**The last printed digit of a Pareto/NBD estimate is not portable.** The same
+ridge that moves the estimate 3e-5 for 1e-10 of log-likelihood moves it about
+3e-4 between macOS/ARM and x86-64 Linux — `beta` lands on 46.8837 here and
+46.8834 there, which is a different third decimal. Six doctests asserted the
+digit that differs. They now elide it (`46.88...`, `-22.92...`), so every digit
+printed is one both platforms agree on and the elision marks exactly where
+agreement stops. The tolerance-based comparisons against the paper and against
+the oracle were unaffected: none of them was ever asserting more precision than
+the platform can carry, which is the argument for writing them that way.
+
 **A partly covered period gets no observed count.** The tracking plot's grid
 runs one period past the data so the last period is shown whole; CLVTools
 reports `NA` for its observed value rather than the fraction it has, and so does

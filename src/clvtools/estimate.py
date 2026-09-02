@@ -157,7 +157,7 @@ def latent_attrition(
     >>> data = ClvData(load_apparel_trans(), time_unit="week", estimation_split=104)
     >>> fit = latent_attrition(family=pnbd, data=data, hessian=False)
     >>> [round(v, 3) for v in fit]
-    [1.449, 48.635, 0.561, 46.884]
+    [1.449, 48.635, 0.561, 46.88...]
 
     >>> covariates = ClvDataStaticCov(
     ...     data, load_apparel_static_cov(),

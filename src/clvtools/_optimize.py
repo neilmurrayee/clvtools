@@ -30,8 +30,22 @@ __all__ = ["options_for"]
 #: flat near their optima -- the Pareto/NBD's ridge moves 3e-5 for a change of
 #: 1e-10 in the objective -- so the default ``ftol`` stops early enough to shift
 #: the third decimal of the estimates.
+#:
+#: Tight, but not tighter than double precision, which is a distinction the
+#: first values here got wrong. L-BFGS-B tests ``(f_k - f_k+1) / max(|f_k|,
+#: |f_k+1|, 1) <= ftol``, so ``ftol`` is a *relative* reduction and SciPy turns
+#: it into ``factr = ftol / eps``. At ``ftol = 1e-16`` that is ``factr = 0.45``:
+#: a demand for better than machine precision, which no line search can report
+#: satisfying. ``gtol = 1e-14`` was unreachable for the same reason -- on an
+#: objective of order 5e3, the gradient cannot be resolved below about 1e-9 --
+#: so the only ways out were the impossible ``ftol`` test or a failed line
+#: search. On macOS/ARM the reduction reached exactly zero and the test passed;
+#: on x86-64 Linux the line search failed first and the *same optimum*, to
+#: twelve significant figures, was returned with ``success = False``. See the
+#: README's findings. ``1e-14`` is ``factr = 45``, still 200,000x tighter than
+#: SciPy's default ``factr = 1e7``, and reachable on both.
 _TOLERANCES = {
-    "L-BFGS-B": {"ftol": 1e-16, "gtol": 1e-14, "maxfun": 100_000},
+    "L-BFGS-B": {"ftol": 1e-14, "gtol": 1e-10, "maxfun": 100_000},
     "Nelder-Mead": {"xatol": 1e-12, "fatol": 1e-12, "maxfev": 100_000},
 }
 

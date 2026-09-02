@@ -169,7 +169,12 @@ def fit_pnbd(
     >>> cbs = ClvData(load_apparel_trans(), estimation_split=104).customer_summary()
     >>> fit = fit_pnbd(cbs["x"], cbs["t_x"], cbs["T"])
     >>> [round(v, 3) for v in fit]
-    [1.449, 48.635, 0.561, 46.884]
+    [1.449, 48.635, 0.561, 46.88...]
+
+    The last digit of ``beta`` is elided because it is not the same on every
+    platform: the ridge S6.2.1 warns about moves the estimate by about 3e-4
+    between macOS/ARM and x86-64 Linux for a change in the log-likelihood
+    below 1e-9. Every digit printed is one both agree on.
     >>> fit.converged
     True
 

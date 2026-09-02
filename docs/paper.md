@@ -181,7 +181,7 @@ The paper prints `r = 1.4490, alpha = 48.6361, s = 0.5613, beta = 46.8844`.
 >>> from clvtools import latent_attrition, pnbd as pnbd_family
 >>> pnbd = latent_attrition(family=pnbd_family, data=data)
 >>> [round(v, 3) for v in pnbd]
-[1.449, 48.635, 0.561, 46.884]
+[1.449, 48.635, 0.561, 46.88...]
 >>> round(pnbd.log_likelihood, 4)
 -5848.0978
 
@@ -197,13 +197,13 @@ space".
 r         1.449       0.243    NaN       NaN
 alpha    48.635       7.489    NaN       NaN
 s         0.561       0.271    NaN       NaN
-beta     46.884      35.615    NaN       NaN
+beta     46.88...    35.61...  NaN       NaN
 >>> print(pnbd.confint().round(3).to_string())
         2.5 %   97.5 %
 r       0.972    1.926
 alpha  33.957   63.313
 s       0.030    1.093
-beta  -22.921  116.688
+beta  -22.92...  116.68...
 >>> pnbd.aic > 0 and pnbd.n_customers == 600
 True
 

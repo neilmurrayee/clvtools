@@ -141,7 +141,13 @@ class TestBgnbdAgainstOracle:
         got = bgnbd.fit_bgnbd(*xtt)
         assert got.converged
         assert got.log_likelihood == pytest.approx(want["logLik"], abs=1e-5)
-        assert got.log_likelihood >= want["logLik"] - 1e-9
+        # "At least as good as CLVTools", to the precision the comparison can
+        # carry. 1e-9 was the macOS/ARM margin and CI missed it by 1.7e-9 on
+        # x86-64 Linux: the two platforms stop at different points of the same
+        # flat optimum. 1e-6 is still 5e-11 relative on a log-likelihood of
+        # -5857, and far below the 1e-5 agreement asserted on the line above,
+        # so a real regression -- a worse optimum -- still trips it.
+        assert got.log_likelihood >= want["logLik"] - 1e-6
         for name, value in want["coefficients"].items():
             assert getattr(got, name) == pytest.approx(value, rel=1e-3), name
         assert got.aic == pytest.approx(want["AIC"], abs=1e-4)

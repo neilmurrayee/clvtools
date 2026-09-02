@@ -281,7 +281,7 @@ class TestEvaluationsPerFit:
     #: CLVTools' all-ones start. The band is set from the two regressions worth
     #: catching rather than from a round percentage. Below it lies an
     #: optimiser that stops too early: relaxing ``ftol`` to SciPy's own
-    #: 1e-8 -- ``_optimize`` tightens it to 1e-16 because this likelihood's
+    #: 1e-8 -- ``_optimize`` tightens it to 1e-14 because this likelihood's
     #: ridge is flat -- gives 150. Above it lies an optimiser doing more work:
     #: Nelder-Mead, the fallback S6.2.1 recommends and a plausible accidental
     #: default, gives 489. Both bounds sit ~1.4x from 290, which is far more

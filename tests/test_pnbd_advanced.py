@@ -520,8 +520,18 @@ class TestRegularization:
             static_data, reg_lambdas=(10.0, 10.0),
             start=(1.0, 1.0, 1.0, 1.0), start_cov=0.1, hessian=False,
         )
-        assert default.log_likelihood > cold.log_likelihood
+        # The policy is "run both starts, keep the better", so the invariant
+        # that holds everywhere is that the default is never worse. Whether a
+        # cold start actually falls into the bad basin is platform-dependent:
+        # it does on macOS/ARM, and on x86-64 Linux the same start reaches the
+        # same optimum to two ulps. Assert the guarantee unconditionally and
+        # the basin claim only where the basin was reached, so this keeps its
+        # regression-guarding power on the platform that exhibits it without
+        # asserting something untrue on the one that does not.
+        assert default.log_likelihood >= cold.log_likelihood - 1e-9
         assert default.s == pytest.approx(0.56, abs=0.05)
+        if cold.s < 0.2:  # the s = 0.069 basin the docstring describes
+            assert default.log_likelihood > cold.log_likelihood
 
 
 @pytest.mark.slow

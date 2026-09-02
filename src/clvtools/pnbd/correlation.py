@@ -290,7 +290,7 @@ def fit_pnbd_correlated(
     >>> cbs = ClvData(load_apparel_trans(), estimation_split=104).customer_summary()
     >>> fit = fit_pnbd_correlated(cbs["x"], cbs["t_x"], cbs["T"])
     >>> round(fit.correlation, 4)
-    0.0106
+    0.01...
 
     The correlated model nests the uncorrelated one at ``m = 0``, so its
     optimum can never be worse:

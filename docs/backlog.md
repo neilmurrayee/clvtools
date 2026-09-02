@@ -782,6 +782,65 @@ would change the answer to "does this cover CLVTools?".
 
 Not an item to work. A scope question, listed so it stops being invisible.
 
+
+## 17. `[x]` Make the suite pass off macOS/ARM
+
+Opened and closed by the first CI run, which is what item 13 was for. Seven
+failures on both interpreters, none of which reproduce on this machine, in four
+distinct classes -- and the repo had no way to know, because every number in it
+had only ever been produced by one libm on one architecture.
+
+**The one that is a real defect, not a test artefact.** `_optimize` set
+`ftol = 1e-16` and `gtol = 1e-14` for L-BFGS-B. SciPy turns `ftol` into
+`factr = ftol / eps`, so `1e-16` asks for a relative reduction of **0.45 eps** --
+better than machine precision, which no line search can report satisfying. And
+`gtol = 1e-14` is unreachable on an objective of order 5e3, whose gradient
+cannot be resolved below about 1e-9. Both exits were therefore closed, leaving
+only line-search failure. macOS/ARM happened to reach a reduction of exactly
+zero and reported success; x86-64 Linux failed the line search and returned
+**the same optimum to twelve significant figures with `converged = False`**.
+Since the package is now published and Linux is where most of its users are,
+that is a user-facing bug rather than a CI inconvenience: `spending()` on CDNOW
+returns `p = 7.4875, q = 3.5829, gamma = 12.2457` on both platforms and calls it
+a failure on one. Now `ftol = 1e-14` (`factr = 45`, still 200,000x tighter than
+SciPy's default `1e7`) and `gtol = 1e-10`, with the arithmetic written out at
+the definition so the next person to tighten them has to argue with it.
+
+**The last printed digit of a Pareto/NBD estimate is not portable.** The ridge
+moves `beta` by ~3e-4 between platforms -- 46.8837 here, 46.8834 there -- which
+is a different third decimal. Nine printed values across six doctests asserted
+exactly that digit. They now elide it: `[1.449, 48.635, 0.561, 46.88...]`,
+`beta  -22.92...  116.68...`. `ELLIPSIS` was already in `doctest_optionflags`,
+so this needed no configuration, and it is better than rounding to two decimals
+because it keeps every stable digit visible and marks precisely where agreement
+stops. The tolerance-based checks in `paper_values.py` and `rdoc_values.py` did
+not move at all, which is the argument for having written them that way.
+
+**A tolerance tighter than the thing it compares.** `test_families` asserted
+"at least as good as CLVTools" to `1e-9` and missed by 1.7e-9 on Linux. Now
+`1e-6`: 5e-11 relative on a log-likelihood of -5857, and still far below the
+`1e-5` agreement asserted on the line above it, so a genuinely worse optimum
+still trips it.
+
+**A claim that is true on one platform only.** `test_warm_start_avoids_the_bad_basin`
+asserted `default > cold` strictly. The policy is "run both starts, keep the
+better", so what holds everywhere is that the default is never *worse*; whether
+a cold start actually falls into the `s = 0.069` basin is platform-dependent,
+and on Linux it reaches the same optimum to two ulps. The unconditional
+assertion is now `>=` within 1e-9, and the strict one fires only when the cold
+fit did land in the bad basin (`cold.s < 0.2`), so the guard keeps its power
+where the basin exists without asserting a falsehood where it does not.
+
+*Done when:* CI is green on 3.12 and 3.13, the fits still reproduce every
+published number, and both deviations are in the README's findings.
+
+**Done:** all four classes fixed, README findings written for the two that are
+deviations rather than test hygiene. Locally: 906 passed, `TOTAL 2694 0 100%`,
+ruff and ty clean, with every `-m paper` and `-m rdoc` number unchanged -- the
+tolerance change moves no estimate, it only lets the optimiser say so. Green on
+GitHub on both interpreters, which is the first time any of this has been true
+of a machine that is not the author's.
+
 ---
 
 ## Closed

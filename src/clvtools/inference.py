@@ -154,7 +154,7 @@ class Fitted:
         r       0.972    1.926
         alpha  33.957   63.313
         s       0.030    1.093
-        beta  -22.921  116.688
+        beta  -22.92...  116.68...
         """
         if not 0 < level < 1:
             raise ValueError("level must lie strictly between 0 and 1")
