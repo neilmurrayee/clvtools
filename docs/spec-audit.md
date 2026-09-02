@@ -4,6 +4,17 @@ Date: 2026-09-02, at commit `61cd5ba`. `docs/spec.md` states what the sources
 demand, derived without reading `src/` or `tests/`. This file is the join:
 for each spec item, what the suite actually pins.
 
+**Status: every finding worked**, 2026-09-02. A1–A7, B1–B7, C, D1–D6, the six
+`out-of-scope` items that needed a recorded decision, and D-17 and NC-13, the
+two the audit never reached. `TASK.md` records what each one turned out to be —
+fourteen confirmed on the first pass, one overturned, two kept as deliberate
+divergences, and four defects that no test here could see: standard errors 24.5×
+too large at a zero penalty, a dyncov bootstrap refitting without covariates, a
+`NaN` horizon becoming a `NaN` prediction, and a mistyped covariate name being
+dropped. The suite went from 906 tests to 1,146, still at 100% line coverage of
+`src/`. What remains of this document is the `weak` verdicts it did not
+individually list, which its own caveat below calls its least certain class.
+
 **How this differs from `docs/audit.md`.** That audit indexed the paper and the
 R `NAMESPACE` *against this implementation* — for each thing the sources have,
 does a counterpart exist here. It found missing features, and closed all
