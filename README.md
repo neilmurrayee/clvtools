@@ -151,6 +151,17 @@ transposes the middle pair relative to every sibling. Each fixture family is
 checked against a public generic (`logLik()`, `coef()`, `predict()`) so a sign or
 ordering slip cannot ship as a plausible-looking expectation.
 
+Two oracle classes stand outside R. The papers the models come from —
+Fader, Hardie & Lee (2005) for the Pareto/NBD and the BG/NBD, Fader & Hardie
+(2013) for the Gamma-Gamma — publish estimates and log-likelihoods on CDNOW at
+the `1997-09-30` split, and `-m literature` reproduces all five, each compared
+to half a unit in the last decimal the source printed. And a class of claim
+that determines its own answer needs no oracle at all: with covariate effects
+set to zero the covariate models *are* the plain ones, a spending model's
+transaction count *is* the Pareto/NBD's, and a bootstrap that draws every
+customer once *is* the original data. `tests/test_invariants.py` asserts those
+bit for bit, which is stronger than any fixture comparison can be.
+
 ## Verified against the paper
 
 | Quantity | Paper | This implementation |
@@ -472,11 +483,12 @@ which it reported successful convergence on the Gamma-Gamma at a local optimum
 ## Testing
 
 ```bash
-uv run pytest                  # 906 tests, including doctests in src/ and docs/
-uv run pytest -m paper         # 24 numbers printed in the paper
+uv run pytest                  # 1,112 tests, including doctests in src/ and docs/
+uv run pytest -m paper         # 25 numbers printed in the paper
 uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
-uv run pytest -m oracle        # 231 checks against R CLVTools fixtures
-uv run pytest -m slow          # 138 full-dataset MLE fits
+uv run pytest -m literature    # 13 numbers published in the CLV literature
+uv run pytest -m oracle        # 240 checks against R CLVTools fixtures
+uv run pytest -m slow          # 152 full-dataset MLE fits
 uv run pytest -m dyncov_fit    # the time-varying covariate MLE; ~10 minutes
 uv run pytest --cov=clvtools --cov-report=term-missing
 uv run pytest -m quality       # lint, complexity and size gates (run by default)
