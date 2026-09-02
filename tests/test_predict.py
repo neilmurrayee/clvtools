@@ -346,15 +346,30 @@ class TestPredictionEnd:
         got = predict(data, pnbd, gg)
         assert got["period.last"].iloc[0] == data.data_end
 
-    def test_rejects_a_non_positive_horizon(self, full):
+    def test_a_zero_length_window_predicts_zero_rather_than_raising(self, full):
+        """CLVTools returns a zero-length window with ``CET = 0``; this raised.
+
+        Predicting over no time is a well-defined question with the answer
+        zero, and R gives it: ``period.length = 0``, ``CET = 0``, the window
+        ending on the estimation end. Finding A1 of ``docs/spec-audit.md``,
+        spec PR-05. Checked against CLVTools 0.12.1 rather than assumed.
+        """
         data, pnbd, gg = full
-        with pytest.raises(ValueError, match="positive number of periods"):
-            predict(data, pnbd, gg, prediction_end=0)
+        got = predict(data, pnbd, gg, prediction_end=0)
+        assert len(got) == 600
+        assert float(got["period.length"].iloc[0]) == 0.0
+        assert float(got["CET"].sum()) == 0.0
+        assert got["period.last"].iloc[0] == data.estimation_end
+
+    def test_a_negative_horizon_is_still_refused(self, full):
+        data, pnbd, gg = full
+        with pytest.raises(ValueError, match="negative number of periods"):
+            predict(data, pnbd, gg, prediction_end=-1)
 
     def test_rejects_a_window_that_ends_before_it_starts(self, transactions):
         data = ClvData(transactions, time_unit="week", estimation_split=104)
         pnbd, gg = _oracle_params("pnbd_nocov_fit", "gg_fit")
-        with pytest.raises(ValueError, match="on or before the estimation period"):
+        with pytest.raises(ValueError, match="before the estimation period"):
             predict(data, pnbd, gg, prediction_end="2005-06-01")
 
     def test_predicting_past_the_holdout_drops_the_actuals(self, transactions):
@@ -587,11 +602,22 @@ class TestProspectiveCustomers:
         with pytest.raises(TypeError, match="spending model"):
             predict(newcustomer_spending(), pnbd)
 
-    @pytest.mark.parametrize("periods", [0, -1])
-    def test_the_horizon_must_be_positive(self, periods):
-        with pytest.raises(ValueError, match="strictly positive"):
+    def test_a_zero_horizon_is_the_one_purchase_that_defines_them(self):
+        """R returns 1 for ``newcustomer(0)``; this raised. Spec NC-02.
+
+        S6.3.4 adds one "to account for all transactions that a prospective
+        customer will make, including the first one", so over zero periods a
+        prospective customer makes exactly that one and no more. A well-defined
+        limit rather than an error.
+        """
+        pnbd, _ = _oracle_params("pnbd_nocov_fit_full", "gg_fit_full")
+        assert predict(newcustomer(0), pnbd) == pytest.approx(1.0)
+
+    @pytest.mark.parametrize("periods", [-1, -0.5])
+    def test_a_negative_horizon_is_still_refused(self, periods):
+        with pytest.raises(ValueError, match="must not be negative"):
             newcustomer(periods)
-        with pytest.raises(ValueError, match="strictly positive"):
+        with pytest.raises(ValueError, match="must not be negative"):
             newcustomer_static(periods, {}, {})
 
     @pytest.mark.paper

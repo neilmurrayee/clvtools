@@ -288,6 +288,24 @@ were wrong in the fourth digit; at a *relative* 1e-4 they agree with
 GGom/NBD's `b = 8.1e-07` from being stepped negative, where the likelihood does
 not exist.
 
+**A fractional `prediction_end` means what it says here, and is truncated in
+R.** `prediction.end = 14.4` gives CLVTools a 14-period window and a warning —
+"may not indicate partial periods. Digits after the decimal point are cut off"
+— while this package predicts 14.4 periods, ending two days later. Both are
+defensible and they are not the same: CLVTools' grid is whole periods, and this
+one already carries partial periods elsewhere (the tracking plot's last period
+is partial by construction). The capability is kept and the divergence recorded
+rather than silently inherited, because code moving from R gets a different
+window with no warning. Spec T-22.
+
+**Zero-length horizons are answers, not errors.** `predict(prediction_end=0)`
+and `newcustomer(0)` both raised where CLVTools returns a zero-length window
+with `CET = 0` and the value `1` respectively — the latter being §6.3.4's "+1 to
+account for all transactions that a prospective customer will make, including
+the first one", so over zero periods they make exactly that one. Both now match,
+checked against CLVTools 0.12.1. Negative horizons are still refused. Spec
+PR-05, NC-02.
+
 **The discount factor's range was wrong in both directions, and a test pinned
 it that way.** CLVTools admits `[0, 1)`; this admitted `(0, inf)`, so `0` was
 refused where R returns the undiscounted expectation (`Inf`, correctly — a

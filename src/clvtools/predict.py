@@ -141,8 +141,8 @@ class NewCustomerSpending:
 
 def newcustomer(num_periods: float) -> NewCustomer:
     """A prospective customer observed for ``num_periods``. See :class:`NewCustomer`."""
-    if num_periods <= 0:
-        raise ValueError("num_periods must be strictly positive")
+    if num_periods < 0:
+        raise ValueError("num_periods must not be negative")
     return NewCustomer(float(num_periods))
 
 
@@ -154,8 +154,8 @@ def newcustomer_static(
     ``cov_life`` and ``cov_trans`` map covariate name to value, one scenario at
     a time.
     """
-    if num_periods <= 0:
-        raise ValueError("num_periods must be strictly positive")
+    if num_periods < 0:
+        raise ValueError("num_periods must not be negative")
     return NewCustomerStatic(float(num_periods), dict(cov_life), dict(cov_trans))
 
 
@@ -172,8 +172,8 @@ def newcustomer_dynamic(
     constructors this one does arithmetic on dates, and the parameters do not
     carry the unit they were estimated in.
     """
-    if num_periods <= 0:
-        raise ValueError("num_periods must be strictly positive")
+    if num_periods < 0:
+        raise ValueError("num_periods must not be negative")
     return NewCustomerDynamic(
         float(num_periods), cov_life, cov_trans,
         pd.Timestamp(first_transaction), time_unit,
@@ -322,8 +322,10 @@ def _resolve_prediction_end(
             )
         return clv_data.data_end
     if isinstance(prediction_end, (int, float, np.integer, np.floating)):
-        if prediction_end <= 0:
-            raise ValueError("prediction_end must be a positive number of periods")
+        if prediction_end < 0:
+            raise ValueError(
+                "prediction_end must not be a negative number of periods"
+            )
         return clv_data.time.add(clv_data.estimation_end, float(prediction_end))
     return pd.Timestamp(prediction_end)
 
@@ -613,9 +615,9 @@ def predict(
         return _predict_new_customer(clv_data, params)
 
     last = _resolve_prediction_end(clv_data, prediction_end)
-    if last <= clv_data.estimation_end:
+    if last < clv_data.estimation_end:
         raise ValueError(
-            f"the prediction period ends {last.date()}, on or before the "
+            f"the prediction period ends {last.date()}, before the "
             f"estimation period ends {clv_data.estimation_end.date()}"
         )
     first = clv_data.estimation_end + pd.Timedelta(days=1)

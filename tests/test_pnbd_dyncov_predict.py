@@ -415,14 +415,16 @@ class TestGuardsOnTheCovariateSeries:
                 _params("dyncov_fit_full"),
             )
 
-    @pytest.mark.parametrize("periods", [0, -1])
-    def test_the_horizon_must_be_positive(self, periods):
+    @pytest.mark.parametrize("periods", [-1, -0.5])
+    def test_a_negative_horizon_is_refused(self, periods):
+        """Zero is admitted now, as R admits it -- finding A1. Negative is
+        not a horizon at all."""
         want = fixture_json("dyncov_newcustomer")
         covariates = pd.DataFrame({
             "Cov.Date": pd.to_datetime(want["cov.dates"]),
             "High.Season": 1, "Gender": 0, "Channel": 1,
         })
-        with pytest.raises(ValueError, match="strictly positive"):
+        with pytest.raises(ValueError, match="must not be negative"):
             newcustomer_dynamic(
                 periods, covariates, covariates, want["first.transaction"]
             )
