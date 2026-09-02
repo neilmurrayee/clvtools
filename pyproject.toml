@@ -146,9 +146,16 @@ ignore = [
 ]
 
 # The limits the gate enforces, each set from what the code actually needs.
-# Worst across `src/`, `tests/`, `tools/` and `docs/` at the time of writing:
-# mccabe 10, 42 statements, 9 branches, 4 returns. Prefer splitting a function
-# to raising one of these.
+# Worst across `src/`, `tests/`, `tools/` and `docs/` as measured: mccabe 8,
+# 42 statements, 8 branches, 5 returns. Prefer splitting a function to raising
+# one of these.
+#
+# mccabe read 10 against a limit of 10 until the complexity pass that took
+# `latent_attrition`, `predict`, `fit_gg`, `ClvData.__init__` and
+# `fit_static_covariates` apart. A gate with no headroom stops guiding and
+# starts obstructing -- the next branch anyone added would have tripped it --
+# so re-measure this line when a split lands, and lower a limit that has
+# drifted far above the code rather than leaving it decorative.
 #
 # `max-locals` is deliberately absent: PLR0914 is preview-only in ruff 0.16, so
 # setting it would read like a gate while never firing.

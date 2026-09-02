@@ -214,6 +214,47 @@ def _validated_reg_lambdas(
     return reg
 
 
+def _starting_points(
+    layout: _Layout,
+    settings: SearchSettings,
+    start_arr: NDArray[np.float64] | None,
+    model_start: tuple[float, ...],
+    cov_start: float,
+    reg_lambdas: tuple[float, float] | None,
+    baseline: Callable[[], StaticCovResult],
+) -> list[NDArray[np.float64]]:
+    """Where the search starts: one point, or two for a regularized fit.
+
+    A caller's own ``start`` is taken as given, and an unregularized fit runs
+    from the family's default. A regularized one gets both, and the better
+    result wins.
+
+    Warm-starting from the unpenalised solution is the usual way to trace a
+    regularization path, and on the Pareto/NBD it is necessary: dividing the
+    likelihood by ``n`` flattens the objective enough that a cold start
+    converges in a clearly worse basin. But it is not universally right. The
+    BG/NBD's unpenalised optimum sits far out on the ridge where its two beta
+    parameters are unidentified, at ``a + b`` in the millions, and the
+    penalised optimum is back near ``a + b = 10`` -- warm-starting there
+    strands the search. Running both costs one extra fit and removes the need
+    to guess which model is which.
+
+    ``baseline`` is a thunk rather than a fitted result because only the last
+    branch needs it, and it is a whole extra optimisation.
+    """
+    if start_arr is not None:
+        return [layout.starting_point(start_arr, cov_start)]
+    if reg_lambdas is None:
+        return [layout.starting_point(model_start, cov_start)]
+    return [
+        layout.starting_point(model_start, cov_start),
+        layout.starting_point(
+            baseline().model,
+            0.0 if settings.start_cov is None else settings.start_cov,
+        ),
+    ]
+
+
 def _search(
     objective: Callable[[NDArray[np.float64]], float],
     candidates: list[NDArray[np.float64]],
@@ -409,23 +450,9 @@ def fit_static_covariates(
     reg_lambdas = _validated_reg_lambdas(settings.reg_lambdas)
 
     cov_start = DEFAULT_COV_START if settings.start_cov is None else settings.start_cov
-    if start_arr is not None:
-        candidates = [layout.starting_point(start_arr, cov_start)]
-    elif reg_lambdas is None:
-        candidates = [layout.starting_point(model_start, cov_start)]
-    else:
-        # Regularized fits get two starting points, and the better one wins.
-        #
-        # Warm-starting from the unpenalised solution is the usual way to trace
-        # a regularization path, and on the Pareto/NBD it is necessary: dividing
-        # the likelihood by n flattens the objective enough that a cold start
-        # converges in a clearly worse basin. But it is not universally right.
-        # The BG/NBD's unpenalised optimum sits far out on the ridge where its
-        # two beta parameters are unidentified, at a + b in the millions, and
-        # the penalised optimum is back near a + b = 10 -- warm-starting there
-        # strands the search. Running both costs one extra fit and removes the
-        # need to guess which model is which.
-        baseline = fit_static_covariates(
+    candidates = _starting_points(
+        layout, settings, start_arr, model_start, cov_start, reg_lambdas,
+        baseline=lambda: fit_static_covariates(
             x=x, t_x=t_x, T=T, cov_life=cov_life, cov_trans=cov_trans,
             names_cov_life=layout.names_life, names_cov_trans=layout.names_trans,
             log_likelihood=log_likelihood,
@@ -435,13 +462,8 @@ def fit_static_covariates(
                 method=settings.method, maxiter=settings.maxiter, hessian=False,
                 polish=settings.polish, options=settings.options,
             ),
-        )
-        candidates = [
-            layout.starting_point(model_start, cov_start),
-            layout.starting_point(
-                baseline.model, 0.0 if settings.start_cov is None else settings.start_cov
-            ),
-        ]
+        ),
+    )
 
     def negative_log_likelihood(model, g_life, g_trans) -> float:
         """The function a standard error should refer to.
