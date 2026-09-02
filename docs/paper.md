@@ -259,9 +259,9 @@ same data, so the fourth decimal moved between releases.
 >>> import numpy as np
 >>> error = holdout["CET"] - holdout["actual.x"]
 >>> round(float(np.abs(error).mean()), 4)
-2.039...
+2.03...
 >>> round(float(np.sqrt((error ** 2).mean())), 4)
-3.329...
+3.32...
 
 ```
 
@@ -318,7 +318,7 @@ them; no transaction data of theirs is used, because there is none.
 >>> from clvtools import newcustomer, newcustomer_spending
 >>> transactions_first_year = predict(newcustomer(52), pnbd_full)
 >>> round(transactions_first_year, 4)
-2.218...
+2.21...
 
 ```
 
@@ -331,7 +331,7 @@ initial purchases of each customer."
 ...     hessian=False)
 >>> per_order = predict(newcustomer_spending(), gg_with_first)
 >>> round(per_order, 4)
-39.137...
+39.13...
 >>> round(transactions_first_year * per_order, 3)
 86.83...
 

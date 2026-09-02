@@ -291,6 +291,39 @@ def _search(
     return finished(result, "static-covariate")
 
 
+def _penalised(
+    negative_ll: float,
+    g_life: NDArray[np.float64],
+    g_trans: NDArray[np.float64],
+    reg_lambdas: tuple[float, float] | None,
+    n_customers: int,
+) -> float:
+    r"""Eq. (13) applied to a negative log-likelihood, or it left alone.
+
+    One function, called from both the search's objective and the one the
+    Hessian is differenced on, so that the two cannot drift apart. They had:
+    the search minimised the penalised **mean** while the reported curvature
+    came from the unpenalised **sum**, which is finding 9 of the outside
+    review. The estimates and their standard errors now describe the same
+    function.
+
+    The division by ``n`` is CLVTools', not the paper's -- see the README's
+    findings on both the objective and what it does to a standard error.
+
+    >>> import numpy as np
+    >>> g = np.array([1.0, 2.0])
+    >>> float(_penalised(-100.0, g, g, None, 10))
+    -100.0
+    >>> float(_penalised(-100.0, g, g, (0.5, 0.5), 10))
+    -5.0
+    """
+    if reg_lambdas is None:
+        return negative_ll
+    lam_life, lam_trans = reg_lambdas
+    penalty = lam_life * np.sum(g_life**2) + lam_trans * np.sum(g_trans**2)
+    return negative_ll / n_customers + penalty
+
+
 def _reported_hessian(
     layout: _Layout,
     negative_log_likelihood: Callable[..., float],
@@ -409,7 +442,25 @@ def fit_static_covariates(
         ]
 
     def negative_log_likelihood(model, g_life, g_trans) -> float:
-        return -log_likelihood(model, g_life, g_trans, cov_life, cov_trans)
+        """The function a standard error should refer to.
+
+        For an unregularized fit that is the negative log-likelihood. For a
+        regularized one it is eq. (13)'s **penalised mean** -- the objective the
+        search actually minimised -- rather than the unpenalised sum this used
+        to difference. Reporting curvature of a function the estimates were not
+        obtained from is the inconsistency finding 9 of the outside review
+        names: the two described different problems.
+
+        The consequence is worth stating plainly, and the README's findings do:
+        these are ridge standard errors. The penalty contributes curvature of
+        its own, so they are smaller than an unregularized fit's and are not
+        comparable with them, in the same way and for the same reason that
+        CLVTools' regularized AIC is not comparable with its unregularized one.
+        """
+        return _penalised(
+            -log_likelihood(model, g_life, g_trans, cov_life, cov_trans),
+            g_life, g_trans, reg_lambdas, x.size,
+        )
 
     def objective(v: NDArray[np.float64]) -> float:
         model, g_life, g_trans = layout.unpack(v)
@@ -417,12 +468,7 @@ def fit_static_covariates(
             value = log_likelihood(model, g_life, g_trans, cov_life, cov_trans)
         if not np.isfinite(value):
             return np.inf
-        if reg_lambdas is None:
-            return -value
-        # Eq. (13), on the mean so the weight means the same at any sample size.
-        lam_life, lam_trans = reg_lambdas
-        penalty = lam_life * np.sum(g_life**2) + lam_trans * np.sum(g_trans**2)
-        return -value / x.size + penalty
+        return _penalised(-value, g_life, g_trans, reg_lambdas, x.size)
 
     result = _search(objective, candidates, settings)
 

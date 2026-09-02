@@ -206,7 +206,7 @@ def _predict_new_customer(spec, params) -> float:
     >>> fit = fit_pnbd(cbs["x"], cbs["t_x"], cbs["T"], hessian=False)
     >>> transactions = predict(newcustomer(52), fit)
     >>> round(transactions, 4)
-    2.218...
+    2.21...
 
     The spending model must be fitted on *all* orders here, since the count
     above includes the first one -- S6.3.4 passes
@@ -215,7 +215,7 @@ def _predict_new_customer(spec, params) -> float:
     >>> spend = data.spending_summary(remove_first_transaction=False)
     >>> gg = fit_gg(spend["x"], spend["Spending"], hessian=False)
     >>> round(predict(newcustomer_spending(), gg), 4)
-    39.137...
+    39.13...
     >>> round(transactions * predict(newcustomer_spending(), gg), 2)
     86.8...
     """

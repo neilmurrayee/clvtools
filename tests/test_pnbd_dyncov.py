@@ -23,6 +23,8 @@ error, this implementation's 1e-22 against that 0 reports a failure of 1e273.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -898,3 +900,52 @@ class TestFitMechanics:
             dyncov_walks, weights=weights, options={"maxiter": 1, "maxfun": 12}
         )
         assert np.isfinite(fitted.log_likelihood)
+
+
+class TestTheDyncovHessianIsOptional:
+    """Finding 8: the fit had no ``hessian`` argument and no field.
+
+    ``summary()`` therefore raised "fit with hessian=True", naming something
+    that did not exist. It exists now and defaults to ``False``, alone among
+    the fits, because differencing a likelihood that costs ~0.1 s per
+    evaluation over 13 parameters is about 350 evaluations -- a minute of
+    ``summary()`` on this model and nothing at all on any other. Eight
+    customers keep that affordable here.
+    """
+
+    @staticmethod
+    @pytest.fixture(scope="class")
+    def small_walks():
+        from clvtools import ClvData, load_apparel_dyn_cov, load_apparel_trans
+        from clvtools.pnbd.dyncov import build_walks
+
+        trans = load_apparel_trans()
+        ids = sorted(trans["Id"].unique())[:8]
+        cov = load_apparel_dyn_cov()
+        return build_walks(
+            ClvData(
+                trans[trans["Id"].isin(ids)],
+                time_unit="week", estimation_split=104,
+            ),
+            cov[cov["Id"].isin(ids)],
+            names_cov_life=["High.Season"], names_cov_trans=["High.Season"],
+        )
+
+    def test_it_is_off_by_default(self, small_walks):
+        from clvtools.pnbd.dyncov import fit_pnbd_dyncov
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            fit = fit_pnbd_dyncov(small_walks, maxiter=1)
+        assert fit.hessian is None
+        with pytest.raises(ValueError, match="hessian=True"):
+            fit.standard_errors()
+
+    def test_and_the_advice_it_gives_can_now_be_followed(self, small_walks):
+        from clvtools.pnbd.dyncov import fit_pnbd_dyncov
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            fit = fit_pnbd_dyncov(small_walks, maxiter=1, hessian=True)
+        assert fit.hessian is not None
+        assert fit.hessian.shape == (len(fit.names), len(fit.names))

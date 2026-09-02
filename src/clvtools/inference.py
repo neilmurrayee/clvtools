@@ -18,6 +18,7 @@ A parameter's log-scale curvature would describe a different quantity.
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Iterator
 from dataclasses import dataclass
 
@@ -25,6 +26,8 @@ import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
 from scipy import stats
+
+from clvtools._validate import ConvergenceWarning
 
 __all__ = [
     "Fitted",
@@ -114,6 +117,74 @@ class Fitted:
                 "fit with hessian=True to obtain standard errors, a covariance "
                 "matrix or confidence intervals"
             )
+        # A covariance matrix is the inverse of a Hessian that is positive
+        # definite. Where it is not, the inversion still returns something and
+        # ``sqrt`` of a negative diagonal entry is ``nan``, which is how the
+        # BG/NBD covariate fit shipped `life.Gender` = nan beside
+        # `life.Channel` = 0.594 with ``converged = True`` -- on the ridge the
+        # README documents, where `a + b` runs to hundreds of thousands and one
+        # direction is genuinely flat. The number is not wrong so much as
+        # absent, and it should say so. Finding 9 of the outside review.
+        # A regularized fit's curvature is mostly the penalty's, not the
+        # data's, and neither this package nor CLVTools said so anywhere. At
+        # lambda = 10 on the apparel cohort every covariate standard error here
+        # is within 4% of the penalty-only 1/sqrt(2*lambda), and CLVTools'
+        # four are identical to twelve significant figures. Whoever reads the
+        # number should be told what it is made of. See the README's findings
+        # and docs/backlog.md item 22.
+        lambdas = getattr(self, "reg_lambdas", None)
+        if lambdas is not None:
+            warnings.warn(
+                f"these standard errors come from the regularized objective "
+                f"(reg_lambdas={tuple(lambdas)}), whose curvature is dominated "
+                "by the penalty rather than by the data: they are ridge "
+                "standard errors, they shrink towards 1/sqrt(2*lambda), and "
+                "they are not comparable with an unregularized fit's",
+                ConvergenceWarning,
+                stacklevel=3,
+            )
+
+        matrix = np.asarray(hessian, dtype=float)
+        if not np.all(np.isfinite(matrix)):
+            # The GGom/NBD covariate fit reaches parameters where differencing
+            # the likelihood gives non-finite second derivatives -- its `b` is
+            # 8.1e-07 on this data, and the surface around it is not resolvable
+            # at any step this package uses. `eigvalsh` raises `LinAlgError`
+            # from inside numpy on such a matrix, which is not an answer a
+            # caller can act on, so say what happened instead.
+            bad = [
+                name
+                for name, row in zip(self.names, matrix, strict=True)
+                if not np.all(np.isfinite(row))
+            ]
+            warnings.warn(
+                "the Hessian has non-finite entries, so no standard error is "
+                f"trustworthy; the rows involved are {bad}. The likelihood "
+                "could not be differenced there -- usually a parameter pinned "
+                "at a boundary.",
+                ConvergenceWarning,
+                stacklevel=3,
+            )
+            return np.full_like(matrix, np.nan)
+
+        eigenvalues = np.linalg.eigvalsh(matrix)
+        if not np.all(eigenvalues > 0):
+            flat = [
+                name
+                for name, value in zip(self.names, np.diag(matrix), strict=True)
+                if not value > 0
+            ]
+            warnings.warn(
+                "the Hessian is not positive definite (smallest eigenvalue "
+                f"{eigenvalues.min():.3g}), so these standard errors are not "
+                "trustworthy and some may be NaN"
+                + (f"; flat directions include {flat}" if flat else "")
+                + ". This usually means a parameter is not identified by the "
+                "data -- see the README on the BG/NBD's beta parameters under "
+                "covariates.",
+                ConvergenceWarning,
+                stacklevel=3,
+            )
         return np.linalg.inv(hessian)
 
     def vcov(self) -> pd.DataFrame:
@@ -200,11 +271,18 @@ class Fitted:
             },
             index=self.names,
         )
-        is_covariate = np.array(
-            [n.startswith(COVARIATE_PREFIXES) for n in self.names]
+        # A z-value is reported where a null of zero is admissible. That is
+        # every covariate coefficient, and also the Sarmanov correlation
+        # ``m``: S6.5.2's whole question is whether the two processes are
+        # independent, which is exactly ``m = 0``, and CLVTools prints one for
+        # it. The four model parameters are "constrained to be strictly
+        # positive" (S6.4.1), so a null of zero lies outside the space and
+        # their rows stay NaN. Finding 8 of ``docs/review-2026-09-02.md``.
+        testable = np.array(
+            [n.startswith(COVARIATE_PREFIXES) or n == "m" for n in self.names]
         )
         z = np.where(
-            is_covariate, table["Estimate"] / table["Std. Error"], np.nan
+            testable, table["Estimate"] / table["Std. Error"], np.nan
         )
         table["z-val"] = z
         table["Pr(>|z|)"] = 2 * (1 - stats.norm.cdf(np.abs(z)))

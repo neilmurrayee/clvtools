@@ -11,6 +11,7 @@ numbers get elsewhere.
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import ClassVar
 
 import numpy as np
 import pytest
@@ -352,3 +353,49 @@ class TestTheRatioTestNeedsARealRestriction:
                 SimpleNamespace(n_parameters=7, log_likelihood=-5826.5, n_customers=600),
                 SimpleNamespace(n_parameters=8, log_likelihood=-5821.0, n_customers=599),
             )
+
+
+class TestAHessianThatCannotBeTrusted:
+    """Finding 9: NaN standard errors used to ship with ``converged = True``.
+
+    Both branches here are about saying so. Neither changes a number: what
+    changes is that a caller reading `life.Gender = nan` beside
+    `life.Channel = 0.594` is told why, instead of having to know that the
+    BG/NBD's beta parameters are barely identified under covariates.
+    """
+
+    def test_an_indefinite_hessian_warns_and_names_the_flat_directions(self):
+        from clvtools._validate import ConvergenceWarning
+        from clvtools.inference import Fitted
+
+        class Toy(Fitted):
+            names: ClassVar[list[str]] = ["good", "flat"]
+            # Not positive definite: the second direction curves the wrong way.
+            hessian = np.array([[4.0, 0.0], [0.0, -1.0]])
+
+            def __iter__(self):
+                return iter([1.0, 2.0])
+
+        with pytest.warns(ConvergenceWarning, match="not positive definite"):
+            errors = Toy().standard_errors()
+        assert np.isfinite(errors["good"])
+        assert np.isnan(errors["flat"])
+
+    def test_a_non_finite_hessian_warns_rather_than_raising_from_numpy(self):
+        """``eigvalsh`` raises ``LinAlgError`` on a NaN matrix, which is not an
+        answer. The GGom/NBD covariate fit produces one: its ``b`` is 8.1e-07
+        and the surface there cannot be differenced at any step this package
+        uses."""
+        from clvtools._validate import ConvergenceWarning
+        from clvtools.inference import Fitted
+
+        class Toy(Fitted):
+            names: ClassVar[list[str]] = ["a", "b"]
+            hessian = np.array([[1.0, np.nan], [np.nan, 1.0]])
+
+            def __iter__(self):
+                return iter([1.0, 2.0])
+
+        with pytest.warns(ConvergenceWarning, match="non-finite entries"):
+            errors = Toy().standard_errors()
+        assert all(np.isnan(v) for v in errors.values())

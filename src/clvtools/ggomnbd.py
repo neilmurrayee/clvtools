@@ -574,6 +574,7 @@ def fit_ggomnbd_staticcov(
     start_cov: float | None = None,
     method: str = "L-BFGS-B",
     maxiter: int = 10_000,
+    hessian: bool = True,
     polish: bool = True,
     options: dict | None = None,
 ) -> GgomnbdStaticCovParams:
@@ -621,7 +622,7 @@ def fit_ggomnbd_staticcov(
         names_cov_constr=names_cov_constr,
         search=SearchSettings(
             start=start, start_cov=start_cov, reg_lambdas=reg_lambdas,
-            method=method, maxiter=maxiter, hessian=False,
+            method=method, maxiter=maxiter, hessian=hessian,
             polish=polish, options=options,
         ),
     )

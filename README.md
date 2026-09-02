@@ -245,6 +245,39 @@ uses `log(1.1)` per *period* regardless of the time unit; §6.3.2 is explicit th
 scaling is the caller's job. On weekly data the raw default discounts 52 times
 too fast. `discount_factor()` does the scaling.
 
+**A regularized fit's standard errors are almost entirely the penalty's.**
+They are now differenced on the objective that was actually minimised — eq.
+(13)'s penalised *mean* — rather than on the unpenalised sum, so that the
+estimates and their standard errors describe the same function. The consequence
+is worth knowing before trusting them. Dividing the likelihood by `n` and
+leaving the penalty unscaled makes the implied prior 600 times stronger than the
+printed equation reads, so the curvature a covariate coefficient sees is
+`2·lambda` plus a per-customer term of order 1e-2. At `lambda = 10` the four
+apparel coefficients come out at 0.2231, 0.2152, 0.2227 and 0.2228 against a
+prior-only `1/sqrt(2·lambda) = 0.2236` — the data has moved them by under 4%.
+Two of the four are *larger* than the unregularized fit's 0.1041 and 0.1049,
+which no account of shrinkage explains and the arithmetic does. At
+`lambda = 0.1` the data is visible again, 5% to 27% below the prior-only value.
+`TestRegularizedStandardErrorsUseThePenalisedObjective` pins both ends, and
+`standard_errors()` now warns on a regularized fit saying exactly this — which
+neither CLVTools nor the paper does.
+
+**Asked for the first time, CLVTools' regularized `vcov` cannot be followed.**
+Nothing had ever requested one, so the port had nothing to check against. It
+gives, on the apparel cohort at `lambda = 10`, four covariate variances that are
+*identical to twelve significant figures* (0.007580647473) while their
+off-diagonals differ — which no curvature computed from data can be — and
+standard errors that are **not monotone in the penalty**: 0.1303, 0.0871,
+0.0913, 0.0853 at `lambda` = 1, 10, 40, 100. Both properties are asserted in R
+by `tools/oracle/generate_interface_fixtures.R` before it writes the fixture, so
+the evidence travels with the number. This package therefore deviates
+deliberately here, as it already does for the regularized AIC and BIC: its own
+value, 0.2231, is `1/sqrt(2·lambda)` to within 4% and moves with `lambda`;
+CLVTools' 0.0871 corresponds to no `lambda` and does not. The two agree on the
+estimates — the log-likelihood matches to 1e-3 and the model parameters to 1% —
+so the disagreement is confined to the standard errors, and
+`TestTheRegularizedVcovDisagreementIsPinned` keeps it measured.
+
 **Regularization penalises the mean, not the sum.** Eq. (13) shows the penalty
 applied to the summed likelihood; the implementation divides by `n`, so
 `logLik()` on a regularized fit reports about −9.7 rather than −5821.

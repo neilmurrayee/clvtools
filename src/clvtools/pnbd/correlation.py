@@ -51,7 +51,7 @@ from scipy import optimize
 
 from clvtools._optimize import options_for
 from clvtools._validate import finished
-from clvtools.inference import Fitted
+from clvtools.inference import Fitted, numerical_hessian
 from clvtools.pnbd.aggregate import log_likelihood_ind
 
 __all__ = [
@@ -269,6 +269,7 @@ def fit_pnbd_correlated(
     start_m: float = 0.0,
     method: str = "L-BFGS-B",
     maxiter: int = 10_000,
+    hessian: bool = True,
     options: dict | None = None,
 ) -> PnbdCorrelatedParams:
     r"""Estimate :math:`(r, \alpha, s, \beta, m)` jointly.
@@ -350,6 +351,25 @@ def fit_pnbd_correlated(
     result = finished(result, "correlated Pareto/NBD")
 
     r, alpha, s, beta = (float(v) for v in np.exp(result.x[:4]))
+
+    hess = None
+    if hessian:
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            # As everywhere else, in the *natural* parameters, which is what a
+            # standard error refers to. ``m`` is already natural -- the search
+            # carries it unlogged, being signed -- so only the first four are
+            # exponentiated. Until this existed the fit's Hessian was always
+            # None and ``summary()`` raised advising ``hessian=True``, which
+            # was not an argument this function had: finding 8 of
+            # ``docs/review-2026-09-02.md``.
+            natural = np.concatenate([np.exp(result.x[:4]), result.x[4:]])
+            hess = numerical_hessian(
+                lambda p: -correlated_log_likelihood(
+                    x, t_x, T, *p[:4], m=p[4], weights=w
+                ),
+                natural,
+            )
+
     return PnbdCorrelatedParams(
         r=r,
         alpha=alpha,
@@ -359,4 +379,5 @@ def fit_pnbd_correlated(
         log_likelihood=float(-result.fun),
         converged=bool(result.success),
         n_customers=int(x.size if w is None else w.sum()),
+        hessian=hess,
     )

@@ -265,6 +265,56 @@ est.static.constr <- latentAttrition(
   family = pnbd, data = clv.static, verbose = FALSE)
 inference(est.static.constr, "pnbd_staticcov_constrained")
 
+# -- A regularized fit's vcov, which nothing had ever asked CLVTools for -------
+#
+# Dumped to pin a *disagreement*, not to be matched. Two properties of these
+# numbers are asserted here so that the fixture carries the evidence rather
+# than the Python side having to argue for it:
+#
+#   * the four covariate variances are identical to twelve significant figures
+#     while their off-diagonals are not, which no curvature computed from data
+#     can be; and
+#   * the standard errors are not monotone in lambda -- 0.1303, 0.0871, 0.0913,
+#     0.0853 at lambda = 1, 10, 40, 100 -- so more shrinkage does not mean less
+#     uncertainty, which it must if these measure anything.
+#
+# Both follow from differencing a penalised *mean* objective numerically where
+# the coefficients have been shrunk to 1e-3 and the penalty dominates. See the
+# README's findings and docs/backlog.md item 22.
+
+cat("\n== regularized vcov (a disagreement, pinned) ==\n")
+
+reg.se <- function(lambda) {
+  f <- pnbd(clv.static, reg.lambdas = c(life = lambda, trans = lambda),
+            verbose = FALSE)
+  list(fit = f, se = sqrt(diag(vcov(f))))
+}
+
+reg10 <- reg.se(10)
+v10 <- vcov(reg10$fit)
+cov.var <- diag(v10)[5:8]
+check("regularized vcov: covariate variances are identical",
+      max(abs(cov.var - cov.var[1])), 0, tol = 1e-15)
+check("regularized vcov: off-diagonals are not",
+      max(abs(v10[5:8, 5:8] - diag(cov.var))) > 1e-6, TRUE)
+
+se.by.lambda <- vapply(c(1, 10, 40, 100),
+                       function(l) reg.se(l)$se[["life.Gender"]], 0)
+check("regularized SEs are not monotone in lambda",
+      all(diff(se.by.lambda) < 0), FALSE)
+
+write_json(list(
+  lambda = 10,
+  coefficients = as.list(coef(reg10$fit)),
+  names = names(coef(reg10$fit)),
+  se = as.numeric(reg10$se),
+  vcov = as.numeric(v10),
+  logLik = as.numeric(logLik(reg10$fit)),
+  nobs = nobs(reg10$fit),
+  se.by.lambda = as.numeric(se.by.lambda),
+  lambdas = c(1, 10, 40, 100)
+), "inference_pnbd_staticcov_regularized")
+
 # fitted(): the model's unconditional expectation over the estimation period.
 dt.fitted <- as.data.table(fitted(est.pnbd))
 check("fitted() opens at zero", dt.fitted[1, expectation], 0)

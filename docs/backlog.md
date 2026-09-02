@@ -914,7 +914,7 @@ that run was in progress, and it then failed. **Done:** all six corrected, and
 the header carries the rule they were missing — a claim about an external
 system carries the run id, URL or command output that established it.
 
-## 21. `[ ]` Make bad input loud — findings 5, 6, 7, 12
+## 21. `[x]` Make bad input loud — findings 5, 6, 7, 12
 
 The largest cluster, and the review's estimate is "perhaps a hundred lines" for
 a shared validator and a shared optimiser-result helper:
@@ -938,7 +938,20 @@ a shared validator and a shared optimiser-result helper:
 each of the above raises or warns with the offending id or column named, and
 each has a test. The README snippet is fixed in the same commit.
 
-## 22. `[ ]` Standard errors that exist and can be trusted — findings 8 and 9
+**Done:** `src/clvtools/_validate.py`. `customer_history()` is one validator
+where three families had three, and clamps the 1e-9 slack that used to collapse
+a fit; `finished()` warns through its own `ConvergenceWarning` category and
+raises when the objective is not finite at the returned point. Non-finite
+prices and covariates, duplicate covariate ids, a `name_price` typo, `predict()`
+ignoring arguments, and a non-nested likelihood ratio test all raise, each
+naming what is wrong. The README snippet discounts properly.
+
+Every one was reproduced first, and the reproduction is in the test's
+docstring: `t_x = T + 1e-10` gave `[1.0, 1.0, 1.0, 1.0]` with `-inf`; six
+purchases with NaN prices gave `Spending = 0.0`; duplicate ids gave a 601-row
+design matrix for 600 customers. 927 passed, `TOTAL 2731 0 100%`, ruff clean.
+
+## 22. `[x]` Standard errors that exist and can be trusted — findings 8 and 9
 
 `latent_attrition`'s docstring forwards `hessian`, which three estimators do
 not accept, so `summary()` on a correlated fit raises with advice that cannot
@@ -951,6 +964,48 @@ BG/NBD covariate fit on the apparel ridge ships `nan` standard errors with
 gets its z-value as CLVTools prints one; and the regularized-fit question — the
 Hessian is differenced on the unpenalised sum while the objective is the
 penalised mean — is answered, documented, and covered by one oracle fixture.
+
+**Mostly done.** `hessian=` now reaches the correlated fit (whose `summary()`
+used to raise advice naming an argument the function did not have) and the GGom
+covariate fit, which hard-coded `False`. `m` carries a z-value: `m = 0` is an
+admissible null and is precisely S6.5.2's question, unlike the four strictly
+positive parameters. `_covariance` warns when the Hessian is not positive
+definite, naming the flat directions and the smallest eigenvalue — the BG/NBD
+covariate fit on the apparel ridge gives `life.Gender = nan` beside
+`life.Channel = 0.594` at `converged = True`, eigenvalue −2.2 — and warns rather
+than letting `numpy` raise `LinAlgError` when the Hessian is not finite, which
+is what the GGom covariate fit produces at `b = 8.1e-07`.
+
+**Two parts left, both `[needs-decision]` rather than work:**
+
+- *The dyncov Hessian.* **Done:** the argument exists and defaults to
+  `False`, alone among the fits, with the cost written at the site. What that
+  buys is that `summary()`'s advice -- "fit with `hessian=True`" -- now names
+  something the function accepts. Eight customers make the branch testable in
+  the default suite, at 1.5 s.
+- *What a regularized standard error refers to.* **Settled by asking the
+  oracle, which is the only reason this was ever a question.** Nothing had ever
+  requested a regularized `vcov` from CLVTools. Requested, it returns four
+  covariate variances identical to twelve significant figures
+  (0.007580647473) beside off-diagonals that differ, and standard errors that
+  are not monotone in the penalty -- 0.1303, 0.0871, 0.0913, 0.0853 at
+  `lambda` = 1, 10, 40, 100. Neither property is possible for a curvature
+  computed from data, so the oracle cannot be followed here, and both are now
+  asserted **in R** by `generate_interface_fixtures.R` before it writes the
+  fixture.
+
+  The Hessian is therefore differenced on the penalised mean -- the objective
+  actually minimised, so that the estimates and their standard errors describe
+  one function -- and the disagreement with CLVTools is pinned rather than
+  hidden, exactly as the regularized AIC and BIC already are. This package's
+  0.2231 is `1/sqrt(2*lambda)` to within 4% and moves with `lambda`; CLVTools'
+  0.0871 corresponds to no `lambda` and does not. The two agree on everything
+  else: log-likelihood to 1e-3, model parameters to 1%.
+
+  And `standard_errors()` now warns on a regularized fit that its numbers are
+  ridge standard errors dominated by the penalty and not comparable with an
+  unregularized fit's -- which neither CLVTools nor the paper says anywhere,
+  and is the part that protects whoever reads the table.
 
 ## 23. `[ ]` Log-domain integrals for the regimes the oracle cannot see — findings 4 and 10
 

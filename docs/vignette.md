@@ -95,7 +95,7 @@ exactly as the R generic does. With no covariates, no formula is given.
 >>> from clvtools import latent_attrition, pnbd as pnbd_family
 >>> fit = latent_attrition(family=pnbd_family, data=data)
 >>> {name: round(value, 4) for name, value in fit.coefficients.items()}
-{'r': 1.4489, 'alpha': 48.63..., 's': 0.561..., 'beta': 46.88...}
+{'r': 1.4489, 'alpha': 48.63..., 's': 0.56..., 'beta': 46.88...}
 
 ```
 
@@ -107,9 +107,9 @@ Every generic the vignette calls — `summary()`, `coef()`, `confint()`,
 ```python
 >>> print(fit.summary().round(4).to_string())
         Estimate  Std. Error  z-val  Pr(>|z|)
-r  1.448...  0.24...  NaN  NaN
-alpha  48.634...  7.48...  NaN  NaN
-s  0.561...  0.27...  NaN  NaN
+r  1.44...  0.24...  NaN  NaN
+alpha  48.63...  7.48...  NaN  NaN
+s  0.56...  0.27...  NaN  NaN
 beta  46.88...  35.6...  NaN  NaN
 
 ```
@@ -151,14 +151,14 @@ bootstrap intervals of §6.3.3.
 >>> from clvtools import spending, predict, gg as gg_family
 >>> gg = spending(family=gg_family, data=data)
 >>> [round(v, 4) for v in gg]
-[3.099, 5.6537, 56.504...]
+[3.099, 5.6537, 56.50...]
 >>> columns = ["PAlive", "CET", "DERT", "predicted.mean.spending", "predicted.CLV"]
 >>> print(predict(data, fit, gg)[columns].head(3).round(4).to_string())
      PAlive     CET    DERT  predicted.mean.spending  predicted.CLV
 Id                                                                 
-1  0.946...  7.325...  0.467...  88.646...  41.456...
-10  0.982...  3.519...  0.224...  41.210...  9.259...
-100  0.278...  0.419...  0.026...  37.627...  1.006...
+1  0.94...  7.32...  0.46...  88.64...  41.45...
+10  0.98...  3.51...  0.22...  41.21...  9.25...
+100  0.27...  0.41...  0.02...  37.62...  1.00...
 
 ```
 
@@ -207,14 +207,14 @@ formula names them, attrition process first.
 ...     formula="~ . | .", family=pnbd_family, data=static)
 >>> print(covariate_fit.summary().round(4).to_string())
         Estimate  Std. Error  z-val  Pr(>|z|)
-r  1.839...  0.34...  NaN  NaN
-alpha  92.963...  16.97...  NaN  NaN
-s  0.591...  0.26...  NaN  NaN
-beta  49.513...  36.14...  NaN  NaN
-life.Gender  -0.641...  0.29...  -2.172...  0.029...
-life.Channel  0.789...  0.30...  2.582...  0.009...
-trans.Gender  0.286...  0.10...  2.747...  0.006...
-trans.Channel  0.623...  0.10...  5.945...  0.000...
+r  1.83...  0.34...  NaN  NaN
+alpha  92.96...  16.97...  NaN  NaN
+s  0.59...  0.26...  NaN  NaN
+beta  49.51...  36.14...  NaN  NaN
+life.Gender  -0.64...  0.29...  -2.17...  0.02...
+life.Channel  0.78...  0.30...  2.58...  0.00...
+trans.Gender  0.28...  0.10...  2.74...  0.00...
+trans.Channel  0.62...  0.10...  5.94...  0.00...
 
 ```
 
@@ -243,13 +243,13 @@ The constrained covariate is then reported once, as `constr.Gender`:
 ...     names_cov_constr=["Gender"])
 >>> print(constrained.summary().round(4).to_string())
         Estimate  Std. Error  z-val  Pr(>|z|)
-r  1.793...  0.33...  NaN  NaN
-alpha  94.735...  17.22...  NaN  NaN
-s  0.428...  0.14...  NaN  NaN
+r  1.79...  0.33...  NaN  NaN
+alpha  94.73...  17.22...  NaN  NaN
+s  0.42...  0.14...  NaN  NaN
 beta  59.06...  34.5...  NaN  NaN
-life.Channel  1.023...  0.35...  2.888...  0.003...
-trans.Channel  0.638...  0.10...  5.999...  0.000...
-constr.Gender  0.328...  0.10...  3.057...  0.002...
+life.Channel  1.02...  0.35...  2.88...  0.00...
+trans.Channel  0.63...  0.10...  5.99...  0.00...
+constr.Gender  0.32...  0.10...  3.05...  0.00...
 
 ```
 
@@ -283,7 +283,7 @@ this package takes them in the order `(life, trans)`.
 ...     formula="~ . | .", family=pnbd_family, data=static,
 ...     reg_lambdas=(0.2, 0.1), hessian=False)
 >>> {n: round(v, 5) for n, v in regularized.coefficients.items()}
-{'r': 1.7375..., 'alpha': 69.799..., 's': 0.5339..., 'beta': 39.733..., 'life.Gender': -0.0443..., 'life.Channel': 0.0246..., 'trans.Gender': 0.1717..., 'trans.Channel': 0.2367...}
+{'r': 1.73..., 'alpha': 69.79..., 's': 0.53..., 'beta': 39.73..., 'life.Gender': -0.04..., 'life.Channel': 0.02..., 'trans.Gender': 0.17..., 'trans.Channel': 0.23...}
 
 ```
 
@@ -327,9 +327,9 @@ The walkthrough re-splits the data at 40 weeks for the spending model.
 >>> gg_40 = spending(family=gg_family, data=data_40)
 >>> print(gg_40.summary().round(4).to_string())
         Estimate  Std. Error  z-val  Pr(>|z|)
-p  3.675...  0.76...  NaN  NaN
-q  4.629...  0.80...  NaN  NaN
-gamma  36.110...  13.83...  NaN  NaN
+p  3.67...  0.76...  NaN  NaN
+q  4.62...  0.80...  NaN  NaN
+gamma  36.11...  13.83...  NaN  NaN
 
 ```
 

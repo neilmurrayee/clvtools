@@ -18,6 +18,8 @@ optimum and a future reader would otherwise assume a bug.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pytest
 from conftest import fixture_csv, fixture_json
@@ -621,3 +623,183 @@ class TestTechniquesCombine:
         i_life = fit.names_cov_life.index("Gender")
         i_trans = fit.names_cov_trans.index("Gender")
         assert fit.gamma_life[i_life] == pytest.approx(fit.gamma_trans[i_trans])
+
+
+class TestStandardErrorsForTheCorrelatedFit:
+    """Finding 8: ``summary()`` used to raise advice that could not be followed.
+
+    ``fit_pnbd_correlated`` had no ``hessian`` argument, so its Hessian was
+    always ``None`` and every inference generic raised "fit with hessian=True".
+    """
+
+    @staticmethod
+    @pytest.fixture(scope="class")
+    def fitted(xtt):
+        x, t_x, T = xtt
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return fit_pnbd_correlated(x, t_x, T)
+
+    def test_a_hessian_is_available_by_default(self, fitted):
+        assert fitted.hessian is not None
+
+    def test_summary_reports_standard_errors(self, fitted):
+        table = fitted.summary()
+        assert list(table.index) == ["r", "alpha", "s", "beta", "m"]
+        assert np.isfinite(table.loc["r", "Std. Error"])
+
+    def test_only_m_carries_a_z_value(self, fitted):
+        """S6.5.2 asks whether the processes are independent, which is m = 0 --
+        an admissible null, unlike the four strictly positive parameters. R
+        prints one for m too."""
+        table = fitted.summary()
+        assert np.isfinite(table.loc["m", "z-val"])
+        assert table.loc[["r", "alpha", "s", "beta"], "z-val"].isna().all()
+
+    def test_hessian_false_still_skips_it(self, xtt):
+        x, t_x, T = xtt
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            fit = fit_pnbd_correlated(x, t_x, T, hessian=False)
+        assert fit.hessian is None
+
+
+class TestRegularizedStandardErrorsUseThePenalisedObjective:
+    """Finding 9's second half, and a deliberate deviation.
+
+    The estimates come from eq. (13)'s penalised *mean*; the Hessian used to be
+    differenced on the unpenalised *sum*, so the standard errors described a
+    function the estimates were not obtained from. They now describe the
+    objective that was minimised, which makes them ridge standard errors: the
+    penalty contributes curvature of its own, they are smaller than an
+    unregularized fit's, and they are not comparable with them -- exactly as
+    CLVTools' regularized AIC is not comparable with its unregularized one.
+    """
+
+    @staticmethod
+    @pytest.fixture(scope="class")
+    def fits(static_data):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return (
+                fit_pnbd_staticcov(static_data),
+                fit_pnbd_staticcov(static_data, reg_lambdas=(10.0, 10.0)),
+            )
+
+    def test_the_penalty_dominates_them(self, fits):
+        """And this is the finding, not a nice property.
+
+        Eq. (13) as implemented divides the likelihood by ``n`` and leaves the
+        penalty unscaled, so on 600 customers the implied prior is 600 times
+        stronger than the printed equation reads. The curvature a covariate
+        coefficient sees is then ``2 * lambda`` plus a per-customer likelihood
+        term of order 1e-2, and the standard error is the prior's almost
+        exactly. Measured at ``lambda = 10``: 0.2231, 0.2152, 0.2227, 0.2228
+        against ``1 / sqrt(20) = 0.2236``, while the unregularized fit gives
+        0.2955, 0.3058, 0.1041, 0.1049 -- note that two of the four go *up*,
+        which no story about shrinkage explains and the arithmetic does.
+        """
+        _, regularized = fits
+        prior_only = 1.0 / np.sqrt(2 * 10.0)
+        errors = regularized.standard_errors()
+        for name in ("life.Gender", "life.Channel", "trans.Gender", "trans.Channel"):
+            assert errors[name] == pytest.approx(prior_only, rel=0.05)
+
+    def test_a_weak_penalty_lets_the_data_back_in(self, static_data):
+        """The other end, so the test above is pinning a mechanism rather than
+        a coincidence: at ``lambda = 0.1`` the same standard errors sit 5% to
+        27% below the prior-only 2.2361, because the likelihood term is now
+        comparable with ``2 * lambda``."""
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            weak = fit_pnbd_staticcov(static_data, reg_lambdas=(0.1, 0.1))
+        prior_only = 1.0 / np.sqrt(2 * 0.1)
+        errors = weak.standard_errors()
+        assert all(errors[n] < prior_only * 0.98 for n in ("trans.Gender", "life.Gender"))
+        assert errors["trans.Gender"] < errors["life.Gender"]
+
+    def test_they_are_the_curvature_of_the_objective_that_was_minimised(self, fits):
+        """Which convention was used is visible in the number itself.
+
+        Eq. (13) penalises the *mean*, so at ``lambda = 10`` the penalty
+        contributes ``2 * lambda = 20`` of curvature in each covariate
+        direction against a per-customer likelihood term of order 1e-2. A
+        standard error from that objective is therefore about
+        ``1 / sqrt(20) = 0.2236``, and one from the unpenalised sum is the
+        unregularized fit's ~0.30. The measured value is 0.2231, which says
+        unambiguously which function was differenced.
+        """
+        plain, regularized = fits
+        # If the reported Hessian were still the unpenalised sum's, these would
+        # be the unregularized numbers: 0.2955 and 0.1041. They are not.
+        errors = regularized.standard_errors()
+        assert errors["life.Gender"] != pytest.approx(
+            plain.standard_errors()["life.Gender"], rel=0.05
+        )
+        assert errors["trans.Gender"] > plain.standard_errors()["trans.Gender"]
+
+
+@pytest.mark.oracle
+class TestTheRegularizedVcovDisagreementIsPinned:
+    """Where the oracle cannot be followed, measure the gap. House rule.
+
+    Nothing had ever asked CLVTools for a regularized fit's ``vcov``. Asked, it
+    gives an answer that cannot be a curvature computed from data, and
+    ``tools/oracle/generate_interface_fixtures.R`` asserts both reasons in R
+    before writing the fixture:
+
+    * its four covariate variances are **identical to twelve significant
+      figures** (0.007580647473) while their off-diagonals differ;
+    * its standard errors are **not monotone in lambda** -- 0.1303, 0.0871,
+      0.0913, 0.0853 at lambda = 1, 10, 40, 100.
+
+    So this package deviates deliberately, exactly as it does for the
+    regularized AIC and BIC, and the fixture is here to keep the deviation
+    measured rather than assumed. Both implementations agree on the thing that
+    is real -- the penalty dominates -- and disagree on a number neither can
+    justify.
+    """
+
+    @staticmethod
+    @pytest.fixture(scope="class")
+    def oracle():
+        return fixture_json("inference_pnbd_staticcov_regularized")
+
+    def test_the_oracles_covariate_errors_are_all_the_same_number(self, oracle):
+        """Which is the evidence, restated on this side so it cannot be lost."""
+        covariate_se = oracle["se"][4:]
+        assert len(set(covariate_se)) == 1
+
+    def test_the_oracles_errors_do_not_decrease_with_the_penalty(self, oracle):
+        by_lambda = oracle["se.by.lambda"]
+        assert by_lambda != sorted(by_lambda, reverse=True)
+
+    def test_this_package_agrees_about_the_estimates(self, static_data, oracle):
+        """The deviation is confined to the standard errors: the fit itself
+        still reproduces CLVTools' regularized coefficients."""
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            got = fit_pnbd_staticcov(static_data, reg_lambdas=(10.0, 10.0))
+        assert got.log_likelihood == pytest.approx(oracle["logLik"], abs=1e-3)
+        for name in ("r", "alpha", "s", "beta"):
+            assert getattr(got, name) == pytest.approx(
+                oracle["coefficients"][name], rel=1e-2
+            )
+
+    def test_and_disagrees_about_the_standard_errors_by_a_known_factor(
+        self, static_data, oracle
+    ):
+        """2.56x at lambda = 10, and explicable on this side only.
+
+        ``1/sqrt(2*lambda) = 0.2236`` is what a penalty-dominated curvature
+        gives; this package lands within 4% of it. CLVTools' 0.0871
+        corresponds to no lambda in the fit and does not move with one.
+        """
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            got = fit_pnbd_staticcov(static_data, reg_lambdas=(10.0, 10.0))
+            ours = got.standard_errors()["life.Gender"]
+        theirs = oracle["se"][4]
+        assert ours == pytest.approx(1 / np.sqrt(20), rel=0.05)
+        assert theirs == pytest.approx(0.087067, abs=1e-5)
+        assert ours / theirs == pytest.approx(2.56, rel=0.05)

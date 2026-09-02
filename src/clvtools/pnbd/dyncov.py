@@ -60,7 +60,7 @@ per-customer output in ``tests/test_pnbd_dyncov.py``.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal, overload
 
 import numpy as np
@@ -68,7 +68,8 @@ import pandas as pd
 from numpy.typing import ArrayLike, NDArray
 from scipy import special
 
-from clvtools.inference import Fitted
+from clvtools._validate import finished
+from clvtools.inference import Fitted, numerical_hessian
 
 # The walk primitives moved out when this module outgrew the size gate; they
 # are imported for real, and re-exported below, so that no caller of the
@@ -738,6 +739,7 @@ class PnbdDynCovParams(Fitted):
     converged: bool
     n_customers: int
     n_evaluations: int = 0
+    hessian: NDArray[np.float64] | None = field(default=None, repr=False)
 
     def __iter__(self):
         yield from (self.r, self.alpha, self.s, self.beta)
@@ -777,6 +779,7 @@ def fit_pnbd_dyncov(
     start_cov: float = 0.1,
     method: str = "L-BFGS-B",
     maxiter: int = 10_000,
+    hessian: bool = False,
     options: dict | None = None,
     weights: ArrayLike | None = None,
 ) -> PnbdDynCovParams:
@@ -832,8 +835,30 @@ def fit_pnbd_dyncov(
         negative_ll, x0=x0, method=method,
         options=options_for(method, maxiter, x0, options),
     )
+    result = finished(result, "time-varying covariate Pareto/NBD")
 
     r, alpha, s, beta = (float(v) for v in np.exp(result.x[:4]))
+
+    hess = None
+    if hessian:
+        # Off by default, and alone among the fits in that. A central
+        # difference over this many parameters is about 350 evaluations of a
+        # likelihood that costs ~0.1 s, so ``summary()`` would take a minute on
+        # this model and nothing at all on every other one. The argument exists
+        # so the error from ``summary()`` names something a caller can actually
+        # do -- which is finding 8 of ``docs/review-2026-09-02.md`` -- and the
+        # default says what it costs.
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            def natural_ll(v):
+                r_, alpha_, s_, beta_ = (float(p) for p in v[:4])
+                return -log_likelihood(
+                    walks, r_, alpha_, s_, beta_,
+                    v[4 : 4 + n_life], v[4 + n_life :],
+                    weights=weights,
+                )
+
+            natural = np.concatenate([np.exp(result.x[:4]), result.x[4:]])
+            hess = numerical_hessian(natural_ll, natural)
     return PnbdDynCovParams(
         r=r, alpha=alpha, s=s, beta=beta,
         gamma_life=np.asarray(result.x[4 : 4 + n_life], dtype=float),
@@ -844,4 +869,5 @@ def fit_pnbd_dyncov(
         converged=bool(result.success),
         n_customers=walks.n_customers,
         n_evaluations=evaluations,
+        hessian=hess,
     )
