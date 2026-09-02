@@ -168,6 +168,24 @@ def _identified(df: pd.DataFrame) -> pd.DataFrame:
 
     df["Id"] = df["Id"].astype(str)
     parsed = pd.to_datetime(df["Date"], errors="coerce")
+    if getattr(parsed.dtype, "tz", None) is not None:
+        # Half-supported is worse than unsupported, which is what this was: a
+        # numeric estimation split built a usable object whose spans came from
+        # `total_seconds()`, so a DST transition inside the window moved `t_x`
+        # by an hour, while a date or string split raised pandas' own
+        # "Cannot compare tz-naive and tz-aware timestamps" from somewhere
+        # deep. R has no such case -- its Date type carries no zone -- so
+        # there is no oracle and this is a decision: refuse, and say how to
+        # proceed. Dropping the zone here would silently move a late-evening
+        # transaction to the previous day. Finding A6 of
+        # ``docs/spec-audit.md``.
+        raise ValueError(
+            f"Date is timezone-aware ({parsed.dtype.tz}); these models work in "
+            "whole periods and a daylight-saving transition inside the "
+            "observation window would shift recency by an hour. Convert first "
+            "-- .dt.tz_convert('UTC').dt.tz_localize(None) to keep the "
+            "instants, or .dt.tz_localize(None) to keep the wall-clock dates"
+        )
     unparsed = parsed.isna()
     if unparsed.any():
         raise ValueError(

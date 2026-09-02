@@ -476,6 +476,32 @@ class TestATransactionMustSayWhoAndWhen:
         with pytest.raises(TypeError, match="must be a pandas DataFrame"):
             ClvData([{"Id": "1", "Date": "2005-01-02"}], time_unit="week")
 
+    def test_timezone_aware_dates_are_refused_rather_than_half_supported(self):
+        """Finding A6: it worked one way and raised pandas' error the other.
+
+        A numeric estimation split built a usable object whose spans came from
+        ``total_seconds()``, so a daylight-saving transition inside the window
+        moved recency by an hour; a date or string split raised "Cannot
+        compare tz-naive and tz-aware timestamps" from inside pandas. R has no
+        such case -- its ``Date`` carries no zone -- so this is a decision
+        rather than a divergence, and the decision is to refuse, because
+        dropping the zone silently would move a late-evening transaction to
+        the previous day.
+        """
+        trans = load_apparel_trans().copy()
+        trans["Date"] = pd.to_datetime(trans["Date"]).dt.tz_localize("Europe/Berlin")
+        with pytest.raises(ValueError, match="timezone-aware"):
+            ClvData(trans, time_unit="week", estimation_split=104)
+
+    def test_and_the_route_the_message_gives_works(self):
+        """An error that names a fix should have that fix work."""
+        trans = load_apparel_trans().copy()
+        trans["Date"] = pd.to_datetime(trans["Date"]).dt.tz_localize("Europe/Berlin")
+        trans["Date"] = trans["Date"].dt.tz_convert("UTC").dt.tz_localize(None)
+        converted = ClvData(trans, time_unit="week", estimation_split=104)
+        plain = ClvData(load_apparel_trans(), time_unit="week", estimation_split=104)
+        assert converted.nobs() == plain.nobs()
+
 
 class TestTheColumnRenameActuallyRenames:
     """Finding B4: it was only ever exercised as the identity.

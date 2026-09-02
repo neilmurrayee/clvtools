@@ -288,6 +288,16 @@ were wrong in the fourth digit; at a *relative* 1e-4 they agree with
 GGom/NBD's `b = 8.1e-07` from being stepped negative, where the likelihood does
 not exist.
 
+**Timezone-aware dates are refused, having previously been half-supported.**
+A numeric estimation split built a usable object whose spans came from
+`total_seconds()`, so a daylight-saving transition inside the observation window
+moved recency by an hour; a date split raised pandas' own "Cannot compare
+tz-naive and tz-aware timestamps" from three frames down. R never faces this —
+its `Date` carries no zone — so there is no oracle and this is a decision.
+Refusing is the safe one: dropping the zone silently would move a late-evening
+transaction to the previous day. The error names both conversions, and a test
+checks that the route it recommends actually works.
+
 **A fractional `prediction_end` means what it says here, and is truncated in
 R.** `prediction.end = 14.4` gives CLVTools a 14-period window and a warning —
 "may not indicate partial periods. Digits after the decimal point are cut off"
