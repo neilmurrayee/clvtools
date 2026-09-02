@@ -26,7 +26,7 @@ from numpy.typing import ArrayLike
 from scipy import optimize
 
 from clvtools._optimize import options_for
-from clvtools._validate import customer_history, finished
+from clvtools._validate import customer_history, finished, start_values
 from clvtools.inference import Fitted, numerical_hessian
 from clvtools.pnbd.aggregate import log_likelihood
 
@@ -192,11 +192,7 @@ def fit_pnbd(
     x, t_x, T = (np.asarray(v, dtype=float).ravel() for v in (x, t_x, T))
     x, t_x, T = customer_history(x, t_x, T)
 
-    start_arr = np.asarray(start, dtype=float)
-    if start_arr.shape != (4,):
-        raise ValueError("start must give four values (r, alpha, s, beta)")
-    if np.any(start_arr <= 0):
-        raise ValueError("start values must be strictly positive")
+    start_arr = start_values(start, count=4, parameters="values (r, alpha, s, beta)")
 
     w = None if weights is None else np.asarray(weights, dtype=float).ravel()
     evaluations = 0

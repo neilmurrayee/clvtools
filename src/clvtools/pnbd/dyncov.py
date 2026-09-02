@@ -68,7 +68,7 @@ import pandas as pd
 from numpy.typing import ArrayLike, NDArray
 from scipy import special
 
-from clvtools._validate import finished
+from clvtools._validate import finished, start_values
 from clvtools.inference import Fitted, numerical_hessian
 
 # The walk primitives moved out when this module outgrew the size gate; they
@@ -961,11 +961,7 @@ def fit_pnbd_dyncov(
         else [f"trans{i}" for i in range(n_trans)]
     )
 
-    start_arr = np.asarray(start, dtype=float)
-    if start_arr.shape != (4,):
-        raise ValueError("start must give four values (r, alpha, s, beta)")
-    if np.any(start_arr <= 0):
-        raise ValueError("start values must be strictly positive")
+    start_arr = start_values(start, count=4, parameters="values (r, alpha, s, beta)")
 
     x0 = np.concatenate(
         [np.log(start_arr), np.full(n_life + n_trans, float(start_cov))]

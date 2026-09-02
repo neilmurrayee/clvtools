@@ -33,7 +33,7 @@ from numpy.typing import ArrayLike, NDArray
 from scipy import optimize, special
 
 from clvtools._optimize import options_for
-from clvtools._validate import finished
+from clvtools._validate import finished, spending_history, start_values
 from clvtools.inference import Fitted, numerical_hessian
 
 __all__ = [
@@ -312,24 +312,9 @@ def fit_gg(
     -1670.663
     """
     x, z_bar = (np.asarray(v, dtype=float).ravel() for v in (x, z_bar))
-    if x.shape != z_bar.shape:
-        raise ValueError("x and z_bar must have the same shape")
-    if x.size == 0:
-        raise ValueError("no customers to fit")
-    if np.any(x < 0):
-        raise ValueError("frequencies x must be non-negative")
-    if np.any(z_bar < 0):
-        raise ValueError("mean spending must be non-negative")
-    if not np.any((x > 0) & (z_bar > 0)):
-        raise ValueError(
-            "no customer has both a transaction and a spend: nothing to estimate"
-        )
+    x, z_bar = spending_history(x, z_bar)
 
-    start_arr = np.asarray(start, dtype=float)
-    if start_arr.shape != (3,):
-        raise ValueError("start must give three values (p, q, gamma)")
-    if np.any(start_arr <= 0):
-        raise ValueError("start values must be strictly positive")
+    start_arr = start_values(start, count=3, parameters="values (p, q, gamma)")
 
     w = None if weights is None else np.asarray(weights, dtype=float).ravel()
 

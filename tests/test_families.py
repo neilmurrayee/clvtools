@@ -251,7 +251,7 @@ class TestBgnbdFitValidation:
             bgnbd.fit_bgnbd([1, 2], [200.0, 30.0], [104.0, 104.0])
 
     def test_rejects_bad_start_values(self):
-        with pytest.raises(ValueError, match="four values"):
+        with pytest.raises(ValueError, match="4 values"):
             bgnbd.fit_bgnbd([0, 2], [0.0, 30.0], [104.0, 104.0], start=(1.0, 1.0))
         with pytest.raises(ValueError, match="strictly positive"):
             bgnbd.fit_bgnbd(

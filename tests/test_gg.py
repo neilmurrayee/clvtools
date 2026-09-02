@@ -350,7 +350,7 @@ class TestValidation:
             gg.fit_gg([0, 0], [0.0, 0.0])
 
     def test_rejects_bad_start_values(self):
-        with pytest.raises(ValueError, match="three values"):
+        with pytest.raises(ValueError, match="3 values"):
             gg.fit_gg([1, 2], [10.0, 20.0], start=(1.0, 1.0))
         with pytest.raises(ValueError, match="strictly positive"):
             gg.fit_gg([1, 2], [10.0, 20.0], start=(1.0, -1.0, 1.0))
