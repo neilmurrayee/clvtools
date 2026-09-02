@@ -342,6 +342,10 @@ def fitted_data(data: ClvData, expectation) -> pd.DataFrame:
     is the model half of the tracking plot on its own: one row per period, with
     the period's number and the expected number of repeat transactions in it.
 
+    The doctest below prints what this implementation returns, so it pins the
+    output against drift rather than against R. All 313 periods are compared
+    with R's own ``fitted()`` in ``tests/test_diagnostics.py``.
+
     Examples
     --------
     >>> from clvtools import ClvData, load_apparel_trans

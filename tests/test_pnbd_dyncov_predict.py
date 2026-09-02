@@ -115,9 +115,57 @@ class TestAbcdTable:
         """``d1`` is what remains of the period after the estimation ends.
 
         The apparel split lands on a covariate boundary, so a whole period
-        remains and ``d1`` is 1. It is not 1 in general.
+        remains and ``d1`` is 1. It is not 1 in general, which
+        :class:`TestAbcdOverEveryCustomer` is where it is checked.
         """
         assert set(built["d1"]) == {1.0}
+
+
+class TestAbcdOverEveryCustomer:
+    """DY-06, and the ``d1`` the apparel split cannot exercise.
+
+    The oracle comparison above runs over the eight ids the fixture holds, and
+    on a split that lands exactly on a covariate boundary -- so ``d1`` is 1 for
+    every row of it and comparing that column against the oracle discriminates
+    nothing. Findings B5 and B7 of ``docs/spec-audit.md``. Both claims below
+    are determined by their own inputs, so neither needs the oracle.
+    """
+
+    @staticmethod
+    def table(apparel_trans, split: str) -> pd.DataFrame:
+        data = ClvDataDynCov(
+            ClvData(apparel_trans, time_unit="week", estimation_split=split),
+            load_apparel_dyn_cov(), names_cov_life=NAMES, names_cov_trans=NAMES,
+        )
+        return abcd(data, _params("dyncov_fit"), pd.Timestamp("2007-06-30"))
+
+    def test_every_customer_shares_the_window(self, apparel_trans):
+        """DY-06: "``i`` is an integer with the same maximum for every
+        customer, and all customers start and end on the same date"."""
+        table = self.table(apparel_trans, "2006-12-31")
+        assert table["Id"].nunique() == 600
+
+        per_customer = table.groupby("Id")
+        assert set(table["i"]) == set(range(1, 27))
+        np.testing.assert_array_equal(per_customer["i"].max().unique(), [26])
+        np.testing.assert_array_equal(per_customer["i"].min().unique(), [1])
+        assert list(per_customer["Cov.Date"].min().unique()) == [
+            pd.Timestamp("2006-12-31")
+        ]
+        assert list(per_customer["Cov.Date"].max().unique()) == [
+            pd.Timestamp("2007-06-24")
+        ]
+
+    def test_a_split_inside_a_period_leaves_a_fraction_of_it(self, apparel_trans):
+        """The apparel covariate grid is weekly and starts on a Sunday, so a
+        Wednesday split leaves four of the seven days: ``d1 = 4/7``. Nothing
+        else about the window moves -- the grid is the covariates', not the
+        split's."""
+        table = self.table(apparel_trans, "2007-01-03")
+        assert table["d1"].to_numpy() == pytest.approx(4 / 7)
+        assert list(table.groupby("Id")["Cov.Date"].min().unique()) == [
+            pd.Timestamp("2006-12-31")
+        ]
 
 
 @pytest.mark.oracle
