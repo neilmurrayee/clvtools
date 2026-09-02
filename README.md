@@ -288,6 +288,15 @@ were wrong in the fourth digit; at a *relative* 1e-4 they agree with
 GGom/NBD's `b = 8.1e-07` from being stepped negative, where the likelihood does
 not exist.
 
+**Covariate names are kept verbatim where R mangles them.** CLVTools passes
+column names through `make.names()`, so a covariate called `my var!` becomes
+`my.var.` and the coefficient is reported under a name the caller never wrote.
+This package keeps it: `ClvDataStaticCov` accepts it, the formula interface
+parses `~ my var! | my var!`, and `summary()` reports `life.my var!`. Renaming
+someone's column silently is the kind of helpfulness that costs an afternoon
+when the coefficient you are looking for is not there. Recorded rather than
+matched — spec C-05.
+
 **Timezone-aware dates are refused, having previously been half-supported.**
 A numeric estimation split built a usable object whose spans came from
 `total_seconds()`, so a daylight-saving transition inside the observation window

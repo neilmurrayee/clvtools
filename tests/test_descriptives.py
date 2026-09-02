@@ -380,3 +380,43 @@ class TestDescriptivePlots:
         full = ClvData(apparel_trans, time_unit="week")
         frame = timings_data(full, ids=["1"])
         assert "point_holdout" not in set(frame["type"])
+
+
+class TestTheRemainingFrequencyBinMatchesR:
+    """S-13, checked against CLVTools and found *not* to be a divergence.
+
+    ``docs/spec-audit.md`` lists the ``"10+"`` row being emitted with zero
+    customers when the bins already cover everyone as an unrecorded
+    divergence. Asked, R does exactly the same -- and keeps the same stale
+    label. This test exists so that nobody "fixes" the agreement away.
+    """
+
+    def test_the_remaining_row_is_kept_even_when_empty(self):
+        """R with ``trans.bins=0:30`` returns 32 rows, the last ``10+`` at 0."""
+        from clvtools import ClvData, diagnostics, load_apparel_trans
+
+        data = ClvData(load_apparel_trans(), time_unit="week", estimation_split=104)
+        got = diagnostics.frequency_data(data, bins=range(31))
+
+        assert len(got) == 32
+        last = got.iloc[-1]
+        assert str(last["num.transactions"]).endswith("+")
+        assert int(last["num.customers"]) == 0
+
+    def test_the_default_label_does_not_follow_custom_bins_either(self):
+        """R keeps ``10+`` for ``trans.bins=0:30``; so does this.
+
+        Arguably wrong in both, and identical in both, which is the point:
+        ``label_remaining`` is the documented way to say what the row means and
+        the R man page's own example passes it.
+        """
+        from clvtools import ClvData, diagnostics, load_apparel_trans
+
+        data = ClvData(load_apparel_trans(), time_unit="week", estimation_split=104)
+        default = diagnostics.frequency_data(data, bins=range(31))
+        assert str(default.iloc[-1]["num.transactions"]) == "10+"
+
+        named = diagnostics.frequency_data(
+            data, bins=range(31), label_remaining="31+"
+        )
+        assert str(named.iloc[-1]["num.transactions"]) == "31+"
