@@ -97,3 +97,42 @@ the audit could not tell a gap from a choice.
 Both files were swept into commit `61cd5ba` alongside unrelated README and
 `pyproject.toml` changes from a parallel session. Worth splitting them into
 their own commit so the audit has a clean history to point at.
+
+
+---
+
+## Outcome, 2026-09-02
+
+Worked in the suggested order. Every claim was reproduced before it was acted
+on, which the file asks for and which changed the answer twice.
+
+| | Claim | Verdict |
+|---|---|---|
+| A2 | dyncov bootstrap drops covariates | **confirmed** — `apply` received a plain `ClvData`; now raises |
+| A4 | five silent acceptances | **confirmed** — NA ids and dates, empty frame, non-frame; all now named |
+| C | the literature tier reproduces | **confirmed exactly** — five oracles, three papers, `tests/test_literature.py` |
+| B1 | never calls `predict` | **confirmed** — it read the fixture; now predicts |
+| B2 | asserts something else | **confirmed**, and the honest replacement found customer 129 |
+| B4 | rename only exercised as identity | **confirmed** — now renames all three columns |
+| B6 | one scalar at `abs=1e-4` | **confirmed, and it was hiding a defect**: `λ=0` gave standard errors 24.5× too large |
+| D1 | DY-07 absent | **written** — and the first draft ran on an empty table |
+| D2 | permuted covariates unchecked | **written** — both hold |
+| D3 | `α = β` arm never taken | **written** — the arms agree to 1e-12 |
+| A1 | zero-length windows refused | **confirmed** — R answers both; so do we now |
+| A3 | discount factor range | **confirmed** — and its test asserted our divergence |
+| A5 | time-unit spellings | **confirmed** — R's `match.arg` forms now resolve |
+| A6 | timezone half-broken | **confirmed** — refused, with the route out named |
+| A7 / S-13 | remaining bin emitted empty | **not a divergence** — R does the same; pinned as agreement |
+| A7 / C-05 | covariate names not coerced | **divergence, ours kept** — R mangles `my var!` to `my.var.` |
+
+Two things the audit did not mention turned up while checking it: **CLVTools has
+no month unit at all** (it rejects `"month"` and `"months"`; this package
+implements calendar months, which S5 describes), and the discount-factor test
+was asserting this package's divergence rather than the claim, so the suite was
+defending the defect.
+
+Still open from the audit, and deliberately not started here: the `weak` verdicts
+beyond those listed, B5 (two degenerate oracles), B7 (restricted samples
+presented as general), and DY-22's seven weekday splits. `docs/backlog.md` items
+27 and 28 are also open, and item 28's cheap route was tried and reverted — the
+finding is recorded there.
