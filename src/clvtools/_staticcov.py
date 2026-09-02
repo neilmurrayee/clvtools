@@ -40,6 +40,39 @@ __all__ = ["SearchSettings", "StaticCovResult", "fit_static_covariates"]
 DEFAULT_COV_START = 0.1
 
 
+def design(
+    covariates: ArrayLike, gamma: ArrayLike, process: str
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    r"""A design matrix and its coefficients as arrays, checked against each other.
+
+    The prologue every per-customer rate builder shares -- the Pareto/NBD's
+    :math:`\alpha_i` and :math:`\beta_i`, the BG/NBD's :math:`\alpha_i`,
+    :math:`a_i` and :math:`b_i`, the GGom/NBD's :math:`\alpha_i` and
+    :math:`b_i`. Only the equation itself differs between them, and each writes
+    that out where its own ``.. math::`` can be read beside it.
+
+    ``process`` is ``"transaction"`` or ``"attrition"``, and names which set of
+    covariates did not line up.
+
+    >>> import numpy as np
+    >>> matrix, coefficients = design([[0.0, 1.0]], [0.2, 0.6], "transaction")
+    >>> matrix.shape, coefficients.shape
+    ((1, 2), (2,))
+    >>> design([[0.0, 1.0]], [0.2], "transaction")
+    Traceback (most recent call last):
+        ...
+    ValueError: 2 transaction covariates but 1 parameters
+    """
+    matrix = np.atleast_2d(np.asarray(covariates, dtype=float))
+    coefficients = np.asarray(gamma, dtype=float)
+    if matrix.shape[1] != coefficients.size:
+        raise ValueError(
+            f"{matrix.shape[1]} {process} covariates but "
+            f"{coefficients.size} parameters"
+        )
+    return matrix, coefficients
+
+
 @dataclass(frozen=True)
 class StaticCovResult(Fitted):
     """What a covariate fit produces, before a family wraps it in its own type."""

@@ -473,14 +473,10 @@ def _predict_dyncov(
         prediction_table(clv_data, params, last, length, discount)
     )
     if spending_params is not None:
-        spend = clv_data.spending_summary().set_index("Id").loc[table.index]
-        mean_spending = expected_mean_spending(
-            spend["x"].to_numpy(), spend["Spending"].to_numpy(),
-            **spending_params.as_dict(),
+        _add_spending(
+            table, clv_data, spending_params,
+            discounted=("DECT", "predicted.period.CLV"),
         )
-        table["predicted.mean.spending"] = mean_spending
-        table["predicted.period.spending"] = table["CET"] * mean_spending
-        table["predicted.period.CLV"] = table["DECT"] * mean_spending
     return table
 
 
@@ -566,14 +562,21 @@ def _reject_unused_for_new_customer(spending_params, prediction_end) -> None:
 
 
 def _add_spending(
-    table: pd.DataFrame, clv_data: ClvData, spending_params: GgParams,
-    has_dert: bool,
+    table: pd.DataFrame,
+    clv_data: ClvData,
+    spending_params: GgParams,
+    discounted: tuple[str, str] | None,
 ) -> None:
     """S6.3's spending columns, appended in the order CLVTools emits them.
 
     Total spending expected in the prediction period is ``CET`` times mean
-    spending; CLV is ``DERT`` times mean spending, so a family without a
-    ``DERT`` has no ``predicted.CLV`` either.
+    spending, and the discounted value is the discount column times the same.
+    ``discounted`` names that pair: ``("DERT", "predicted.CLV")`` for the
+    ordinary table, ``("DECT", "predicted.period.CLV")`` for S6.4.2's -- with
+    time-varying covariates the discounting runs to the end of the covariate
+    series rather than to infinity, so what it produces is the value of that
+    period rather than a residual lifetime value -- or ``None`` for a family
+    with no discount column, which then has no CLV column either.
     """
     if not clv_data.has_spending:
         raise ValueError(
@@ -587,8 +590,9 @@ def _add_spending(
     )
     table["predicted.mean.spending"] = mean_spending
     table["predicted.period.spending"] = table["CET"] * mean_spending
-    if has_dert:
-        table["predicted.CLV"] = table["DERT"] * mean_spending
+    if discounted is not None:
+        discount_column, clv_column = discounted
+        table[clv_column] = table[discount_column] * mean_spending
 
 
 def predict(
@@ -723,6 +727,9 @@ def predict(
         table["DERT"] = dert(x, t_x, T, continuous_discount_factor, **model)
 
     if spending_params is not None:
-        _add_spending(table, clv_data, spending_params, has_dert=dert is not None)
+        _add_spending(
+            table, clv_data, spending_params,
+            discounted=None if dert is None else ("DERT", "predicted.CLV"),
+        )
 
     return table

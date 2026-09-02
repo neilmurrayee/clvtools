@@ -43,6 +43,7 @@ from numpy.typing import ArrayLike, NDArray
 # real rather than under `TYPE_CHECKING` so that `typing.get_type_hints()`
 # resolves it -- `py.typed` promises the signatures are usable downstream.
 # `clvtools.data` does not reach back here, so this closes no cycle.
+from clvtools._staticcov import design
 from clvtools.data import ClvDataStaticCov
 from clvtools.inference import Fitted
 from clvtools.pnbd.aggregate import log_likelihood_ind
@@ -82,13 +83,7 @@ def alpha_i(
     >>> [round(float(v), 4) for v in alpha_i(92.9123, [0.2859, 0.6241], covariates)]
     [92.9123, 37.3995]
     """
-    covariates = np.atleast_2d(np.asarray(covariates, dtype=float))
-    gamma_trans = np.asarray(gamma_trans, dtype=float)
-    if covariates.shape[1] != gamma_trans.size:
-        raise ValueError(
-            f"{covariates.shape[1]} transaction covariates but "
-            f"{gamma_trans.size} parameters"
-        )
+    covariates, gamma_trans = design(covariates, gamma_trans, "transaction")
     return alpha * np.exp(-(covariates @ gamma_trans))
 
 
@@ -105,13 +100,7 @@ def beta_i(
     >>> [round(float(v), 4) for v in beta_i(49.6227, [-0.6430, 0.7907], covariates)]
     [49.6227, 42.809]
     """
-    covariates = np.atleast_2d(np.asarray(covariates, dtype=float))
-    gamma_life = np.asarray(gamma_life, dtype=float)
-    if covariates.shape[1] != gamma_life.size:
-        raise ValueError(
-            f"{covariates.shape[1]} attrition covariates but "
-            f"{gamma_life.size} parameters"
-        )
+    covariates, gamma_life = design(covariates, gamma_life, "attrition")
     return beta * np.exp(-(covariates @ gamma_life))
 
 
