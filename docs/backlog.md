@@ -676,7 +676,7 @@ Item 11's method paid again on the way past: counting the marker totals that
 inherited. Both files corrected in the same commit, since it is the same drift
 by the same cause.
 
-## 13. `[ ]` Push, and let the gates run for the first time
+## 13. `[x]` Push, and let the gates run for the first time
 
 Everything item 1 built is unexercised. Four things need settling in the same
 breath, because they contradict each other today:
@@ -689,8 +689,10 @@ breath, because they contradict each other today:
 - ~~`dyncov.yml`'s schedule fires only from the default branch.~~ It is now on
   `main`, so **the nightly cron is live and has never been watched**. Dispatching
   it once by hand is the outstanding half of this item.
-- **Still open: CI has never been green.** Four runs, four failures. This item
-  cannot be ticked until a run id says otherwise.
+- **Done: CI is green.** Run
+  [33612912362](https://github.com/neilmurrayee/clvtools/actions/runs/33612912362),
+  success on 3.12 and 3.13, ten steps each, on a runner with no R — which is
+  the committed-fixture promise tested rather than asserted.
 - **`[needs-decision]` The paper is in the repository.** `git ls-files` tracks
   40 files under `arXiv-2602.09845v1/` plus `2602.09845v1.pdf` — 3.2 MB, the
   complete LaTeX source and typeset PDF of somebody else's article. Locally
@@ -736,6 +738,22 @@ breath, because they contradict each other today:
   for the same reason as item 10: an identical tree cannot test differently.
   `--prune-empty` was passed in case a commit had done nothing but add those
   files; none had, and the count stayed 36.
+
+**Eleven runs to get there, and every failure was a real defect.** Worth
+recording, because the argument for CI is usually made in the abstract and this
+is the concrete version: an action version that could not resolve (only a runner
+resolves those); convergence tolerances asking for better than machine
+precision, which made Linux report `converged = False` at the *same* optimum;
+five rounds of doctests asserting digits no libm fixes — including the rule
+"log-likelihoods are portable", which is false at a regularized optimum; and
+three assertions written badly while fixing the others.
+
+Two cautions learned on the way. `cancel-in-progress` means a push cancels the
+run before it — with CI at 7-9 minutes and pushes every 10-20, three runs in a
+row read `cancelled` rather than reaching a verdict, which looks like failure
+and is not. And a failing doctest aborts its whole file, so each red run hid
+whatever came after the first failure; sweeping a class of defect at once beats
+fixing the one the log happens to show.
 
 *Done when:* the repository exists, the default branch and the URLs in
 `pyproject.toml` agree with each other, `ci.yml` has gone green on 3.12 and
