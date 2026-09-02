@@ -64,6 +64,7 @@ dev = [
     # between releases, so a floating version would turn an upgrade into a
     # surprise failure in an unrelated change. Bump it deliberately.
     "ty==0.0.77",
+    "nbmake>=1.5.5",
 ]
 
 [project.optional-dependencies]
@@ -72,14 +73,14 @@ dev = [
 plot = ["matplotlib>=3.9"]
 
 [tool.pytest.ini_options]
-testpaths = ["src", "tests", "docs"]
+testpaths = ["src", "tests", "docs", "examples"]
 # `-m 'not dyncov_fit'` used to live here, and a user's own `-m` replaced it:
 # `pytest -m "not slow"` then collected the ten-minute time-varying fit, which
 # is the slowest test in the repo and the one thing "not slow" clearly excludes.
 # The deselection moved to `tests/conftest.py`, where it composes with whatever
 # the caller asks for instead of being overwritten by it. See finding 15 of
 # `docs/review-2026-09-02.md`.
-addopts = "-q --strict-markers --doctest-modules --doctest-glob=*.md"
+addopts = "-q --strict-markers --doctest-modules --doctest-glob=*.md --nbmake"
 doctest_optionflags = ["NORMALIZE_WHITESPACE", "ELLIPSIS"]
 markers = [
   "paper: reproduces a number printed in Meierer et al. (JSS 5634)",

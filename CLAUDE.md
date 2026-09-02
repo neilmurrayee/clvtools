@@ -23,6 +23,8 @@ src/clvtools/       the package. numpy + scipy + pandas only.
 tests/              pytest suite; tests/fixtures/ holds committed oracle output
 tests/paper_values.py   every number printed in the paper, in one place
 tests/rdoc_values.py    every number printed in the R package's own documentation
+examples/quickstart.ipynb  the twenty-cell tour; executed by pytest via nbmake,
+                    outputs stripped, rebuilt by tools/build_quickstart.py
 docs/paper.md       §6 case study as an executable doctest document
 docs/vignette.md    the R package's walkthrough + advanced-techniques vignettes
 docs/audit.md       gaps against the paper and the R package, as a task list

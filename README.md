@@ -5,7 +5,7 @@ following Meierer, Bachmann, Näf, Schilter & Algesheimer, *"Estimating
 Individual Customer Lifetime Values with R: The CLVTools Package"* (Journal of
 Statistical Software, submission 5634).
 
-**[📄 The paper's case study, executable →](docs/paper.md)** &nbsp;·&nbsp; **[📘 The R package's own walkthrough →](docs/vignette.md)**
+**[🚀 Quick start notebook →](examples/quickstart.ipynb)** &nbsp;·&nbsp; **[📄 The paper's case study, executable →](docs/paper.md)** &nbsp;·&nbsp; **[📘 The R package's own walkthrough →](docs/vignette.md)**
 
 Every section of the paper maps to a module; every module's docstrings carry the
 paper's equations, its own words, and worked examples that **pytest executes**.
@@ -54,6 +54,13 @@ the findings below.
 
 For development, `uv sync` and then `uv run pytest`; there is no separate
 install step and the suite needs no R.
+
+Then [`examples/quickstart.ipynb`](examples/quickstart.ipynb) walks the whole
+thing in twenty cells — data, descriptive plots, both fits, prediction,
+diagnostics, covariates and bootstrap intervals — in about four seconds. It is
+committed with its outputs stripped and **executed by the test suite**, so it
+cannot drift from what the code does; run it with `uv run jupyter lab
+examples/quickstart.ipynb`, which needs the `plot` extra for the figures.
 
 ## Usage
 
