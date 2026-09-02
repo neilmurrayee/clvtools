@@ -1066,14 +1066,14 @@ agree to 1.2e-3 relative on `CET` and 1e-6 absolute on `PAlive` at
 `x = 5, 50, 160, 400` — including the two values where the old code returned
 `nan`. Fourteen tests, and the 33 GGom oracle checks unmoved.
 
-**The dyncov half is partly done, and the rest is item 28.** Each `F2` term was
+**The dyncov half was finished by item 28.** Each `F2` term was
 `value / alpha**(r+s+x)`, whose divisor passes the top of float64 by `x = 160`
-while the quotient is about 1e-370. It is now `exp(log value - a·log alpha)`,
-so a representable quotient is no longer lost through an overflowing
-intermediate — 2.4e-279 at `x = 120` was being computed through 4.5e+278. What
-that cannot do is make an unrepresentable number representable, so at `x = 160`
-the term is honestly 0, and `log_likelihood_customer` still takes the
-alive-only branch there without saying so.
+while the quotient is about 1e-370. It became `exp(log value - a·log alpha)`
+here, so a representable quotient was no longer lost through an overflowing
+intermediate — 2.4e-279 at `x = 120` was being computed through 4.5e+278 —
+and at `x = 160` the term was then honestly 0, with `log_likelihood_customer`
+still taking the alive-only branch there without saying so. Item 28 stopped
+exponentiating the terms at all; see it for what that was worth.
 
 ## 24. `[x]` Bootstrap: report failures, and rebuild once — finding 11
 
@@ -1150,20 +1150,19 @@ subclass reprs, `scipy.stats` imported at module scope for 0.36 s of a 0.4 s
 import, and `.claude/settings.local.json` tracked when its name says otherwise.
 
 
-## 28. `[ ]` Combine `F1·F2 + F3` in log space — the rest of finding 10
+## 28. `[x]` Combine `F1·F2 + F3` in log space — the rest of finding 10
 
 Split from item 23 because it changes what the oracle fixtures compare, which
 is not a thing to do at the end of a long session.
 
-The `F2` terms are now formed in log space individually (item 23), but they are
-still *combined* as values: `_f2` returns a float, and
-`log_likelihood_customer` branches on its sign at `dyncov.py:589-600`. When a
-customer's `F2` underflows to zero — genuinely, at `x >= 160` on the arguments
-the review names — the `else` branch quietly returns `log_F0 + log_F3`, the
-alive-only likelihood, with no signal. That is the same silent-degradation
-shape as findings 4 and 5, in the one estimator whose fixtures cannot see it:
-CLVTools arranges the arithmetic the same way, so the 30 committed
-intermediates agree with the broken version by construction.
+The `F2` terms were formed in log space individually (item 23) but still
+*combined* as values: `_f2` returned a float, and `log_likelihood_customer`
+branched on its sign. When a customer's `F2` underflowed to zero — genuinely,
+at `x >= 160` on the arguments the review names — the `else` branch quietly
+returned `log_F0 + log_F3`, the alive-only likelihood, with no signal. That is
+the same silent-degradation shape as findings 4 and 5, in the one estimator
+whose fixtures cannot see it: CLVTools arranges the arithmetic the same way, so
+the 30 committed intermediates agree with the broken version by construction.
 
 **Attempted and reverted, 2026-09-02 — the spike's negative result.** The
 cheap version of this does not work. Scaling every term of one customer's
@@ -1172,31 +1171,64 @@ keeps the sum O(1) and looks like it should be equivalent. It is not: customer
 93 at `dyncov_fit_full`'s parameters has `x = 52` and a true `F2` of
 **5.57e-165** — comfortably representable, computed correctly by the existing
 code — and the scaled version moved its likelihood by 2.4e-3, disagreeing with
-CLVTools where the two had agreed. Five prediction columns moved with it.
+CLVTools where the two had agreed.
 
-Why: one offset cannot serve terms whose own :math:`\alpha` differ, so the
-scaled terms lose accuracy in the *other* direction. The fix needs per-term
-logs and a signed log-sum-exp at each level — inside an arm, across
-`F2.1/F2.2/F2.3`, and finally against `F1` and `F3` — which is the larger
-change described below rather than a shortcut around it.
+**Done, per-term, and the bug was worse than the item says.** The arms, the
+middle sum and `_f2` all report `(log magnitude, sign)`; `_log_diff_exp` takes
+each arm's difference of two hypergeometrics with `expm1`, and
+`_signed_logsumexp` combines terms against the largest of them — inside an
+arm, across `F2.1/F2.2/F2.3`, and finally as `logaddexp(log_F1 + log_F2,
+log_F3)`. Per-term logs and a per-group offset are what the spike lacked: the
+600 apparel customers move by **at most 3e-14 relative** on every one of the
+thirty intermediates and 1.4e-14 absolute on `PAlive`, against the spike's
+2.4e-3.
 
-Kept from the attempt: nothing in `src/`. What it bought is the knowledge that
-the shortcut is wrong, and a reminder that CLAUDE.md's warning about order of
-operations here is not decorative.
+What that buys is not a rounding improvement. The heavy-buyer check is the
+nesting S3.3 asserts — zero coefficients make this model the standard
+Pareto/NBD, whose likelihood `clvtools.pnbd` computes in closed form at any
+`x` — and against it the old arrangement was wrong by **225 log-units** at
+`x = 200`, with `PAlive` reported as **exactly 1.0** where the truth is
+1.6e-98. Certainty, for a customer with hundreds of transactions and none for
+two years. Both are now exact to 1e-12 out to `x = 400`, swept in steps of two
+across the crossing so no step survives between the sampled points.
 
-*Done when:* the two `F2` terms are combined with a signed log-sum-exp, `_f2`
-reports a log magnitude and a sign rather than a value that can vanish,
-`log_likelihood_customer` forms `log(F1·F2 + F3)` from logs throughout, and a
-heavy-buyer customer's likelihood is finite and correct where it is currently
-the alive-only branch. The fixture comparison needs rethinking in the same
-commit: `F2.1`, `F2.2`, `F2.3` and `F2` are compared as values against
-`tests/fixtures/`, so either they keep a value form for comparison or the
-fixture columns move to logs on both sides.
+The fixture comparison did not have to move. `F2.1`, `F2.2`, `F2.3` and `F2`
+keep their value form in the intermediates table — `_value()` — because that
+is what the thirty columns are and what CLVTools reports; a term below float64
+still *prints* as zero, so does CLVTools', and only the likelihood is formed
+from the logs. All 231 oracle checks unmoved, at both grid vectors.
 
-Also still open from finding 10, and cheap by comparison: the dyncov `CET`
-divides by `s - 1` unguarded where `aggregate.py` raises near `s = 1`, and
+It costs **26% of an evaluation** — 0.104 s to 0.132 s on the apparel cohort,
+best of three runs of five. Not quoted as a fit time: `-m dyncov_fit` passed in
+7:31 against the 10:07 on record, which says only that a fit's wall clock is
+the optimiser's path and not the arithmetic. Hoisting the `errstate` context
+managers out of the per-term loops was tried first, on CLAUDE.md's note that
+the context manager was once an eighth of the runtime here, and bought nothing
+measurable; it was reverted rather than kept as a plausible-looking
+non-improvement. `docs/performance.md` records both.
+
+Two things fell out of it. `F2 == 0` now means something: an auxiliary walk of
+no length, whose two hypergeometrics cancel term for term. Customer 262 of the
+apparel cohort is the only one at either grid vector — they bought on the last
+day of the estimation period — and `log_F0 + log_F3` is the right answer for
+them. And `test_performance.py`'s `counted()` measured `np.size` of a return
+value, which doubled when the arms began returning a pair; it now measures the
+first element, which is the one that is per-interval.
+
+Also still open from finding 10, and untouched here: the dyncov `CET` divides
+by `s - 1` unguarded where `aggregate.py` raises near `s = 1`, and
 `aggregate.py`'s `pmf` calls `hyp2f1` with no fallback, returning `NaN` for
-`k >= 23` at `alpha = 500, beta = 1`.
+`k >= 23` at `alpha = 500, beta = 1`. Carried to item 29.
+
+## 29. `[ ]` The two cheap halves of finding 10
+
+Left behind by items 23 and 28, both small and neither touching the
+likelihood:
+
+- `dyncov_predict.py`'s `CET` divides by `s - 1` unguarded, where
+  `aggregate.py` raises near `s = 1`.
+- `aggregate.py`'s `pmf` calls `hyp2f1` with no fallback and returns `NaN` for
+  `k >= 23` at `alpha = 500, beta = 1`.
 
 ---
 

@@ -60,6 +60,18 @@ def _split(case: str):
     return r, alpha, s, beta, p[4:7], p[7:10]
 
 
+def _term(pair):
+    """A ``(log magnitude, sign)`` pair back as a value.
+
+    Every :math:`F_2` helper reports a signed log since backlog item 28, so
+    that a term below float64 keeps its magnitude instead of becoming zero.
+    The tests that predate it compare values, and are what says the two forms
+    agree wherever the value form still has the digits.
+    """
+    log_magnitude, sign = pair
+    return np.asarray(sign) * np.exp(np.asarray(log_magnitude))
+
+
 class TestWalk:
     """The walk abstraction itself."""
 
@@ -292,12 +304,12 @@ class TestAgainstOracle:
                 Ci = c.aux_walk_life.elem(i - 1)
                 Di = d_i(i, c.real_walk_life, c.aux_walk_life, c.d_omega)
                 bi = Di + Ci * (c.t_x + dT + (i - 2.0))
-                total += _hyp_term(
+                total += _term(_hyp_term(
                     r, s, c.x,
                     ai + alpha_0, (bi + beta_0) * Ai / Ci,
                     ai + Ai + alpha_0, (bi + Ci + beta_0) * Ai / Ci,
                     Ai / Ci,
-                )
+                ))
             return total
 
         for case in CASES:
@@ -308,7 +320,7 @@ class TestAgainstOracle:
                 dT = c.aux_walk_trans.d1
                 Bjsum = bjsum(c.real_walks_trans)
                 want = scalar_middle(r, alpha, s, beta, c, dT, Bjsum)
-                got = _f2_middle(r, alpha, s, beta, c, dT, Bjsum)
+                got = _term(_f2_middle(r, alpha, s, beta, c, dT, Bjsum))
                 assert got == pytest.approx(want, rel=1e-12, abs=1e-300), case
                 if c.aux_walk_trans.n_elem > 2:
                     if c.real_walk_life.n_elem:
@@ -782,7 +794,7 @@ class TestNumericalEdgeCases:
         r, s, x = 1.5, 0.8, 3.0
         a = r + s + x
         alpha_1, beta_1, alpha_2, beta_2 = 120.0, 60.0, 130.0, 62.0
-        got = _hyp_alpha_ge_beta(r, s, x, alpha_1, beta_1, alpha_2, beta_2)
+        got = _term(_hyp_alpha_ge_beta(r, s, x, alpha_1, beta_1, alpha_2, beta_2))
         direct = sum(
             sign * special.hyp2f1(a, s + 1.0, a + 1.0, 1.0 - beta / alpha) / alpha**a
             for alpha, beta, sign in
@@ -790,7 +802,7 @@ class TestNumericalEdgeCases:
         )
         assert got == pytest.approx(direct, rel=1e-12)
 
-        got = _hyp_beta_gt_alpha(r, s, x, 60.0, 120.0, 62.0, 130.0)
+        got = _term(_hyp_beta_gt_alpha(r, s, x, 60.0, 120.0, 62.0, 130.0))
         assert np.isfinite(got)
 
     def test_the_fallback_keeps_the_result_finite(self):
@@ -803,7 +815,7 @@ class TestNumericalEdgeCases:
         a = r + s + x
         assert not np.isfinite(special.hyp2f1(a, s + 1.0, a + 1.0, 1.0 - 1e-9))
         with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
-            got = _hyp_alpha_ge_beta(r, s, x, 1e9, 1.0, 1.1e9, 1.0)
+            got, _sign = _hyp_alpha_ge_beta(r, s, x, 1e9, 1.0, 1.1e9, 1.0)
         assert not np.isnan(got)
 
     def test_a_non_finite_f2_gives_a_non_finite_likelihood(self, dyncov_walks):
@@ -871,8 +883,8 @@ class TestNumericalEdgeCases:
         real_f2 = dyncov._f2
 
         def fake_f2(*args, **kwargs):
-            _, parts = real_f2(*args, **kwargs)
-            return negative, parts
+            *_, parts = real_f2(*args, **kwargs)
+            return float(np.log(abs(negative))), -1.0, parts
 
         with patch.object(dyncov, "_f2", side_effect=fake_f2):
             got = dyncov.log_likelihood_customer(r, alpha, s, beta, customer)
@@ -988,12 +1000,12 @@ class TestTheF2TermsDoNotOverflowBeforeTheyUnderflow:
     quotient that *is* representable, 2.4e-279 at ``x = 120``, was computed
     through an intermediate of 4.5e+278 that is one step from overflowing too.
 
-    Forming ``exp(log value - a log alpha)`` fixes that. It does not make an
-    unrepresentable number representable: at ``x = 160`` the true term is below
-    float64 and the result is honestly 0. What remains -- combining the two
-    terms and ``F1 * F2 + F3`` in log space, so that a genuine underflow stops
-    silently selecting the alive-only branch -- is backlog item 28, because it
-    changes what the oracle fixtures compare.
+    Forming ``exp(log value - a log alpha)`` fixed that (item 23). Item 28 then
+    stopped exponentiating at all: the arms return a log magnitude and a sign,
+    so a term below float64 -- 1e-370 at ``x = 160`` -- keeps its magnitude
+    instead of becoming a zero that selects the alive-only likelihood. What
+    that is worth to a customer is in ``tests/test_pnbd_dyncov_logspace.py``;
+    this class holds the arms themselves.
 
     The oracle cannot see any of this: CLVTools forms the same quotient the
     same way, so agreement with a fixture is agreement about the arrangement,
@@ -1007,19 +1019,48 @@ class TestTheF2TermsDoNotOverflowBeforeTheyUnderflow:
     def test_representable_terms_are_computed(self, x, expected):
         from clvtools.pnbd.dyncov import _hyp_alpha_ge_beta
 
-        got = float(_hyp_alpha_ge_beta(0.5, 0.6, x, 200.0, 190.0, 210.0, 195.0))
+        got = float(_term(_hyp_alpha_ge_beta(0.5, 0.6, x, 200.0, 190.0, 210.0, 195.0)))
         assert got == pytest.approx(expected, rel=1e-5)
 
-    @pytest.mark.parametrize("x", [160.0, 200.0])
-    def test_unrepresentable_terms_are_zero_and_not_nan(self, x):
-        """The pre-fix code gave 0 here by dividing by ``inf``, and could give
-        ``nan``; the true value is below float64 either way. The point is that
-        it is now zero for the honest reason."""
+    @pytest.mark.parametrize("x,expected", [(160.0, -853.47778), (200.0, -1065.41003),
+                                            (300.0, -1595.24157)])
+    def test_terms_below_float64_keep_their_magnitude(self, x, expected):
+        """Where the value form has nothing left to say.
+
+        The pre-item-23 code gave 0 here by dividing by ``inf``; item 23 made
+        that an honest 0; item 28 stops throwing the magnitude away. Exponent
+        and sign are still exactly what the value form reported where the value
+        form worked -- ``test_representable_terms_are_computed`` above is the
+        same function -- so this is a continuation of that curve, not a
+        different quantity.
+        """
         from clvtools.pnbd.dyncov import _hyp_alpha_ge_beta
 
-        got = float(_hyp_alpha_ge_beta(0.5, 0.6, x, 200.0, 190.0, 210.0, 195.0))
-        assert got == 0.0
-        assert not np.isnan(got)
+        log_magnitude, sign = _hyp_alpha_ge_beta(
+            0.5, 0.6, x, 200.0, 190.0, 210.0, 195.0
+        )
+        assert float(sign) == 1.0
+        assert float(log_magnitude) == pytest.approx(expected, abs=1e-4)
+        # And below float64: the value form is where it stops being useful.
+        assert float(np.exp(log_magnitude)) == 0.0
+
+    def test_the_magnitude_falls_at_the_rate_the_exponent_dictates(self):
+        r"""An independent check on those three numbers.
+
+        The term is dominated by :math:`v_1/lpha_1^{\,r+s+x}`, whose log
+        falls by exactly :math:`\loglpha_1` for every unit of :math:`x`. The
+        hypergeometric's own dependence on :math:`x` washes out as :math:`x`
+        grows, so the slope should approach :math:`\log 200 = 5.2983` -- which
+        pins the exponent that the value form could not carry.
+        """
+        from clvtools.pnbd.dyncov import _hyp_alpha_ge_beta
+
+        logs = np.array([
+            float(_hyp_alpha_ge_beta(0.5, 0.6, x, 200.0, 190.0, 210.0, 195.0)[0])
+            for x in (200.0, 300.0, 400.0)
+        ])
+        slopes = -np.diff(logs) / 100.0
+        assert slopes == pytest.approx(np.log(200.0), abs=1e-4)
 
 
 class TestTheHypergeometricBranchIsContinuous:
@@ -1043,8 +1084,9 @@ class TestTheHypergeometricBranchIsContinuous:
         from clvtools.pnbd.dyncov import _hyp_alpha_ge_beta, _hyp_beta_gt_alpha
 
         r, s, x = self.ARGUMENTS
-        ge = float(_hyp_alpha_ge_beta(r, s, x, value, value, value * 1.1, value * 1.1))
-        gt = float(_hyp_beta_gt_alpha(r, s, x, value, value, value * 1.1, value * 1.1))
+        args = (r, s, x, value, value, value * 1.1, value * 1.1)
+        ge = float(_term(_hyp_alpha_ge_beta(*args)))
+        gt = float(_term(_hyp_beta_gt_alpha(*args)))
         assert np.isfinite(ge)
         assert ge == pytest.approx(gt, rel=1e-12)
 
@@ -1056,13 +1098,14 @@ class TestTheHypergeometricBranchIsContinuous:
 
         r, s, x = self.ARGUMENTS
         value = 1.234
-        assert float(_hyp_term(r, s, x, value, value, value * 1.1, value * 1.1, 1.0)) \
-            == pytest.approx(
-                float(_hyp_alpha_ge_beta(
-                    r, s, x, value, value, value * 1.1, value * 1.1
-                )),
-                rel=1e-15,
-            )
+        assert _term(
+            _hyp_term(r, s, x, value, value, value * 1.1, value * 1.1, 1.0)
+        ) == pytest.approx(
+            float(_term(_hyp_alpha_ge_beta(
+                r, s, x, value, value, value * 1.1, value * 1.1
+            ))),
+            rel=1e-15,
+        )
 
     def test_a_batch_straddling_the_boundary_uses_both(self):
         """``_hyp_terms`` splits a customer's intervals between the arms.
@@ -1076,17 +1119,17 @@ class TestTheHypergeometricBranchIsContinuous:
         r, s, x = self.ARGUMENTS
         alpha_1 = np.array([2.0, 1.0, 1.234])
         beta_1 = np.array([1.0, 2.0, 1.234])
-        got = _hyp_terms(
+        got = _term(_hyp_terms(
             r, s, x, alpha_1, beta_1, alpha_1 * 1.1, beta_1 * 1.1,
             np.ones(3),
-        )
+        ))
         assert np.all(np.isfinite(got))
         # Elementwise: each is what its own arm gives on its own.
         from clvtools.pnbd.dyncov import _hyp_alpha_ge_beta, _hyp_beta_gt_alpha
 
         assert got[0] == pytest.approx(
-            float(_hyp_alpha_ge_beta(r, s, x, 2.0, 1.0, 2.2, 1.1)), rel=1e-15
+            float(_term(_hyp_alpha_ge_beta(r, s, x, 2.0, 1.0, 2.2, 1.1))), rel=1e-15
         )
         assert got[1] == pytest.approx(
-            float(_hyp_beta_gt_alpha(r, s, x, 1.0, 2.0, 1.1, 2.2)), rel=1e-15
+            float(_term(_hyp_beta_gt_alpha(r, s, x, 1.0, 2.0, 1.1, 2.2))), rel=1e-15
         )

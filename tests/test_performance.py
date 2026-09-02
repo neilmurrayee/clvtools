@@ -93,6 +93,12 @@ def counted(module: ModuleType, name: str) -> Iterator[Count]:
 
     >>> agg.hyp2f1_ratio is clvtools.special.hyp2f1_ratio
     True
+
+    A function that returns a tuple is measured by its first element. The
+    :math:`F_2` arms return ``(log magnitude, sign)`` since backlog item 28,
+    and it is the magnitudes that are one per covariate interval; counting the
+    signs as well would double every number here for no change in the work
+    done.
     """
     original: Callable = getattr(module, name)
     count = Count()
@@ -100,7 +106,7 @@ def counted(module: ModuleType, name: str) -> Iterator[Count]:
     def counting(*args, **kwargs):
         result = original(*args, **kwargs)
         count.calls += 1
-        count.elements += int(np.size(result))
+        count.elements += int(np.size(result[0] if type(result) is tuple else result))
         return result
 
     setattr(module, name, counting)

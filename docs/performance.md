@@ -327,6 +327,32 @@ fitted parameters**. That last one is the reason the gate runs at
 CLVTools' fitted point and not at a convenient starting vector: it is the only
 place the `alpha >= beta` arm is entered at all.
 
+### What backlog item 28 cost, and why it was still the right trade
+
+Combining the `F_2` terms in log space rather than as values took one
+evaluation from **0.104 s to 0.132 s — 26%** (same machine, same parameters,
+the best of three runs of five, after a warm-up). The extra work is per term and unavoidable:
+`_log_diff_exp` replaces two `exp` and a subtraction with a `maximum`, a
+`minimum`, an `expm1`, a `log`, a `sign` and two `where`, and `_scale_by_ratio`
+and `_signed_logsumexp` add a `log` and a reduction on top.
+
+Hoisting the `errstate` context managers out of the per-term loops was tried
+first, because CLAUDE.md records that the context manager alone was once an
+eighth of the runtime here. It bought **nothing measurable** (0.132 s either
+way) and was reverted: the profiler's call count made it look like the cost,
+and it is not — the array work is.
+
+The trade is not close. The 26% buys a likelihood that is right for a customer
+whose `F_2` is below float64, where it was previously wrong by 225 log-units
+and reported `PAlive` as exactly 1.0.
+
+No fit time is quoted for it, for the reason this document already gives above:
+a dyncov fit's wall clock is the optimiser's path on a very flat likelihood,
+not a property of the implementation. Measured anyway, `-m dyncov_fit` passed
+in 7:31 against the 10:07 recorded for item 9 — *faster*, while sharing the
+machine with other work. The per-evaluation figure is the one that means
+something.
+
 ---
 
 ## What a performance gate should look like
