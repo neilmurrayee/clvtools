@@ -527,7 +527,7 @@ on a plan:
 - `clvtools` is **unclaimed on PyPI** — `/pypi/clvtools/json` is 404 on both
   the real index and TestPyPI.
 
-## 10. `[ ]` Take the personal address out of the history
+## 10. `[x]` Take the personal address out of the history
 
 `git log --format='%ae'` gives two identities: the first thirteen commits carry
 a personal name and a personal mailbox — not written out here, because a task
@@ -552,6 +552,43 @@ rewrite orphans are gone, so the address is not recoverable from the clone that
 gets pushed; and the address is pinned in the repository's own config, not only
 in the global one, so a later change to `--global` cannot leak it back into this
 repo.
+
+**Done:** `git filter-branch --env-filter` over `interface-layer` and `master`,
+setting all four identity variables unconditionally rather than mapping the old
+address to the new one -- a substitution leaves whatever it did not think to
+match, and there is no reason for this history to carry more than one identity.
+All **31** commits now report `neilmurrayee
+<132654876+neilmurrayee@users.noreply.github.com>` as author *and* committer.
+The GitHub noreply is the anonymised form rather than a compromise: it is what
+attributes a commit to the account, and it reaches no inbox.
+
+The rewrite changed identities and nothing else, which was checked rather than
+assumed: `HEAD^{tree}` is **bit-identical** to the pre-rewrite tree
+(`a242a6c2`), `git diff refs/original/... HEAD` is empty, the 31 subjects
+`diff` clean against the originals, and author dates are preserved end to end
+(2026-08-27 to 2026-09-02). The suite was not re-run for it, deliberately: an
+identical tree cannot test differently, and saying so is worth more than three
+and a half minutes spent proving arithmetic that did not move.
+
+Then the paths back were cut, in this order: the safety branch deleted,
+`refs/original/` removed, `reflog expire --expire=now --expire-unreachable=now
+--all`, `gc --prune=now`. Verified afterwards by looking rather than by
+trusting: the pre-rewrite commit is unreachable (`git cat-file -e` fails),
+`git log --all` matches the old name and address zero times, **every reachable
+blob** was piped through `cat-file --batch` and matches zero times, and
+`grep -ril` over the whole of `.git/` finds nothing. `user.name` and
+`user.email` are now set in `.git/config` as well as globally, so a later change
+to `--global` cannot put a personal address back into this repository.
+
+One trap, sprung and disarmed within the item: the first draft of this section
+quoted the address it exists to remove, which would have written it into a blob
+of the very commit that announces its removal -- and `git log -S` found it
+exactly because the rewrite was preceded by a search rather than started
+straight away. The commit was amended before the rewrite, so the blob never
+outlived the pre-`gc` object store.
+
+Nothing was pushed at any point, so this cost a force-push to nobody. That
+window is now closed by item 13.
 
 ## 11. `[ ]` Correct three counts that are wrong in the workflow comments
 
