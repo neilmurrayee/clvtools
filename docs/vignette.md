@@ -106,13 +106,20 @@ Every generic the vignette calls — `summary()`, `coef()`, `confint()`,
 
 ```python
 >>> print(fit.summary().round(4).to_string())
-       Estimate  Std. Error  z-val  Pr(>|z|)
-r        1.4489      0.2434    NaN       NaN
-alpha   48.6348      7.4889    NaN       NaN
-s        0.5613      0.2711    NaN       NaN
-beta    46.88...    35.6...   NaN       NaN
+        Estimate  Std. Error  z-val  Pr(>|z|)
+r  1.448...  0.243...  NaN  NaN
+alpha  48.634...  7.488...  NaN  NaN
+s  0.561...  0.271...  NaN  NaN
+beta  46.88...  35.6...  NaN  NaN
 
 ```
+
+The estimates are shown with their last digit elided. It is not portable: the
+Pareto/NBD's ridge puts `beta` at 46.8837 on macOS/ARM and 46.8830 on x86-64
+Linux for the same data and the same code, and a doctest that asserts that digit
+asserts a fact about a C library. See the README's findings; `-m paper` and
+`-m rdoc` compare the same quantities with tolerances, which is where the
+precision lives.
 
 The z- and p-values are `NaN` on purpose. §6.4.1: these four parameters are
 "constrained to be strictly positive", so "a null hypothesis of $\theta = 0$
@@ -149,9 +156,9 @@ bootstrap intervals of §6.3.3.
 >>> print(predict(data, fit, gg)[columns].head(3).round(4).to_string())
      PAlive     CET    DERT  predicted.mean.spending  predicted.CLV
 Id                                                                 
-1    0.9468  7.3257  0.4677                  88.6463        41.4561
-10   0.9826  3.5198  0.2247                  41.2103         9.2598
-100  0.2785  0.4191  0.0268                  37.6279         1.0067
+1  0.946...  7.325...  0.467...  88.646...  41.456...
+10  0.982...  3.519...  0.224...  41.210...  9.259...
+100  0.278...  0.419...  0.026...  37.627...  1.006...
 
 ```
 
@@ -199,15 +206,15 @@ formula names them, attrition process first.
 >>> covariate_fit = latent_attrition(
 ...     formula="~ . | .", family=pnbd_family, data=static)
 >>> print(covariate_fit.summary().round(4).to_string())
-               Estimate  Std. Error   z-val  Pr(>|z|)
-r                1.8390      0.3458     NaN       NaN
-alpha           92.9630     16.9793     NaN       NaN
-s                0.5913      0.2603     NaN       NaN
-beta            49.5131     36.1435     NaN       NaN
-life.Gender     -0.6419      0.2955 -2.1721    0.0298
-life.Channel     0.7898      0.3058  2.5828    0.0098
-trans.Gender     0.2861      0.1041  2.7476    0.0060
-trans.Channel    0.6239      0.1049  5.9455    0.0000
+        Estimate  Std. Error  z-val  Pr(>|z|)
+r  1.839...  0.345...  NaN  NaN
+alpha  92.963...  16.979...  NaN  NaN
+s  0.591...  0.260...  NaN  NaN
+beta  49.513...  36.143...  NaN  NaN
+life.Gender  -0.641...  0.295...  -2.1721  0.0298
+life.Channel  0.789...  0.305...  2.5828  0.0098
+trans.Gender  0.286...  0.104...  2.7476  0.0060
+trans.Channel  0.623...  0.104...  5.9455  0.0000
 
 ```
 
@@ -235,13 +242,13 @@ The constrained covariate is then reported once, as `constr.Gender`:
 ...     formula="~ . | .", family=pnbd_family, data=static,
 ...     names_cov_constr=["Gender"])
 >>> print(constrained.summary().round(4).to_string())
-               Estimate  Std. Error   z-val  Pr(>|z|)
-r                1.7939      0.3318     NaN       NaN
-alpha           94.7355     17.2223     NaN       NaN
-s                0.4286      0.1417     NaN       NaN
-beta            59.06...    34.50...    NaN       NaN
-life.Channel     1.0233      0.3542  2.8888    0.0039
-trans.Channel    0.6386      0.1064  5.9991    0.0000
+        Estimate  Std. Error  z-val  Pr(>|z|)
+r  1.793...  0.331...  NaN  NaN
+alpha  94.735...  17.222...  NaN  NaN
+s  0.428...  0.141...  NaN  NaN
+beta  59.06...  34.50...  NaN  NaN
+life.Channel  1.023...  0.354...  2.8888  0.0039
+trans.Channel  0.638...  0.106...  5.9991  0.0000
 constr.Gender    0.3285      0.1074  3.0578    0.0022
 
 ```
@@ -319,10 +326,10 @@ The walkthrough re-splits the data at 40 weeks for the spending model.
 >>> data_40 = ClvData(transactions, time_unit="week", estimation_split=40)
 >>> gg_40 = spending(family=gg_family, data=data_40)
 >>> print(gg_40.summary().round(4).to_string())
-       Estimate  Std. Error  z-val  Pr(>|z|)
-p        3.6753      0.7625    NaN       NaN
-q        4.6299      0.8019    NaN       NaN
-gamma   36.1108     13.8345    NaN       NaN
+        Estimate  Std. Error  z-val  Pr(>|z|)
+p  3.675...  0.762...  NaN  NaN
+q  4.629...  0.801...  NaN  NaN
+gamma  36.110...  13.834...  NaN  NaN
 
 ```
 
