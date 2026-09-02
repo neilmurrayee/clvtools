@@ -638,7 +638,7 @@ green. Nothing executable changed -- every edit is inside a comment, which is
 also why this item could not be verified by a run and had to be verified by
 counting.
 
-## 12. `[ ]` Point `CLAUDE.md`'s layout at the two documents it omits
+## 12. `[x]` Point `CLAUDE.md`'s layout at the two documents it omits
 
 `CLAUDE.md`'s Layout block lists `docs/paper.md`, `docs/vignette.md` and
 `docs/audit.md`. It does not mention `docs/backlog.md` — *this file*, which
@@ -649,6 +649,24 @@ new session pays for, not the maintainer.
 
 *Done when:* both appear in the Layout block with a one-line description in the
 register of the entries around them.
+
+**Done:** two lines in the Layout block --
+
+    docs/backlog.md     what is left once the port is right — the work queue; start here
+    docs/performance.md where the time goes, and why nothing asserts a wall clock
+
+-- and, under the block, two sentences stating the loop's rule where a new
+session will actually meet it: work the topmost unchecked item, tick it with
+what was measured, leave `[needs-decision]` alone. The rule lived only inside
+the file it governs, which is no use to someone who has not opened it.
+`AGENTS.md` is a symlink to `CLAUDE.md`, so it followed for free.
+
+Item 11's method paid again on the way past: counting the marker totals that
+`CLAUDE.md` and `README.md` both print found `-m oracle` at **231**, not the
+229 both claimed. The other five are right -- `paper` 24, `rdoc` 22, `slow`
+138, `quality` 7, `performance` 13 -- and are now confirmed rather than
+inherited. Both files corrected in the same commit, since it is the same drift
+by the same cause.
 
 ## 13. `[ ]` Push, and let the gates run for the first time
 

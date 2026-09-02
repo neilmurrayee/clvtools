@@ -280,7 +280,7 @@ which it reported successful convergence on the Gamma-Gamma at a local optimum
 uv run pytest                  # 906 tests, including doctests in src/ and docs/
 uv run pytest -m paper         # 24 numbers printed in the paper
 uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
-uv run pytest -m oracle        # 229 checks against R CLVTools fixtures
+uv run pytest -m oracle        # 231 checks against R CLVTools fixtures
 uv run pytest -m slow          # 138 full-dataset MLE fits
 uv run pytest -m dyncov_fit    # the time-varying covariate MLE; ~10 minutes
 uv run pytest --cov=clvtools --cov-report=term-missing

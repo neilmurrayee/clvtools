@@ -22,6 +22,8 @@ tests/rdoc_values.py    every number printed in the R package's own documentatio
 docs/paper.md       §6 case study as an executable doctest document
 docs/vignette.md    the R package's walkthrough + advanced-techniques vignettes
 docs/audit.md       gaps against the paper and the R package, as a task list
+docs/backlog.md     what is left once the port is right — the work queue; start here
+docs/performance.md where the time goes, and why nothing asserts a wall clock
 tools/oracle/*.R    fixture generators — the only thing that needs R
 tools/setup_oracle.sh   installs CLVTools into ./.Rlib (never the system library)
 tools/benchmark.py  run times in the shape of the paper's Appendix B
@@ -30,6 +32,8 @@ data/               CLVTools' bundled datasets as CSV
 ```
 
 Module ↔ paper mapping lives in `src/clvtools/__init__.py` and the README table.
+`docs/backlog.md` is the standing queue: work the topmost unchecked item, tick
+it with what was measured, and leave items marked `[needs-decision]` alone.
 
 ## Commands
 
@@ -37,7 +41,7 @@ Module ↔ paper mapping lives in `src/clvtools/__init__.py` and the README tabl
 uv run pytest                  # 906 tests inc. doctests in src/ and docs/; ~3:35 on an M-series
 uv run pytest -m paper         # 24 numbers printed in the paper
 uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
-uv run pytest -m oracle        # 229 checks against R CLVTools fixtures
+uv run pytest -m oracle        # 231 checks against R CLVTools fixtures
 uv run pytest -m slow          # 138 full-dataset MLE fits
 uv run pytest -m dyncov_fit    # the time-varying covariate MLE; ~10 min, deselected by default
 uv run pytest --cov=clvtools --cov-report=term-missing
