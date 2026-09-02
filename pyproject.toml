@@ -42,7 +42,7 @@ dependencies = [
 [project.urls]
 Repository = "https://github.com/neilmurrayee/clvtools"
 Documentation = "https://github.com/neilmurrayee/clvtools/blob/main/docs/paper.md"
-Changelog = "https://github.com/neilmurrayee/clvtools/blob/main/docs/audit.md"
+Changelog = "https://github.com/neilmurrayee/clvtools/blob/main/CHANGELOG.md"
 
 [build-system]
 requires = ["uv_build>=0.12.5,<0.13.0"]

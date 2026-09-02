@@ -337,17 +337,13 @@ initial purchases of each customer."
 
 ```
 
-With covariates the same question can be asked of a scenario rather than of the
-average customer — §6.3.4's "region A versus region B". `newcustomer_static()`
-takes the covariate values in place of a history.
-
 The paper prints 86.83115 for that product; the difference is in the fourth
 decimal of `transactions_first_year`, which inherits the flat-ridge difference
 in the Pareto/NBD fit.
 
-```python
-
-```
+With covariates the same question can be asked of a scenario rather than of the
+average customer — §6.3.4's "region A versus region B". That needs a covariate
+model, so it appears in §6.4 below, once one has been fitted.
 
 ### Diagnostics
 
@@ -470,6 +466,24 @@ variability in the actual outcomes (aleatoric uncertainty)."
  'trans.Gender': 0.29, 'trans.Channel': 0.62}
 
 ```
+
+This is what §6.3.4's prospective customer becomes once covariates exist:
+`newcustomer_static()` takes covariate values in place of a history, so two
+scenarios can be compared before either has bought anything.
+
+```python
+>>> from clvtools import newcustomer_static
+>>> def scenario(gender, channel):
+...     values = {"Gender": gender, "Channel": channel}
+...     return predict(newcustomer_static(52, values, values), covariate_fit)
+>>> [round(scenario(g, c), 3) for g, c in ((0, 0), (1, 0), (1, 1))]
+[1.81..., 2.19..., 2.97...]
+
+```
+
+A year is worth 1.82 transactions to the baseline customer and 2.98 to one of
+the other gender acquired through the other channel — the covariate model's
+whole point, asked of someone with no history at all.
 
 §6.4.1 leaves the four base parameters without z- or p-values, because "a null
 hypothesis of $\theta = 0$ lies outside the admissible parameter space":

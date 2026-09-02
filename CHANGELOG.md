@@ -1,0 +1,60 @@
+# Changelog
+
+All notable changes to this project are recorded here. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project does not
+yet use semantic versioning, because it has not had a release to be
+semantic about.
+
+`docs/backlog.md` carries the working queue and `docs/audit.md` the two audit
+rounds against the paper and the R package. This file is the short version: what
+someone installing a given version gets.
+
+## Unreleased
+
+Everything below is on `main` and in no released artifact. `0.1.0` has been
+built but never published — see `docs/backlog.md` item 15, which is a decision
+rather than a task.
+
+### Added
+
+- The public API in full: `latent_attrition()` and `spending()`, the four model
+  families, `predict()` with prospective customers, `vcov`/`confint`/`summary`/
+  `fitted`/`lrtest`, the descriptive and model diagnostics, bootstrap intervals,
+  and calendar time units. The README's table maps each to a section of the
+  paper.
+- Continuous integration on 3.12 and 3.13, and a nightly job for the
+  time-varying covariate MLE.
+- `ConvergenceWarning`: every fit now says when it did not converge, and when a
+  Hessian cannot be trusted.
+
+### Fixed
+
+- **The built wheel carried no datasets.** `DATA_DIR` resolved to the repository
+  root, which does not exist under `site-packages`, so `load_apparel_trans()`
+  raised `FileNotFoundError` on any installed copy — the README's first usage
+  line. The data now lives inside the package.
+- **Convergence tolerances asked for better than machine precision.**
+  `ftol = 1e-16` is `factr = 0.45`; on x86-64 Linux the line search failed and
+  the same optimum came back with `converged = False`.
+- **The GGom/NBD lost its death term for heavy buyers**, returning `PAlive`
+  exactly 1.0 and `CET` `NaN` from about `x = 140` — around `x = 105` on daily
+  data.
+- **A recency a hair above `T` collapsed a whole fit** to its start values with
+  `-inf` and no exception.
+- **NaN prices and NaN covariates travelled** into the likelihoods and came back
+  as plausible numbers.
+- **The bootstrap** lost every draw to one failure, ignored `seed` whenever a
+  sampler was given, and spent 0.965 s a draw rebuilding data that now takes
+  0.016 s.
+- `tools/benchmark.py`, which the README documents and which had been raising
+  `TypeError` on every invocation.
+
+### Changed
+
+- A regularized fit's standard errors are differenced on the penalised objective
+  that was optimised rather than the unpenalised sum, and warn that they are
+  ridge standard errors dominated by the penalty. CLVTools' own answer here is
+  not followable — see the README's findings.
+- Printed values in the documentation elide their last digits where a fitted
+  quantity is not portable between platforms; comparisons against the paper and
+  the oracle use tolerances, which is where the precision lives.

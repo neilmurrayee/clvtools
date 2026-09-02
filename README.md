@@ -38,6 +38,23 @@ Time-invariant covariates, equality constraints and regularization are
 available for all three latent attrition families, as Table 4 marks them.
 Time-varying covariates and process correlation are Pareto/NBD only, likewise.
 
+## Installation
+
+Not on PyPI. From the repository:
+
+```bash
+pip install git+https://github.com/neilmurrayee/clvtools
+pip install "clvtools[plot] @ git+https://github.com/neilmurrayee/clvtools"   # + matplotlib
+```
+
+Python 3.12 or newer, and NumPy, SciPy and pandas come with it. The five
+datasets ship inside the package, so `load_cdnow()` works on a fresh install —
+which is worth saying because for a while it did not, and that is recorded in
+the findings below.
+
+For development, `uv sync` and then `uv run pytest`; there is no separate
+install step and the suite needs no R.
+
 ## Usage
 
 ```python
@@ -66,6 +83,30 @@ the data object's type. The per-family `fit_*` functions underneath take
 `(x, t_x, T)` directly.
 
 Bring your own data as a frame of `Id`, `Date` and optionally `Price`.
+
+## The public API
+
+Twenty-four names, and what each is for. Everything else is an implementation
+detail that may move.
+
+| Name | What it is |
+|---|---|
+| `ClvData` | A transaction log with an estimation/holdout split — §6.1's `clvdata()` |
+| `ClvDataStaticCov`, `ClvDataDynCov` | The same, with time-invariant or time-varying covariates |
+| `latent_attrition`, `spending` | §6.2's two entry points; they dispatch on the data object's type |
+| `pnbd`, `bgnbd`, `ggomnbd`, `gg` | The four model families, as modules — pass one as `family=` |
+| `predict` | §6.3's table: PAlive, CET, DERT, predicted CLV, and the actuals |
+| `newcustomer`, `newcustomer_static`, `newcustomer_dynamic` | §6.3.4's prospective customer, with or without covariates |
+| `newcustomer_spending` | The same for average order value |
+| `discount_factor` | Turns an annual rate into the per-period one `predict` wants |
+| `inference` | `vcov`, `confint`, `summary`, `fitted`, and `likelihood_ratio_test` |
+| `likelihood_ratio_test` | §6.5.3's `lrtest()`, re-exported for convenience |
+| `diagnostics` | §6.2.2's tracking and PMF data, §6.1.2's five descriptive frames, and `render()` |
+| `bootstrap` | §6.3.3's resampling: `bootstrap_apply`, `bootstrap_data`, `confidence_intervals` |
+| `load_apparel_trans`, `load_apparel_static_cov`, `load_apparel_dyn_cov`, `load_apparel_dyn_cov_future`, `load_cdnow` | The five bundled datasets |
+
+The per-family `fit_*` functions underneath — `clvtools.pnbd.fit_pnbd` and its
+siblings — take `(x, t_x, T)` directly, for when the data layer is in the way.
 
 ## The oracle
 
