@@ -38,6 +38,33 @@ Time-invariant covariates, equality constraints and regularization are
 available for all three latent attrition families, as Table 4 marks them.
 Time-varying covariates and process correlation are Pareto/NBD only, likewise.
 
+### Deliberately not ported
+
+Six things CLVTools has that this does not, each a decision rather than a gap —
+recorded here because an audit cannot otherwise tell the two apart.
+
+* **The BG/BB model** (`bgbb()`). The paper this port follows states that
+  BG/BB "is not currently included in CLVTools, which currently focuses on
+  continuous-time probabilistic models with closed-form marginal likelihoods";
+  CLVTools 0.12.1 exports it anyway, so the package has moved past the paper
+  here. The port follows the paper.
+* **`as.clv.data()`**, R's coercion generic. `ClvData(...)` is the only
+  constructor, and Python has no dispatch-on-coercion idiom that would make a
+  second spelling of it worth having.
+* **`predict(newdata = ...)` as a keyword.** Applying a fit to another set of
+  customers is supported — the data object is `predict()`'s first positional
+  argument, so it is simply `predict(other_data, params)` — but there is no
+  separately named `newdata` parameter to pass the fitting data back in.
+* **`predict.spending = TRUE`.** R will fit a Gamma-Gamma of its own when
+  asked for spending columns; here `spending_params` takes a fitted model or
+  nothing, so the spending fit is always the caller's and always visible.
+* **A specification-carrying bootstrap.** `clv.bootstrapped.apply` re-fits with
+  the original model's own arguments, which is what makes "did it silently drop
+  `use.cor`?" a question worth testing. Here `apply` receives the resampled data
+  and does its own fitting, so no specification is held anywhere to be dropped.
+* **A named-parameter likelihood accessor.** Every likelihood function here
+  takes its parameters positionally, in the paper's own order.
+
 ## Installation
 
 Not on PyPI. From the repository:
