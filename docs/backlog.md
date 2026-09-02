@@ -697,6 +697,34 @@ breath, because they contradict each other today:
   push and the answer costs a `git rm --cached`; settle it after and it needs a
   history rewrite, exactly like item 10.
 
+  **Settled, 2026-09-02, and done.** The licence is the question and arXiv
+  answers it: 2602.09845 carries `arxiv.org/licenses/nonexclusive-distrib/1.0/`,
+  whose whole text is *"I grant arXiv.org a perpetual, non-exclusive license to
+  distribute this article."* arXiv, and nobody else — so "keep them if it is a
+  CC licence" was not available, and of the remaining two, untracking is the one
+  that does not foreclose items 1, 6 and 15.
+
+  Two commits, because untracking is only half of it. The first stops the files
+  being tracked (they stay on disk, `.gitignore`d, with the two fetch commands
+  in the comment) and repoints `CLAUDE.md`, `README.md`, `docs/paper.md` and
+  `tests/paper_values.py` at arXiv:2602.09845 — `docs/paper.md`'s relative link
+  to the `.tex` would have 404'd on GitHub, and a link check over all of `docs/`
+  says nothing else would. The second is the half that is easy to miss: **a
+  push publishes history**, and all 36 commits still carried the paper, 40 blobs
+  and 3.1 MB of a 4.6 MB `.git`. Untracking at the tip would have redistributed
+  it anyway. `filter-branch --index-filter` over both branches, then
+  `refs/original` dropped, reflogs expired, `gc --prune=now`.
+
+  Verified as item 10 was: `HEAD^{tree}` **bit-identical** before and after
+  (`7f80caa4`, which is the test that this removed only what the tip had already
+  untracked), 36 subjects `diff` clean, the single identity intact,
+  `git log --all --name-only` matching the paths **zero** times,
+  `git rev-list --objects --all` matching **zero** objects, and `.git` down from
+  4.6 MB to **2.0 MB**. The suite was not re-run against the rewritten history
+  for the same reason as item 10: an identical tree cannot test differently.
+  `--prune-empty` was passed in case a commit had done nothing but add those
+  files; none had, and the count stayed 36.
+
 *Done when:* the repository exists, the default branch and the URLs in
 `pyproject.toml` agree with each other, `ci.yml` has gone green on 3.12 and
 3.13 against a runner that has no R installed — which is the committed-fixture
