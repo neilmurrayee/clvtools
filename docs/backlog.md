@@ -620,7 +620,7 @@ register of the entries around them.
 
 ## 13. `[ ]` Push, and let the gates run for the first time
 
-Everything item 1 built is unexercised. Three things need settling in the same
+Everything item 1 built is unexercised. Four things need settling in the same
 breath, because they contradict each other today:
 
 - The repository does not exist yet under `neilmurrayee`.
@@ -629,6 +629,23 @@ breath, because they contradict each other today:
   404 on the branch name even once the repository exists.
 - `dyncov.yml`'s schedule fires only from the default branch, so the nightly
   fit stays inert until this history lands there.
+- **`[needs-decision]` The paper is in the repository.** `git ls-files` tracks
+  40 files under `arXiv-2602.09845v1/` plus `2602.09845v1.pdf` — 3.2 MB, the
+  complete LaTeX source and typeset PDF of somebody else's article. Locally
+  that is a working copy of the specification. Pushed to a public repository it
+  is redistribution, and the arXiv package declares no licence: `00README.json`
+  lists source files and nothing about terms, and no `LICENSE`, `COPYING` or
+  copyright line appears in `jss5634.tex`. arXiv's default submission licence
+  grants arXiv a non-exclusive right to distribute; it grants a third party
+  none. This does not touch the port itself — quoting a section number, an
+  equation and a sentence in a docstring is citation, and the paper's *numbers*
+  are facts — only the wholesale copy. The options are to untrack both and
+  `.gitignore` them, keeping the local copy and citing the arXiv id and DOI
+  from the README; to keep them if the licence turns out to be a CC one, which
+  is worth thirty seconds on the arXiv abstract page; or to make the repository
+  private, which forecloses items 1, 6 and 15. Settle it *before* the first
+  push and the answer costs a `git rm --cached`; settle it after and it needs a
+  history rewrite, exactly like item 10.
 
 *Done when:* the repository exists, the default branch and the URLs in
 `pyproject.toml` agree with each other, `ci.yml` has gone green on 3.12 and
