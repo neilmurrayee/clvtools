@@ -197,13 +197,13 @@ space".
 r         1.449       0.243    NaN       NaN
 alpha    48.635       7.489    NaN       NaN
 s         0.561       0.271    NaN       NaN
-beta     46.88...    35.61...  NaN       NaN
+beta     46.88...    35.6...   NaN       NaN
 >>> print(pnbd.confint().round(3).to_string())
         2.5 %   97.5 %
 r       0.972    1.926
 alpha  33.957   63.313
 s       0.030    1.093
-beta  -22.92...  116.68...
+beta  -22.9...  116.6...
 >>> pnbd.aic > 0 and pnbd.n_customers == 600
 True
 

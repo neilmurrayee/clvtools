@@ -289,8 +289,14 @@ def fit_pnbd_correlated(
     >>> from clvtools import ClvData, load_apparel_trans
     >>> cbs = ClvData(load_apparel_trans(), estimation_split=104).customer_summary()
     >>> fit = fit_pnbd_correlated(cbs["x"], cbs["t_x"], cbs["T"])
-    >>> round(fit.correlation, 4)
-    0.01...
+    >>> 0 < fit.correlation < 0.02
+    True
+
+    The value itself is not printed because it is not portable: ``m`` sits
+    close to its Sarmanov bound, where the likelihood is nearly flat, so the
+    fitted correlation is 0.0106 on macOS/ARM and 0.006 on x86-64 Linux. Both
+    say what S6.5.2 says -- "a limited impact" -- and neither digit is a fact
+    about the model.
 
     The correlated model nests the uncorrelated one at ``m = 0``, so its
     optimum can never be worse:

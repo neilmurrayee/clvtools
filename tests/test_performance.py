@@ -171,7 +171,7 @@ class TestHyp2f1StaysVectorised:
     def test_a_bounded_number_of_calls_per_likelihood_evaluation(self, apparel_fit):
         """Two per evaluation, not two per customer per evaluation.
 
-        Measured: 290 evaluations, 580 calls -- the :math:`A_1` and :math:`A_2`
+        Measured: 210 evaluations, 420 calls -- the :math:`A_1` and :math:`A_2`
         terms of Appendix A, once each. The gate is a bound rather than an
         equality so that folding them into a single call stays legal.
         """
@@ -193,7 +193,7 @@ class TestHyp2f1StaysVectorised:
     def test_every_call_covers_the_whole_sample(self, apparel_fit):
         """Each call is one array of length *n*, not *n* scalars.
 
-        Measured: 348,000 elements over 580 calls on 600 customers, i.e. 600
+        Measured: 252,000 elements over 420 calls on 600 customers, i.e. 600
         elements per call exactly. This is the assertion that a per-customer
         loop fails hardest -- it would report one element per call.
         """
@@ -207,7 +207,7 @@ class TestHyp2f1StaysVectorised:
         )
 
     def test_the_scalar_series_fallback_stays_cold(self, apparel_fit):
-        """``_hyp2f1_series`` runs for 0 of 348,000 elements (measured).
+        """``_hyp2f1_series`` runs for 0 of 252,000 elements (measured).
 
         SciPy returns ``nan`` for large first parameter with ``z`` near 1, and
         :func:`~clvtools.special.hyp2f1_ratio` then sums the Euler series in
@@ -217,7 +217,7 @@ class TestHyp2f1StaysVectorised:
         nothing else in the suite would notice.
         """
         assert apparel_fit.ratio.fired, "instrumentation dead; see the message above"
-        assert apparel_fit.series.calls == 0, (  # measured: 0 of 348,000
+        assert apparel_fit.series.calls == 0, (  # measured: 0 of 252,000
             f"the scalar series fallback ran {apparel_fit.series.calls} times "
             f"during a fit that evaluated {apparel_fit.ratio.elements} "
             "hypergeometrics. SciPy is now returning non-finite values "
@@ -277,29 +277,61 @@ class TestEvaluationsPerFit:
     published number intact.
     """
 
-    #: Measured: 290 for ``fit_pnbd`` on the apparel data, L-BFGS-B from
-    #: CLVTools' all-ones start. The band is set from the two regressions worth
-    #: catching rather than from a round percentage. Below it lies an
-    #: optimiser that stops too early: relaxing ``ftol`` to SciPy's own
-    #: 1e-8 -- ``_optimize`` tightens it to 1e-14 because this likelihood's
-    #: ridge is flat -- gives 150. Above it lies an optimiser doing more work:
-    #: Nelder-Mead, the fallback S6.2.1 recommends and a plausible accidental
-    #: default, gives 489. Both bounds sit ~1.4x from 290, which is far more
-    #: room than a SciPy point release moves a converged line search, and far
-    #: less than either regression needs.
-    BAND = (200, 400)
+    #: A coarse sanity band only. The exact count is **not portable**: 210 on
+    #: macOS/ARM and 185 on x86-64 Linux for the same code, because a line
+    #: search on a finite-differenced gradient follows a slightly different
+    #: path on a different libm. The first CI run failed the old (200, 400)
+    #: band at 185, which was the band being wrong rather than the code. The
+    #: two tests below carry the real weight, and both compare configurations
+    #: *within* whatever platform is running them.
+    BAND = (120, 500)
 
-    def test_pnbd_on_apparel_stays_in_the_measured_band(self, apparel_fit):
-        """290 evaluations, measured; 200 to 400 allowed."""
+    def test_pnbd_on_apparel_stays_in_the_coarse_band(self, apparel_fit):
+        """210 on macOS/ARM, 185 on x86-64 Linux; 120 to 500 allowed."""
         low, high = self.BAND
         assert low <= apparel_fit.evaluations <= high, (
             f"fit_pnbd took {apparel_fit.evaluations} likelihood evaluations "
-            f"against a measured 290 (band {low}-{high}). Fewer means the "
-            "search is stopping early -- check the log-likelihood too, since "
-            "this band cannot see a worse optimum. More means the optimiser or "
-            "the start values changed. Do not widen the band to fit; the run "
-            "time of every Pareto/NBD fit is this number."
+            f"against 210 measured on macOS/ARM and 185 on x86-64 Linux. This "
+            "band is deliberately wide because the count is not portable; the "
+            "two comparisons below are the ones that mean something."
         )
+
+    @pytest.mark.oracle
+    def test_the_tolerance_buys_a_better_optimum_than_scipy_s_default(
+        self, apparel_cbs, apparel_fit
+    ):
+        """Why ``_optimize`` tightens ``ftol`` at all, asserted rather than said.
+
+        The old lower bound existed to catch a relaxed ``ftol``. It caught it
+        by *counting*, which made it a statement about one libm. The same
+        regression is visible in the objective, and that comparison is
+        portable: run the same fit at SciPy's own 1e-8 and it stops earlier
+        and lands worse.
+
+        Measured on macOS/ARM: 210 evaluations against 150, and a
+        log-likelihood of -5848.097826903 against -5848.097841543 -- 1.5e-5
+        better, on a ridge where 1e-10 of log-likelihood is 3e-5 of ``beta``.
+        """
+        loose = fit_pnbd(
+            apparel_cbs["x"], apparel_cbs["t_x"], apparel_cbs["T"],
+            hessian=False, options={"ftol": 1e-8},
+        )
+        assert apparel_fit.log_likelihood > loose.log_likelihood + 1e-6
+        assert apparel_fit.evaluations > loose.n_evaluations
+
+    def test_the_search_is_not_nelder_mead(self, apparel_cbs, apparel_fit):
+        """The old upper bound, made portable the same way.
+
+        Nelder-Mead is the fallback S6.2.1 recommends and a plausible
+        accidental default. It reaches the same optimum and pays about 2.3x
+        for it -- 489 evaluations against 210 on macOS/ARM -- so the ordering,
+        rather than either number, is what to assert.
+        """
+        simplex = fit_pnbd(
+            apparel_cbs["x"], apparel_cbs["t_x"], apparel_cbs["T"],
+            hessian=False, method="Nelder-Mead",
+        )
+        assert apparel_fit.evaluations < simplex.n_evaluations
 
     def test_the_band_is_measuring_the_search(self, apparel_fit):
         """A count of 1 would pass a lower bound of 0, so the bound binds."""

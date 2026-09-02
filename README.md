@@ -327,8 +327,11 @@ what the code needs and trips on a regression.
 Efficiency is gated the same way, and without a clock. `tests/test_performance.py`
 counts *operations*: `hyp2f1_ratio` runs twice per likelihood evaluation over all
 *n* customers rather than *n* times on scalars, its scalar series fallback stays
-cold (0 of 348,000 elements in a `fit_pnbd` on the apparel data), a fit stays in
-a measured band of 200-400 likelihood evaluations, the work per customer is
+cold (0 of 252,000 elements in a `fit_pnbd` on the apparel data), the tightened
+`ftol` is shown to buy a better optimum than SciPy's default rather than merely
+more evaluations -- a comparison made within whatever platform is running it,
+after the first CI run showed the old fixed band of 200-400 was a statement
+about one libm -- the work per customer is
 identical at 1,178 and 2,357 customers -- O(*n*) by construction rather than by
 stopwatch -- and the time-varying covariate likelihood stays batched over
 covariate intervals, four hypergeometric dispatches per customer rather than

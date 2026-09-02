@@ -62,23 +62,23 @@ Two very different pictures, and the difference is the point of the document.
 
 ## The vectorised models are already at the floor
 
-`fit_pnbd` takes 0.063 s over 290 likelihood evaluations, and **half its
+`fit_pnbd` takes 0.051 s over 210 likelihood evaluations, and **half its
 self-time is inside `clvtools.special.hyp2f1_ratio`**:
 
 | Function | Calls | Per likelihood evaluation | tottime |
 |---|---|---|---|
-| `clvtools/special.py:hyp2f1_ratio` | 580 | 2 | 49.4% |
-| `clvtools/pnbd/aggregate.py:log_likelihood_ind` | 290 | 1 | 27.9% |
-| `numpy/lib/_stride_tricks_impl.py:_broadcast_to` | 580 | 2 | 1.7% |
-| `scipy/optimize/_numdiff.py:approx_derivative` | 58 | 0.2 | 1.3% |
-| `clvtools/pnbd/fit.py:negative_ll` | 290 | 1 | 1.2% |
-| `numpy/lib/_stride_tricks_impl.py:broadcast_arrays` | 870 | 3 | 1.2% |
-| `method 'reduce' of 'numpy.ufunc' objects` | 1,051 | 3.6 | 0.8% |
-| `numpy.array` | 3,831 | 13.2 | 0.8% |
-| `numpy/lib/_stride_tricks_impl.py:_broadcast_shape` | 870 | 3 | 0.8% |
-| `scipy/optimize/_numdiff.py:_dense_difference` | 58 | 0.2 | 0.8% |
-| `clvtools/pnbd/aggregate.py:log_likelihood` | 290 | 1 | 0.7% |
-| `numpy.asarray` | 3,431 | 11.8 | 0.6% |
+| `clvtools/special.py:hyp2f1_ratio` | 420 | 2 | 53.5% |
+| `clvtools/pnbd/aggregate.py:log_likelihood_ind` | 210 | 1 | 25.4% |
+| `numpy/lib/_stride_tricks_impl.py:_broadcast_to` | 420 | 2 | 1.6% |
+| `scipy/optimize/_numdiff.py:approx_derivative` | 42 | 0.2 | 1.3% |
+| `clvtools/pnbd/fit.py:negative_ll` | 210 | 1 | 1.1% |
+| `numpy/lib/_stride_tricks_impl.py:broadcast_arrays` | 630 | 3 | 1.1% |
+| `numpy/lib/_stride_tricks_impl.py:_broadcast_shape` | 630 | 3 | 0.8% |
+| `scipy/optimize/_numdiff.py:_dense_difference` | 42 | 0.2 | 0.8% |
+| `method 'reduce' of 'numpy.ufunc' objects` | 763 | 3.6 | 0.7% |
+| `numpy.array` | 2,775 | 13.2 | 0.7% |
+| `clvtools/pnbd/aggregate.py:log_likelihood` | 210 | 1 | 0.6% |
+| `numpy.asarray` | 2,487 | 11.8 | 0.6% |
 
 Two calls per evaluation, exactly the `A_1` and `A_2` terms of Appendix A. That
 half looks like a target until you measure what it is made of:
@@ -86,7 +86,7 @@ half looks like a target until you measure what it is made of:
 * the function is already vectorised: one `scipy.special.hyp2f1` call over the
   whole 600-element array, with a scalar Python series fallback only for
   entries SciPy returns non-finite;
-* during a complete fit the fallback fires for **0 of 348,000 elements**;
+* during a complete fit the fallback fires for **0 of 252,000 elements**;
 * cProfile does not record numpy ufunc calls, so the `scipy.special.hyp2f1`
   evaluation is charged to `hyp2f1_ratio` itself — that half *is* the library
   call, not a wrapper around it. Measured separately, 580 bare
@@ -343,10 +343,10 @@ structural, and every one of them is visible without a clock:
 * **`hyp2f1_ratio` stays vectorised** — called a bounded number of times per
   likelihood evaluation on arrays of length *n*, not *n* times on scalars.
   De-vectorising it is a ~100× regression that no current test would notice.
-* **The scalar series fallback stays cold** — 0 of 348,000 elements today. If a
+* **The scalar series fallback stays cold** — 0 of 252,000 elements today. If a
   change moves the optimiser into a region where it fires per customer, fits
   get much slower and nothing fails.
-* **Likelihood evaluations per fit stay in a measured band** — 290 for
+* **Likelihood evaluations per fit stay in a coarse band** — 210 for
   `fit_pnbd` on the apparel data. This catches an optimiser or start-value
   regression, which is the thing that actually costs minutes.
 * **Cost per customer stays flat** — asserted by comparing operation counts at
