@@ -33,6 +33,26 @@ def fixture_json(name: str):
     return json.loads((FIXTURES / f"{name}.json").read_text())
 
 
+#: The time-varying covariate likelihood's parameter grid, shared by
+#: ``test_pnbd_dyncov.py`` and ``test_pnbd_dyncov_walks.py`` -- the two halves
+#: of what was one module before it outgrew the size limit.
+DYNCOV_GRID = json.loads((FIXTURES / "dyncov_ll_grid.json").read_text())
+DYNCOV_CASES = list(DYNCOV_GRID["params"])
+
+
+def dyncov_grid_case(case: str):
+    r"""``(r, alpha, s, beta, gamma_life, gamma_trans)`` from a grid entry.
+
+    The stored vector is ``[log r, log alpha, log s, log beta, life..., trans...]``
+    -- model parameters on the log scale, covariate parameters natural.
+    """
+    import numpy as np
+
+    p = np.asarray(DYNCOV_GRID["params"][case], dtype=float)
+    r, alpha, s, beta = np.exp(p[:4])
+    return r, alpha, s, beta, p[4:7], p[7:10]
+
+
 @pytest.fixture(scope="session")
 def apparel_trans() -> pd.DataFrame:
     """The apparel retailer transaction log used throughout the paper."""
