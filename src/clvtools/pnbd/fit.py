@@ -87,20 +87,6 @@ class PnbdParams(Fitted):
         return self.s / self.beta
 
     @property
-    def n_parameters(self) -> int:
-        return 4
-
-    @property
-    def aic(self) -> float:
-        """Akaike information criterion, as reported by ``summary()`` in S6.2.1."""
-        return 2 * self.n_parameters - 2 * self.log_likelihood
-
-    @property
-    def bic(self) -> float:
-        """Bayesian information criterion, as reported by ``summary()``."""
-        return self.n_parameters * np.log(self.n_customers) - 2 * self.log_likelihood
-
-    @property
     def names(self) -> list[str]:
         r""":math:`(r, \alpha, s, \beta)`, the order everything else uses."""
         return list(_NAMES)

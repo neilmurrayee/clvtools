@@ -591,6 +591,8 @@ def _f2_middle(
 # computed together in `log_likelihood_customer` and consumed only here; a
 # wrapper object would add an allocation per customer per likelihood
 # evaluation, on the path this module is already tuned around.
+
+
 def _f2(  # noqa: PLR0913, PLR0917
     r: float, alpha_0: float, s: float, beta_0: float,
     c: Customer,
@@ -912,18 +914,6 @@ class PnbdDynCovParams(Fitted):
     @property
     def coefficients(self) -> dict[str, float]:
         return dict(zip(self.names, list(self), strict=True))
-
-    @property
-    def n_parameters(self) -> int:
-        return len(self.names)
-
-    @property
-    def aic(self) -> float:
-        return 2 * self.n_parameters - 2 * self.log_likelihood
-
-    @property
-    def bic(self) -> float:
-        return self.n_parameters * np.log(self.n_customers) - 2 * self.log_likelihood
 
 
 def fit_pnbd_dyncov(

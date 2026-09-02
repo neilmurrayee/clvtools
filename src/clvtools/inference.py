@@ -108,6 +108,43 @@ class Fitted:
         """The estimates by name. Cf. ``coef()``."""
         return dict(zip(self.names, self, strict=True))
 
+    #: The maximised log-likelihood, and the number of customers it was
+    #: maximised over. Annotations rather than properties, as :attr:`hessian`
+    #: is and for the same reason: every family supplies them as dataclass
+    #: fields, and a property here would shadow the field.
+    log_likelihood: float
+    n_customers: int
+
+    @property
+    def _comparable_log_likelihood(self) -> float:
+        """The log-likelihood :attr:`aic` and :attr:`bic` should be built on.
+
+        For most fits that is simply :attr:`log_likelihood`. A regularized one
+        minimises eq. (13)'s **penalised mean**, which is not on the same scale
+        as an unregularized model's sum and must not be compared with it, so
+        the three covariate classes override this with the unpenalised value
+        they also carry.
+        """
+        return self.log_likelihood
+
+    @property
+    def n_parameters(self) -> int:
+        """How many estimates the fit reports, which is how many it names."""
+        return len(self.names)
+
+    @property
+    def aic(self) -> float:
+        """Akaike's criterion. Cf. ``AIC()``."""
+        return 2 * self.n_parameters - 2 * self._comparable_log_likelihood
+
+    @property
+    def bic(self) -> float:
+        """The Bayesian criterion, on the number of customers. Cf. ``BIC()``."""
+        return (
+            self.n_parameters * np.log(self.n_customers)
+            - 2 * self._comparable_log_likelihood
+        )
+
     def _covariance(self) -> NDArray[np.float64]:
         # `getattr` rather than `self.hessian`: the dyncov fit reports no
         # Hessian at all, so the attribute can be absent as well as None.

@@ -269,18 +269,6 @@ class GgParams(Fitted):
     def as_dict(self) -> dict[str, float]:
         return {"p": self.p, "q": self.q, "gamma": self.gamma}
 
-    @property
-    def n_parameters(self) -> int:
-        return 3
-
-    @property
-    def aic(self) -> float:
-        return 2 * self.n_parameters - 2 * self.log_likelihood
-
-    @property
-    def bic(self) -> float:
-        return self.n_parameters * np.log(self.n_customers) - 2 * self.log_likelihood
-
 
 def fit_gg(
     x: ArrayLike,

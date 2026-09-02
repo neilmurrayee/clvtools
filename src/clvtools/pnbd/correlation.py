@@ -247,18 +247,6 @@ class PnbdCorrelatedParams(Fitted):
         """``Cor(life,trans)`` -- eq. (13) applied to ``m``."""
         return correlation_coefficient(self.m, self.r, self.alpha, self.s, self.beta)
 
-    @property
-    def n_parameters(self) -> int:
-        return 5
-
-    @property
-    def aic(self) -> float:
-        return 2 * self.n_parameters - 2 * self.log_likelihood
-
-    @property
-    def bic(self) -> float:
-        return self.n_parameters * np.log(self.n_customers) - 2 * self.log_likelihood
-
 
 def fit_pnbd_correlated(
     x: ArrayLike,

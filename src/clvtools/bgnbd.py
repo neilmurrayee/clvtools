@@ -36,7 +36,7 @@ from scipy import optimize, special
 # this closes no cycle; the covariate fit still imports
 # `fit_static_covariates` inside the function, where it is needed.
 from clvtools._optimize import options_for
-from clvtools._staticcov import StaticCovResult
+from clvtools._staticcov import DelegatesToCovariates, StaticCovResult
 from clvtools._validate import customer_history, finished, start_values
 from clvtools.data import ClvDataStaticCov
 from clvtools.inference import Fitted, numerical_hessian
@@ -365,18 +365,6 @@ class BgnbdParams(Fitted):
     def as_dict(self) -> dict[str, float]:
         return {"r": self.r, "alpha": self.alpha, "a": self.a, "b": self.b}
 
-    @property
-    def n_parameters(self) -> int:
-        return 4
-
-    @property
-    def aic(self) -> float:
-        return 2 * self.n_parameters - 2 * self.log_likelihood
-
-    @property
-    def bic(self) -> float:
-        return self.n_parameters * np.log(self.n_customers) - 2 * self.log_likelihood
-
 
 def fit_bgnbd(
     x: ArrayLike, t_x: ArrayLike, T: ArrayLike,
@@ -468,7 +456,7 @@ def log_likelihood_staticcov(
 
 
 @dataclass(frozen=True)
-class BgnbdStaticCovParams(Fitted):
+class BgnbdStaticCovParams(DelegatesToCovariates):
     r"""A fitted BG/NBD with time-invariant covariates."""
 
     r: float
@@ -484,59 +472,6 @@ class BgnbdStaticCovParams(Fitted):
     @property
     def names(self) -> list[str]:
         return ["r", "alpha", "a", "b", *self.covariates.names]
-
-    @property
-    def names_cov_life(self) -> list[str]:
-        return self.covariates.names_cov_life
-
-    @property
-    def names_cov_trans(self) -> list[str]:
-        return self.covariates.names_cov_trans
-
-    @property
-    def gamma_life(self):
-        return self.covariates.gamma_life
-
-    @property
-    def gamma_trans(self):
-        return self.covariates.gamma_trans
-
-    @property
-    def log_likelihood(self) -> float:
-        return self.covariates.log_likelihood
-
-    @property
-    def unpenalised_log_likelihood(self) -> float:
-        return self.covariates.unpenalised_log_likelihood
-
-    @property
-    def converged(self) -> bool:
-        return self.covariates.converged
-
-    @property
-    def n_customers(self) -> int:
-        return self.covariates.n_customers
-
-    @property
-    def n_parameters(self) -> int:
-        return len(self.names)
-
-    @property
-    def hessian(self):
-        """Curvature over :attr:`names`, from the covariate fit."""
-        return self.covariates.hessian
-
-    @property
-    def aic(self) -> float:
-        return 2 * self.n_parameters - 2 * self.unpenalised_log_likelihood
-
-    @property
-    def bic(self) -> float:
-        return (
-            self.n_parameters * np.log(self.n_customers)
-            - 2 * self.unpenalised_log_likelihood
-        )
-
 
 
 def fit_bgnbd_staticcov(

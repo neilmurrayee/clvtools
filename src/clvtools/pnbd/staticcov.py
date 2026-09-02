@@ -259,27 +259,11 @@ class PnbdStaticCovParams(Fitted):
         return dict(zip(self.names, list(self), strict=True))
 
     @property
-    def n_parameters(self) -> int:
-        """Free parameters. A constrained covariate contributes one, not two."""
-        return len(self.names)
-
-    @property
     def _comparable_log_likelihood(self) -> float:
         """The true log-likelihood, whether or not a penalty was applied."""
         if self.unpenalised_log_likelihood is None:
             return self.log_likelihood
         return self.unpenalised_log_likelihood
-
-    @property
-    def aic(self) -> float:
-        return 2 * self.n_parameters - 2 * self._comparable_log_likelihood
-
-    @property
-    def bic(self) -> float:
-        return (
-            self.n_parameters * np.log(self.n_customers)
-            - 2 * self._comparable_log_likelihood
-        )
 
 
 def fit_pnbd_staticcov(
