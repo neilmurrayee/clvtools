@@ -10,9 +10,11 @@ speculation.
 stop. Do not add items without evidence, and do not work an item marked
 `[needs-decision]` — those need the maintainer.
 
-**Nothing is open.** All nine items are closed, item 9 last; the loop has no
-topmost unchecked item to work. A tenth needs evidence, in the sense the
-paragraph above means it — something measured, not something imagined.
+**Round 3 is open**, from a review on 2026-09-02. Items 1-9 are closed, item 9
+last, and both audit rounds with them. What the review found is below, item 10
+first: the port is correct and gated, and none of it has ever left this machine.
+Item 10 blocks the rest — it is the only one that becomes impossible to do
+properly once something is pushed.
 
 Definition of done for every item: `uv run pytest` green (906 tests at the time
 of writing), `uv run ruff check src tests tools docs` clean, and 100% line
@@ -500,6 +502,153 @@ against the loop it replaced for all 600 customers at both vectors, with both of
 One figure was left stale on purpose: `CLAUDE.md` still says the dyncov fit is
 `~13.5 min`. It is 10:07 now, but `CLAUDE.md` is the maintainer's file.
 
+
+---
+
+# Round 3 — publication
+
+Added 2026-09-02, from a review of the whole repo against its own records. The
+first two rounds asked whether the port is *correct*; the nine items above asked
+whether the package is in *good shape*. This round asks the remaining question:
+whether it is fit to leave this machine. Nothing here is model work.
+
+What the review measured, so that the items below rest on evidence rather than
+on a plan:
+
+- `uv run pytest` — 906 passed, 1 deselected, exit 0. `ruff check src tests
+  tools docs` clean. Both audit rounds closed; items 1-9 above closed.
+- **Nothing has ever been pushed.** There is no git remote, and
+  `gh repo view neilmurrayee/clvtools` answers *"Could not resolve to a
+  Repository"*. So neither workflow has ever run, and `dyncov.yml` says so in
+  its own header.
+- 17 commits sit on `interface-layer`; `master` is an ancestor of it and has
+  none of them.
+- 13 of the 30 commits carry a personal email address as author and committer.
+- `clvtools` is **unclaimed on PyPI** — `/pypi/clvtools/json` is 404 on both
+  the real index and TestPyPI.
+
+## 10. `[ ]` Take the personal address out of the history
+
+`git log --format='%ae'` gives two identities: the first thirteen commits carry
+a personal name and a personal mailbox — not written out here, because a task
+file that quotes the address it exists to remove has put it straight back into
+a blob — and the other seventeen carry
+`neilmurrayee <132654876+neilmurrayee@users.noreply.github.com>`, which is what
+`git config user.email` has held since. (That trap was sprung while writing
+this item, and the commit was amended before the rewrite rather than after.) Nothing has been pushed, so nobody holds
+a copy of the old hashes and the rewrite costs a force-push to precisely no one.
+This is the one item that must happen *before* anything reaches a remote: after
+a push, the address is on someone else's disk and no rewrite here can recall it.
+
+The working tree is already clean of it — the only address anywhere in the
+repository is the GitHub noreply in `pyproject.toml`'s `authors`, which is the
+anonymised form by construction: it routes nowhere and exists so that GitHub can
+attribute a commit without publishing an inbox.
+
+*Done when:* every commit on every ref reports the noreply address and the
+single name `neilmurrayee` as both author and committer; `git log` over all refs
+matches no `gmail`; `refs/original/`, the reflogs and the loose objects the
+rewrite orphans are gone, so the address is not recoverable from the clone that
+gets pushed; and the address is pinned in the repository's own config, not only
+in the global one, so a later change to `--global` cannot leak it back into this
+repo.
+
+## 11. `[ ]` Correct three counts that are wrong in the workflow comments
+
+Found by counting rather than by reading. None of them is a gate — all three are
+comments — but they are the first thing a reader meets in the file that claims
+to define green, and one of them was wrong on the day it was written.
+
+- `ci.yml:87` says "888 tests". It is 906.
+- `ci.yml:11` says `tests/fixtures/` holds "118 files". It holds **123**, and
+  `git log 4d5a117..HEAD -- tests/fixtures` is empty, so none were added after
+  that workflow landed: 118 was never right.
+- `dyncov.yml:89` cites collection as `1/892 tests collected (891 deselected)`.
+  It is `1/907 (906 deselected)` today.
+
+*Done when:* each figure is what the command it describes actually prints, and
+the counts are quoted from a run rather than from the last time someone looked.
+
+## 12. `[ ]` Point `CLAUDE.md`'s layout at the two documents it omits
+
+`CLAUDE.md`'s Layout block lists `docs/paper.md`, `docs/vignette.md` and
+`docs/audit.md`. It does not mention `docs/backlog.md` — *this file*, which
+declares itself the loop's state and is where an agent is supposed to start —
+nor `docs/performance.md`, which the README cites four times. An instruction
+file that does not name the file holding the instructions' queue is a gap a
+new session pays for, not the maintainer.
+
+*Done when:* both appear in the Layout block with a one-line description in the
+register of the entries around them.
+
+## 13. `[ ]` Push, and let the gates run for the first time
+
+Everything item 1 built is unexercised. Three things need settling in the same
+breath, because they contradict each other today:
+
+- The repository does not exist yet under `neilmurrayee`.
+- `pyproject.toml`'s `[project.urls]` point at `blob/main/...` while the local
+  default branch is `master`, so the Documentation and Changelog links would
+  404 on the branch name even once the repository exists.
+- `dyncov.yml`'s schedule fires only from the default branch, so the nightly
+  fit stays inert until this history lands there.
+
+*Done when:* the repository exists, the default branch and the URLs in
+`pyproject.toml` agree with each other, `ci.yml` has gone green on 3.12 and
+3.13 against a runner that has no R installed — which is the committed-fixture
+promise finally being tested rather than asserted — and `dyncov.yml` has been
+dispatched by hand once, so its first run is watched rather than nocturnal.
+
+## 14. `[ ]` Spike: the cost of `hyp2f1` where the dyncov search dwells
+
+Item 9 ended by naming its own successor and this is it, with the measurement
+already taken. After vectorising, the fit fell only 1.33x — 13:27 to 10:07 —
+because at the vector the optimiser spends two thirds of its time near
+(`life.High.Season = -8.12`), **83.8% of self-time is inside
+`scipy.special.hyp2f1`** over 948 calls. The interpreter overhead is gone;
+what is left is the library doing real work, in one region of the parameter
+space.
+
+`docs/performance.md` names the two levers and does not choose between them:
+the cost of `hyp2f1` in that region, or keeping the search out of it. The
+second is the more interesting one, because that region is also where this
+implementation's optimum is known to differ most from CLVTools'.
+
+**A spike, on the same terms as item 9.** Abandoning it with a written finding
+is a good outcome. The oracle fixtures pin the likelihood expression by
+expression at both parameter vectors, and `TestDyncovStaysVectorised` counts
+the dispatches, so an attempt cannot quietly change the arithmetic.
+
+*Done when:* either an approach is measured and adopted with the fixtures still
+green expression by expression and the gain recorded, or the attempt is
+abandoned and `docs/performance.md` records what was learned about why.
+
+## 15. `[needs-decision]` Publish to PyPI
+
+Item 4 got the metadata to where `uv build` is clean, and `dist/` holds a
+`clvtools-0.1.0` wheel and sdist that have never been uploaded. The name is
+free — 404 on PyPI and on TestPyPI — so the decision is not being forced by
+anyone else.
+
+What it needs from the maintainer: whether to publish at all; whether `0.1.0`
+and `Development Status :: 4 - Beta` are the version and the status to go out
+under; and whether uploads happen from a laptop with a token or from a GitHub
+Actions job with Trusted Publishing, which is the safer shape and which item 13
+has to land before anyone can configure.
+
+Note the ordering trap: the name is claimed by the first upload, and the
+metadata that upload carries is what PyPI shows until the next release. Item 13
+first, so the URLs on that page resolve.
+
+## 16. `[needs-decision]` `bgbb`
+
+The one model-level gap against CLVTools, recorded in `docs/audit.md`'s "Not
+gaps" and unchanged since: `bgbb` is exported by the R package and absent from
+the paper, whose Table 4 lists three families. It is out of scope by a decision
+that was correct for a port *of the paper*, and it is the only thing left that
+would change the answer to "does this cover CLVTools?".
+
+Not an item to work. A scope question, listed so it stops being invisible.
 
 ---
 
