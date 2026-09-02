@@ -487,14 +487,36 @@ for a constrained covariate as if it were free. — `Rtest` — six claims.
 
 **DY-01** `d_omega = d_1`. — `Rtest:test_correctness_pnbd_dyncov.R`.
 
-**DY-02** With covariate data 0: `A_i = C_i = 0` and `Dbar_i = Bbar_i = 0`. —
-`Rtest` — two claims.
+**DY-02** With covariate data 0 (customer `"1041"`, all three covariates zeroed):
+`A_i = C_i = 1` and `Dbar_i = Bbar_i = 0`. — `Rtest` — two claims.
+
+> **Transcription correction, found during the audit.** The R test is *titled*
+> `"If cov data = 0, Ai and Ci = 0"` but its body asserts `Ai == 1` and
+> `Ci == 1`, and its own comment says why: "all Ai and Ci have to be
+> exp(0)=1". The title is wrong; the body is right. This spec item originally
+> repeated the title. Zero *data* and zero *parameters* both send the exponent
+> to zero, so both give 1 — DY-02 and DY-03 reach the same values by different
+> routes and remain separate items, but they do not contrast. Both must hold at
+> the *non-zero* parameters R uses: life = trans = `c(1.23, 0.678, 2.34)`.
+> Worth noting that the reference implementation's own suite contains exactly
+> the defect this audit was built to find.
 
 **DY-03** With all covariate parameters 0: `A_i = C_i = 1` and
-`Bbar_i = Dbar_i = 0`. — `Rtest`. **Note this differs from DY-02: zero *data*
-gives 0, zero *parameters* give 1.**
+`Bbar_i = Dbar_i = 0`. — `Rtest`.
 
-**DY-04** For all `i = 1`, `Bbar_i = 0` and `Dbar_i = 0`. — `Rtest`.
+**DY-04** For all `i = 1`, `Bbar_i = 0` and `Dbar_i = 0`. — `Rtest`
+(`test_correctness_pnbd_dyncov.R:44`).
+
+> **Which table.** The R file builds *two* tables with identically-named
+> columns, and they disagree at `i = 1`. DY-01..DY-06 are asserted on the
+> **expectation** input table (`pnbd_dyncov_expectation(...,
+> only.return.input.to.expectation = TRUE)`, line 21); DY-07 on the **CET**
+> input table (`pnbd_dyncov_CET(..., only.return.input.to.CET = TRUE)`,
+> line 208). This repository's `dyncov_abcd_sample.csv` is the CET table, so
+> its `Bbar_i = -104` at `i = 1` confirms DY-07 and is not a counterexample to
+> DY-04. Scope note: this port has no general `pnbd_dyncov_expectation`; the
+> expectation-shaped table exists only inside `new_customer_expectation`
+> (`dyncov_predict.py:422`), which is why DY-01..DY-06 are so thinly covered.
 
 **DY-05** For identical life and transaction covariate data, `Bbar_i = Dbar_i`. — `Rtest`.
 
@@ -502,8 +524,11 @@ gives 0, zero *parameters* give 1.**
 customers start and end on the same date. — `Rtest` — two claims.
 
 **DY-07** With static covariate data supplied as dynamic: `A_i` and `C_i` equal
-the static values, `Dbar_i = 0`, and `Bbar_i = -T·A`. — `Rtest` — three claims,
-and the cleanest available cross-check of the dyncov machinery.
+the static values, `Dbar_i = 0`, and `Bbar_i = -T_cal·A_i` — **in the CET input
+table** (`pnbd_dyncov_CET(..., only.return.input.to.CET = TRUE)`,
+`test_correctness_pnbd_dyncov.R:208`, asserted at line 224). — `Rtest` — three
+claims, and the cleanest available cross-check of the dyncov machinery.
+`dyncov_abcd_sample.csv` is this table and already half-confirms the shape.
 
 **DY-08** The dyncov LL yields the correct intermediate results. — `Rtest`.
 
