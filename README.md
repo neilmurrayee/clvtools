@@ -260,6 +260,24 @@ parameter buys nothing and AIC charges for it.
 hypergeometrics are evaluated at identical arguments, because the auxiliary walk
 spans exactly $t_x$ to $T$ by construction.
 
+**A heavy buyer's time-varying likelihood silently became the alive-only one.**
+Every term of $F_2$ carries $\alpha^{-(r+s+x)}$, so past $x = 160$ to $190$
+depending on the walk all of them are below float64 and $F_2$ was exactly
+zero — which
+selected the $\log F_0 + \log F_3$ branch, the likelihood of a customer who is
+certainly dead, with no signal. $F_3$ underflows at the same rate, so the ratio
+being discarded is $O(1)$: at $x = 200$ the answer was wrong by **225
+log-units** and `PAlive` was reported as **exactly 1.0** where the truth is
+1.6e-98. CLVTools arranges the arithmetic the same way and underflows in the
+same place, so its fixtures agree with the broken version by construction, and
+the apparel cohort's largest $x$ is 21 — no fixture reaches the regime at all.
+$F_2$ is now combined as a log magnitude and a sign throughout, and the check
+is the nesting §3.3 asserts: with zero coefficients this model *is* the
+standard Pareto/NBD, whose likelihood is closed-form at any $x$, and the two
+agree to 1e-12 out to $x = 400$. The intermediates table keeps the value form,
+so a term below float64 still prints as zero — as CLVTools' does — and only
+the likelihood is formed from the logs.
+
 **The paper's §6.4.2 table cannot be reproduced by CLVTools 0.12.1 either.**
 Its time-varying covariate prediction prints `PAlive = 0.0139206` for customer
 1; CLVTools 0.12.1 predicts 0.0107292 from its own fit, and this package

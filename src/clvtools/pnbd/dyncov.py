@@ -249,13 +249,111 @@ def d_i(i: int, real_walk: Walk, aux_walk: Walk, d_omega: float) -> float:
     return sum_real + sum_aux
 
 
+# -- log-space arithmetic -----------------------------------------------------
+
+
+def _log_diff_exp(
+    log_a: NDArray[np.float64], log_b: NDArray[np.float64]
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    r""":math:`\log|e^{a} - e^{b}|` and the sign of the difference, elementwise.
+
+    Written with :func:`numpy.expm1` rather than as
+    :math:`\log(e^{a} - e^{b})`, so that the near-cancellation :math:`F_{2.2}`
+    is made of stays accurate: subtracting the smaller term inside the exponent
+    leaves the larger one's magnitude intact, where subtracting the two
+    exponentials loses every digit they share.
+
+    Two terms equal to the last bit give :math:`-\infty` and a sign of zero --
+    an exact zero, which is what :math:`F_{2.2}` is for 599 of the 600 apparel
+    customers, and is not the same thing as a term that underflowed.
+
+    >>> import numpy as np
+    >>> magnitude, sign = _log_diff_exp(np.log(5.0), np.log(3.0))
+    >>> round(float(np.exp(magnitude)), 12), float(sign)
+    (2.0, 1.0)
+    >>> magnitude, sign = _log_diff_exp(np.float64(-800.0), np.float64(-800.0))
+    >>> float(magnitude), float(sign)
+    (-inf, 0.0)
+    """
+    hi = np.maximum(log_a, log_b)
+    lo = np.minimum(log_a, log_b)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        magnitude = hi + np.log(-np.expm1(lo - hi))
+        # Both terms zero: their difference is zero, not the ``nan`` that
+        # ``-inf - (-inf)`` produces inside the ``expm1``.
+        zero = hi == -np.inf
+        return (
+            np.where(zero, -np.inf, magnitude),
+            np.where(zero, 0.0, np.sign(log_a - log_b)),
+        )
+
+
+def _signed_logsumexp(
+    logs: NDArray[np.float64], signs: NDArray[np.float64]
+) -> tuple[float, float]:
+    r""":math:`\log|\sum_i s_i e^{l_i}|` and the sum's sign.
+
+    The offset is the largest term's own log, so every term is weighed against
+    the one that dominates it. Backlog item 28 records a cheaper version that
+    does not work: scaling a customer's whole :math:`F_2` by the *first* term's
+    :math:`(r{+}s{+}x)\log\alpha_1` keeps the sum :math:`O(1)` and looks
+    equivalent, but the terms have different :math:`\alpha`, and customer 93 of
+    the apparel cohort -- whose :math:`F_2` is 5.6e-165, comfortably
+    representable -- moved by 2.4e-3 in log-likelihood under it.
+
+    A term that is not usable (``nan``, or an overflowed :math:`+\infty`) is
+    returned as it stands rather than mixed in, so that it reaches
+    :func:`log_likelihood_customer` and becomes a ``nan`` likelihood there.
+
+    >>> import numpy as np
+    >>> magnitude, sign = _signed_logsumexp(
+    ...     np.array([-800.0, -801.0]), np.array([1.0, -1.0]))
+    >>> bool(magnitude > -801.0), sign
+    (True, 1.0)
+    """
+    logs = np.where(signs == 0.0, -np.inf, logs)
+    offset = float(np.max(logs))
+    if not np.isfinite(offset):
+        return offset, 0.0 if offset == -np.inf else 1.0
+    total = float(np.sum(signs * np.exp(logs - offset)))
+    with np.errstate(divide="ignore"):
+        return offset + float(np.log(abs(total))), float(np.sign(total))
+
+
+def _usable(log_magnitude: float) -> bool:
+    r"""Whether a log magnitude can still be summed against another.
+
+    :math:`-\infty` can: it is an exact zero. ``nan`` and :math:`+\infty`
+    cannot, and stop the customer's likelihood rather than being carried into
+    it.
+
+    >>> [_usable(v) for v in (0.0, float("-inf"), float("inf"), float("nan"))]
+    [True, True, False, False]
+    """
+    return log_magnitude < np.inf
+
+
+def _value(log_magnitude: float, sign: float) -> float:
+    """A signed log back in the direct domain, for the intermediates table.
+
+    The thirty columns CLVTools reports are values, and are compared as values
+    against ``tests/fixtures/``; only the likelihood itself is now formed from
+    the logs. A term below float64 therefore still *reports* as zero -- so does
+    CLVTools' own -- while no longer being zero where it counts.
+
+    >>> _value(float("-inf"), 0.0), round(_value(0.0, -1.0), 12)
+    (0.0, -1.0)
+    """
+    return float(sign * np.exp(log_magnitude))
+
+
 # -- the hypergeometric pair --------------------------------------------------
 
 
 def _hyp_alpha_ge_beta(
     r: float, s: float, x: float,
     alpha_1: ArrayLike, beta_1: ArrayLike, alpha_2: ArrayLike, beta_2: ArrayLike,
-) -> NDArray[np.float64]:
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     r"""The :math:`\alpha \ge \beta` arm of each :math:`F_2` term.
 
     .. math::
@@ -264,6 +362,14 @@ def _hyp_alpha_ge_beta(
         - \frac{{}_2F_1(\cdots;\, z_2)}{\alpha_2^{r+s+x}},
         \qquad z_j = 1 - \beta_j/\alpha_j
 
+    Returned as ``(log magnitude, sign)`` rather than as a value. Both
+    quotients are formed in log space, and so is their difference: at
+    :math:`\alpha = 200` and :math:`x = 200` the term is around 1e-370 --
+    below float64, but perfectly well determined, and the customer whose
+    :math:`F_1F_2` it is has an :math:`F_3` of the same order. Reporting it as
+    zero cost that customer 225 log-units; see
+    ``tests/test_pnbd_dyncov_logspace.py``.
+
     Where the series will not converge, CLVTools substitutes the limiting form
     :math:`(1-z)^{r+x} C / \beta^{r+s+x}`; the same fallback is used here so the
     two agree everywhere, including where neither is accurate.
@@ -271,26 +377,18 @@ def _hyp_alpha_ge_beta(
     ``alpha_1`` and its siblings may each be a float or an array of one value
     per covariate interval; :func:`_hyp_terms` passes whole batches through.
     """
-    # numpy arithmetic throughout, even for a single term: `alpha ** (r+s+x)`
-    # overflows on the arguments the fallback exists for, and a Python float
-    # raises there where an array yields the `inf` the fallback selects on.
+    # numpy arithmetic throughout, even for a single term: `np.where` selects
+    # the fallback elementwise, and the arms hand `_log_diff_exp` arrays so
+    # that its own `np.where` sees one.
     alpha_1, beta_1 = np.asarray(alpha_1, float), np.asarray(beta_1, float)
     alpha_2, beta_2 = np.asarray(alpha_2, float), np.asarray(beta_2, float)
     a = r + s + x
-    out = 0.0
-    for alpha, beta, sign in ((alpha_1, beta_1, 1.0), (alpha_2, beta_2, -1.0)):
+    logs = []
+    for alpha, beta in ((alpha_1, beta_1), (alpha_2, beta_2)):
         z = 1.0 - beta / alpha
         value = special.hyp2f1(a, s + 1.0, a + 1.0, z)
-        # ``value / alpha**a``, formed so that the divisor cannot overflow
-        # before the quotient underflows. At alpha = 200 and x = 160,
-        # ``alpha**a`` is past the top of float64 while the quotient is around
-        # 1e-370, so the direct form gave ``value / inf = 0`` -- and the
-        # customer's likelihood then took the alive-only branch with no signal.
-        # Finding 10 of ``docs/review-2026-09-02.md``. This does not make an
-        # unrepresentable quotient representable; it stops a representable one
-        # being lost.
         with np.errstate(divide="ignore"):
-            term = np.exp(np.log(value) - a * np.log(alpha))
+            log_term = np.log(value) - a * np.log(alpha)
         failed = ~np.isfinite(value)
         if np.any(failed):
             # Computed here rather than up front: the fallback fires rarely,
@@ -299,19 +397,20 @@ def _hyp_alpha_ge_beta(
                 special.gammaln(a + 1.0) + special.gammaln(s)
                 - special.gammaln(a) - special.gammaln(s + 1.0)
             )
-            term = np.where(
-                failed,
-                np.exp((r + x) * np.log1p(-z) + log_c - a * np.log(beta)),
-                term,
-            )
-        out = out + sign * term
-    return out
+            with np.errstate(divide="ignore"):
+                log_term = np.where(
+                    failed,
+                    (r + x) * np.log1p(-z) + log_c - a * np.log(beta),
+                    log_term,
+                )
+        logs.append(log_term)
+    return _log_diff_exp(logs[0], logs[1])
 
 
 def _hyp_beta_gt_alpha(
     r: float, s: float, x: float,
     alpha_1: ArrayLike, beta_1: ArrayLike, alpha_2: ArrayLike, beta_2: ArrayLike,
-) -> NDArray[np.float64]:
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     r"""The :math:`\beta > \alpha` arm, with the roles exchanged.
 
     .. math::
@@ -319,41 +418,63 @@ def _hyp_beta_gt_alpha(
              {\beta_1^{r+s+x}} - \cdots,
         \qquad z_j = 1 - \alpha_j/\beta_j
 
-    Vectorised over covariate intervals in the same way as its sibling.
+    ``(log magnitude, sign)``, and vectorised over covariate intervals, in the
+    same way as its sibling. The fallback's :math:`(1-z)^{s+1}C/\alpha^{a}` is
+    formed in log space too, where it used to be a product of three factors of
+    which the last overflows first.
     """
-    # numpy arithmetic throughout, even for a single term: `alpha ** (r+s+x)`
-    # overflows on the arguments the fallback exists for, and a Python float
-    # raises there where an array yields the `inf` the fallback selects on.
     alpha_1, beta_1 = np.asarray(alpha_1, float), np.asarray(beta_1, float)
     alpha_2, beta_2 = np.asarray(alpha_2, float), np.asarray(beta_2, float)
     a = r + s + x
-    out = 0.0
-    for alpha, beta, sign in ((alpha_1, beta_1, 1.0), (alpha_2, beta_2, -1.0)):
+    logs = []
+    for alpha, beta in ((alpha_1, beta_1), (alpha_2, beta_2)):
         z = 1.0 - alpha / beta
         value = special.hyp2f1(a, r + x, a + 1.0, z)
         with np.errstate(divide="ignore"):
-            term = np.exp(np.log(value) - a * np.log(beta))
+            log_term = np.log(value) - a * np.log(beta)
         failed = ~np.isfinite(value)
         if np.any(failed):
             log_c = (
                 special.gammaln(a + 1.0) + special.gammaln(r + x - 1.0)
                 - special.gammaln(a) - special.gammaln(r + x)
             )
-            term = np.where(
-                failed, (1.0 - z) ** (s + 1.0) * np.exp(log_c) / alpha**a, term
-            )
-        out = out + sign * term
-    return out
+            with np.errstate(divide="ignore"):
+                log_term = np.where(
+                    failed,
+                    (s + 1.0) * np.log1p(-z) + log_c - a * np.log(alpha),
+                    log_term,
+                )
+        logs.append(log_term)
+    return _log_diff_exp(logs[0], logs[1])
+
+
+def _scale_by_ratio(
+    log_magnitude: NDArray[np.float64], sign: NDArray[np.float64],
+    s: float, ratio: ArrayLike,
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    r"""Multiply a signed log by :math:`(A/C)^s`, which is positive.
+
+    An exactly zero term stays exactly zero whatever the ratio is, which the
+    addition alone would not give: :math:`-\infty + \infty` is ``nan``, and the
+    ratio does overflow at the covariate parameters
+    ``test_a_non_finite_f2_gives_a_non_finite_likelihood`` uses.
+    """
+    with np.errstate(divide="ignore", invalid="ignore"):
+        scaled = log_magnitude + s * np.log(ratio)
+    return np.where(sign == 0.0, -np.inf, scaled), sign
 
 
 def _hyp_term(
     r: float, s: float, x: float,
     alpha_1: float, beta_1: float, alpha_2: float, beta_2: float,
     ratio: float,
-) -> float:
-    """One :math:`F_2` term: the scaled difference of two hypergeometrics."""
+) -> tuple[float, float]:
+    """One :math:`F_2` term, as ``(log magnitude, sign)``."""
     branch = _hyp_alpha_ge_beta if alpha_1 >= beta_1 else _hyp_beta_gt_alpha
-    return float(ratio**s * branch(r, s, x, alpha_1, beta_1, alpha_2, beta_2))
+    log_magnitude, sign = _scale_by_ratio(
+        *branch(r, s, x, alpha_1, beta_1, alpha_2, beta_2), s, ratio
+    )
+    return float(log_magnitude), float(sign)
 
 
 def _hyp_terms(
@@ -361,7 +482,7 @@ def _hyp_terms(
     alpha_1: NDArray[np.float64], beta_1: NDArray[np.float64],
     alpha_2: NDArray[np.float64], beta_2: NDArray[np.float64],
     ratio: NDArray[np.float64],
-) -> NDArray[np.float64]:
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     r""":func:`_hyp_term` for a whole batch of covariate intervals at once.
 
     The arm is chosen per interval, not per batch: :math:`\alpha_1 \ge \beta_1`
@@ -370,14 +491,15 @@ def _hyp_terms(
     possibly an empty one, which the arms handle without a special case, so
     neither is skipped by a branch that a test could fail to reach.
     """
-    out = np.empty(np.shape(alpha_1))
+    logs = np.empty(np.shape(alpha_1))
+    signs = np.empty(np.shape(alpha_1))
     ge = alpha_1 >= beta_1
     for chosen, branch in ((ge, _hyp_alpha_ge_beta), (~ge, _hyp_beta_gt_alpha)):
-        out[chosen] = branch(
+        logs[chosen], signs[chosen] = branch(
             r, s, x,
             alpha_1[chosen], beta_1[chosen], alpha_2[chosen], beta_2[chosen],
         )
-    return ratio**s * out
+    return _scale_by_ratio(logs, signs, s, ratio)
 
 
 def _prefix_sums(values: NDArray[np.float64]) -> NDArray[np.float64]:
@@ -405,7 +527,7 @@ def _prefix_sums(values: NDArray[np.float64]) -> NDArray[np.float64]:
 def _f2_middle(
     r: float, alpha_0: float, s: float, beta_0: float,
     c: Customer, dT: float, Bjsum: float,
-) -> float:
+) -> tuple[float, float]:
     r""":math:`\sum_{i=2}^{k_T-1} Y_i` -- every covariate interval in between, at once.
 
     This is the same sum the scalar :func:`b_i`, :func:`d_i` and
@@ -423,7 +545,7 @@ def _f2_middle(
     n = A.size
     if n < 3:
         # The first interval is also the last; there is nothing in between.
-        return 0.0
+        return -np.inf, 0.0
 
     i = np.arange(2.0, n)
     Ai, Ci = A[1 : n - 1], C[1 : n - 1]
@@ -452,20 +574,17 @@ def _f2_middle(
         )
     bi = Di + Ci * elapsed
 
-    terms = _hyp_terms(
+    logs, signs = _hyp_terms(
         r, s, c.x,
         ai + alpha_0, (bi + beta_0) * Ai / Ci,
         ai + Ai + alpha_0, (bi + Ci + beta_0) * Ai / Ci,
         Ai / Ci,
     )
-    # The scalar loop stopped at the first running total that stopped being
-    # finite and returned it. `cumsum` accumulates in that same order, so the
-    # same partial sum is still there to return.
-    running = np.cumsum(terms)
-    failed = ~np.isfinite(running)
-    if failed.any():
-        return float(running[int(np.argmax(failed))])
-    return float(running[-1])
+    # Summed against the largest term rather than left to right. The scalar
+    # loop this replaced stopped at the first running total that stopped being
+    # finite; `_signed_logsumexp` propagates an unusable term to the whole sum
+    # instead, which reaches `log_likelihood_customer` the same way.
+    return _signed_logsumexp(logs, signs)
 
 
 # The arguments are the terms of F2 itself, in the paper's notation. They are
@@ -477,13 +596,20 @@ def _f2(  # noqa: PLR0913, PLR0917
     c: Customer,
     B1: float, D1: float, BT: float, DT: float,
     A1T: float, C1T: float, AkT: float, CkT: float, Bjsum: float,
-) -> tuple[float, dict[str, float]]:
-    r""":math:`F_2 = Y_1 + Y_{k_T} + \sum_{i=2}^{k_T-1} Y_i`.
+) -> tuple[float, float, dict[str, float]]:
+    r""":math:`F_2 = Y_1 + Y_{k_T} + \sum_{i=2}^{k_T-1} Y_i`, as a signed log.
 
     One term per covariate interval the auxiliary walk crosses: the first, the
     last, and a sum over those between. S3.3: the likelihood "contains a sum of
     expressions similar to the likelihood of the standard model, each being
     calculated for a certain time interval".
+
+    Returns ``(log|F_2|, sign, intermediates)``. The three terms are combined
+    with a signed log-sum-exp rather than added as values, so that a customer
+    whose :math:`F_2` is below float64 -- which is a matter of how many
+    transactions they made, not of anything going wrong -- still contributes
+    :math:`F_1F_2` to their likelihood. The ``intermediates`` keep the value
+    form, because that is what the oracle fixtures hold.
     """
     dT = c.aux_walk_trans.d1
 
@@ -496,7 +622,12 @@ def _f2(  # noqa: PLR0913, PLR0917
 
     if c.aux_walk_life.n_elem == 1:
         # A single covariate interval: no first/last split and no middle sum.
-        f2 = _hyp_term(
+        # The one apparel customer here, 262, is also the degenerate case --
+        # they bought on the last day of the estimation period, so the walk has
+        # no length, both hypergeometrics take identical arguments, and the
+        # sign is zero. That is an exact zero F2 and the alive-only likelihood
+        # for the right reason; an underflowed one is a large negative log.
+        log_f2, sign = _hyp_term(
             r, s, c.x,
             a1 + (1.0 - dT) * A1T + alpha_0,
             (b1 + (1.0 - dT) * C1T + beta_0) * A1T / C1T,
@@ -507,7 +638,7 @@ def _f2(  # noqa: PLR0913, PLR0917
         parts.update(dict.fromkeys(
             ("akt", "bkT", "aT", "bT", "F2.1", "F2.2", "F2.3"), float("nan")
         ))
-        return f2, parts
+        return log_f2, sign, parts
 
     n_walks = float(c.aux_walk_life.n_elem)
     akt = Bjsum + BT + AkT * (c.t_x + dT + n_walks - 2.0)
@@ -517,7 +648,7 @@ def _f2(  # noqa: PLR0913, PLR0917
     parts.update({"akt": akt, "bkT": bkT, "aT": aT, "bT": bT})
 
     # Y_1 -- the first covariate interval after the last transaction.
-    f2_1 = _hyp_term(
+    log_1, sign_1 = _hyp_term(
         r, s, c.x,
         a1 + (1.0 - dT) * A1T + alpha_0,
         (b1 + (1.0 - dT) * C1T + beta_0) * A1T / C1T,
@@ -525,28 +656,33 @@ def _f2(  # noqa: PLR0913, PLR0917
         (b1 + C1T + beta_0) * A1T / C1T,
         A1T / C1T,
     )
-    parts["F2.1"] = f2_1
-    if not np.isfinite(f2_1):
+    parts["F2.1"] = _value(log_1, sign_1)
+    # `_usable` and not `np.isfinite`: an exactly zero term is -inf here, and
+    # is a term like any other. Only `nan` and an overflowed +inf stop the sum.
+    if not _usable(log_1):
         parts.update({"F2.2": float("nan"), "F2.3": float("nan")})
-        return f2_1, parts
+        return log_1, sign_1, parts
 
     # Y_kT -- the last interval, running to the end of the estimation period.
-    f2_2 = _hyp_term(
+    log_2, sign_2 = _hyp_term(
         r, s, c.x,
         akt + alpha_0, (bkT + beta_0) * AkT / CkT,
         aT + alpha_0, (bT + beta_0) * AkT / CkT,
         AkT / CkT,
     )
-    parts["F2.2"] = f2_2
-    if not np.isfinite(f2_2):
+    parts["F2.2"] = _value(log_2, sign_2)
+    if not _usable(log_2):
         parts["F2.3"] = float("nan")
-        return f2_2, parts
+        return log_2, sign_2, parts
 
     # The intervals in between.
-    f2_3 = _f2_middle(r, alpha_0, s, beta_0, c, dT, Bjsum)
+    log_3, sign_3 = _f2_middle(r, alpha_0, s, beta_0, c, dT, Bjsum)
 
-    parts["F2.3"] = f2_3
-    return f2_1 + f2_2 + f2_3, parts
+    parts["F2.3"] = _value(log_3, sign_3)
+    log_f2, sign = _signed_logsumexp(
+        np.array([log_1, log_2, log_3]), np.array([sign_1, sign_2, sign_3])
+    )
+    return log_f2, sign, parts
 
 
 def log_likelihood_customer(
@@ -569,6 +705,13 @@ def log_likelihood_customer(
     sign-definite -- while :math:`F_1 F_2 + F_3` must stay positive for the
     likelihood to mean anything. The three sign cases are handled separately
     rather than by taking a log that may not exist.
+
+    :math:`F_2` arrives as a log magnitude and a sign, and the sum is formed
+    from logs throughout. That matters for a heavy buyer: at :math:`x = 200`
+    both :math:`F_1F_2` and :math:`F_3` are around 1e-274, so both underflow
+    while their *ratio* is O(1). Adding them as values gave :math:`F_2 = 0` and
+    the ``sign == 0`` branch below -- the alive-only likelihood, silently, and
+    wrong by 225 log-units. Finding 10 of ``docs/review-2026-09-02.md``.
     """
     A1T = c.aux_walk_trans.first
     AkT = c.aux_walk_trans.last
@@ -592,24 +735,24 @@ def log_likelihood_customer(
     log_F1 = np.log(s) - np.log(r + s + c.x)
     log_F3 = -s * np.log(DkT + beta_0) - (c.x + r) * np.log(Bksum_v + alpha_0)
 
-    F2, parts = _f2(
+    log_F2, sign_F2, parts = _f2(
         r, alpha_0, s, beta_0, c,
         B1, D1, BT, DT, A1T, C1T, AkT, CkT, Bjsum_v,
     )
 
     with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
-        if not np.isfinite(F2):
+        if not _usable(log_F2):
             ll = float("nan")
-        elif F2 < 0.0:
+        elif sign_F2 < 0.0:
             # F1*F2 is negative but smaller in magnitude than F3, so the sum is
             # still positive; log1p keeps the near-cancellation accurate.
-            ll = log_F0 + log_F3 + np.log1p(np.exp(log_F1 - log_F3) * F2)
-        elif F2 > 0.0:
-            max_ab = max(log_F1 + np.log(F2), log_F3)
-            ll = log_F0 + max_ab + np.log(
-                np.exp(log_F1 + np.log(F2) - max_ab) + np.exp(log_F3 - max_ab)
-            )
+            ll = log_F0 + log_F3 + np.log1p(-np.exp(log_F1 + log_F2 - log_F3))
+        elif sign_F2 > 0.0:
+            ll = log_F0 + np.logaddexp(log_F1 + log_F2, log_F3)
         else:
+            # F2 is exactly zero -- an auxiliary walk of no length, whose two
+            # hypergeometrics cancel term for term. Not an underflow: that now
+            # arrives as a large negative log and takes the branch above.
             ll = log_F0 + log_F3
 
     return {
@@ -618,7 +761,7 @@ def log_likelihood_customer(
         "B1": B1, "BT": BT, "Bjsum": Bjsum_v, "Bksum": Bksum_v,
         "C1T": C1T, "CkT": CkT, "D1": D1, "DT": DT, "DkT": DkT,
         "log_F0": float(log_F0), "log_F1": float(log_F1),
-        "F2": float(F2), "log_F3": float(log_F3),
+        "F2": _value(log_F2, sign_F2), "log_F3": float(log_F3),
         "Akprod": float(np.exp(A1sum_v)),
         **parts,
     }
