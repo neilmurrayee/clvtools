@@ -4,8 +4,12 @@
 
 A from-scratch Python port of the R package **CLVTools 0.12.1**, following
 Meierer, Bachmann, Näf, Schilter & Algesheimer, *"Estimating Individual Customer
-Lifetime Values with R: The CLVTools Package"* (JSS submission 5634). The paper's
-LaTeX source is in `arXiv-2602.09845v1/jss5634.tex`; the PDF is `2602.09845v1.pdf`.
+Lifetime Values with R: The CLVTools Package"* (JSS submission 5634). The paper is
+[arXiv:2602.09845](https://arxiv.org/abs/2602.09845); its LaTeX source and PDF
+are **not committed** — arXiv's licence is non-exclusive distribution, which
+covers arXiv's redistribution and not ours — and `.gitignore` carries the two
+commands that fetch them to `arXiv-2602.09845v1/jss5634.tex` and
+`2602.09845v1.pdf`, the paths every section reference here assumes.
 
 The port is **section by section**: each module implements a numbered section of
 the paper, its docstrings quote that section, and its examples are doctests that

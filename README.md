@@ -390,8 +390,10 @@ whose first purchase was 2005-01-02), `apparelStaticCov`, `apparelDynCov`,
 `apparelDynCovFuture` — the covariate series continued into the prediction
 window, which §6.4.2 needs — and `cdnow`.
 
-The paper's LaTeX source and PDF are in `arXiv-2602.09845v1/` and
-`2602.09845v1.pdf`.
+The paper is [arXiv:2602.09845](https://arxiv.org/abs/2602.09845). Its source
+and PDF are not redistributed here — arXiv's non-exclusive licence covers
+arXiv's distribution, not ours — and `.gitignore` carries the two commands that
+fetch them to the paths the docstrings cite.
 
 ## Licence
 

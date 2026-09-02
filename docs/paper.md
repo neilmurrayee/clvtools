@@ -18,7 +18,9 @@ module's docstrings carry the paper's section, the quoted justification, and its
 own worked examples. Start at `clvtools.pnbd.individual` for the model and
 `clvtools.data` for the data layer.
 
-Source: [`arXiv-2602.09845v1/jss5634.tex`](../arXiv-2602.09845v1/jss5634.tex).
+Source: `arXiv-2602.09845v1/jss5634.tex`, from
+[arXiv:2602.09845](https://arxiv.org/abs/2602.09845) — untracked here, see
+`.gitignore`.
 
 ## Contents
 

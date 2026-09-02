@@ -22,3 +22,13 @@ htmlcov/
 
 # Static analysis
 .ruff_cache/
+
+# The paper. Kept on this machine as the specification the port is written
+# against, and deliberately not committed: arXiv 2602.09845 is distributed
+# under arXiv's non-exclusive licence, which grants arXiv the right to
+# distribute it and grants us none. Fetch it with
+# `curl -O https://arxiv.org/pdf/2602.09845v1` and the source bundle from
+# `https://arxiv.org/abs/2602.09845`. Quoting a section, an equation and a
+# sentence in a docstring is citation and stays; a wholesale copy would not be.
+arXiv-2602.09845v1/
+2602.09845v1.pdf

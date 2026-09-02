@@ -5,7 +5,8 @@
 Kept out of ``conftest.py`` so that test modules can import them normally
 rather than relying on pytest's rootdir insertion.
 
-Section references are to the LaTeX source in ``arXiv-2602.09845v1/``.
+Section references are to the LaTeX source in ``arXiv-2602.09845v1/``, which
+is untracked -- see ``.gitignore`` for the two commands that fetch it.
 """
 
 from __future__ import annotations
