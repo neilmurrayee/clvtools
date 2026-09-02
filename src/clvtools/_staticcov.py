@@ -22,6 +22,7 @@ written into *both* processes, which is eq. (14) implemented directly:
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -30,6 +31,7 @@ from numpy.typing import ArrayLike, NDArray
 from scipy import optimize
 
 from clvtools._optimize import options_for
+from clvtools._validate import ConvergenceWarning, finished
 from clvtools.inference import Fitted, numerical_hessian
 
 __all__ = ["SearchSettings", "StaticCovResult", "fit_static_covariates"]
@@ -273,8 +275,20 @@ def _search(
             },
         )
         if polished.fun < result.fun:
+            if result.success and not polished.success:
+                # Otherwise this reads as a failed fit when what happened is
+                # that a *better* point was found by a stage with a cap on it.
+                warnings.warn(
+                    "the Nelder-Mead polish improved the objective from "
+                    f"{result.fun:.6f} to {polished.fun:.6f} but stopped at its "
+                    f"own limit ({polished.message}); reporting the better "
+                    "point, so `converged` describes the polish rather than "
+                    "the gradient search that preceded it",
+                    ConvergenceWarning,
+                    stacklevel=3,
+                )
             result = polished
-    return result
+    return finished(result, "static-covariate")
 
 
 def _reported_hessian(

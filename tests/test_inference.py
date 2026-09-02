@@ -10,6 +10,8 @@ numbers get elsewhere.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 from conftest import fixture_json
@@ -320,3 +322,33 @@ class TestEveryFamilyExposesTheSameAccessors:
         fit, _ = self._fits()[family]
         with pytest.raises(ValueError, match="hessian=True"):
             fit.standard_errors()
+
+
+class TestTheRatioTestNeedsARealRestriction:
+    """Finding 12: it accepted two non-nested models and reported a chi-square.
+
+    A restricted model is a special case of the unrestricted one, so it cannot
+    fit better. A negative statistic is therefore the observable signature of
+    either non-nesting -- where the chi-square means nothing -- or an
+    unrestricted fit that stopped somewhere worse. Both are worth knowing
+    before reading a p-value, and neither used to say anything.
+    """
+
+    def test_the_arguments_the_wrong_way_round_raise(self):
+        from clvtools.inference import likelihood_ratio_test
+
+        restricted = SimpleNamespace(
+            n_parameters=7, log_likelihood=-5821.0, n_customers=600)
+        unrestricted = SimpleNamespace(
+            n_parameters=8, log_likelihood=-5826.5, n_customers=600)
+        with pytest.raises(ValueError, match="restricted model fits better"):
+            likelihood_ratio_test(restricted, unrestricted)
+
+    def test_two_different_samples_raise(self):
+        from clvtools.inference import likelihood_ratio_test
+
+        with pytest.raises(ValueError, match="same data"):
+            likelihood_ratio_test(
+                SimpleNamespace(n_parameters=7, log_likelihood=-5826.5, n_customers=600),
+                SimpleNamespace(n_parameters=8, log_likelihood=-5821.0, n_customers=599),
+            )

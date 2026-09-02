@@ -245,7 +245,7 @@ class TestBgnbdFitValidation:
             bgnbd.fit_bgnbd([-1, 2], [0.0, 30.0], [104.0, 104.0])
 
     def test_rejects_recency_beyond_the_window(self):
-        with pytest.raises(ValueError, match="cannot exceed T"):
+        with pytest.raises(ValueError, match="t_x exceeds T"):
             bgnbd.fit_bgnbd([1, 2], [200.0, 30.0], [104.0, 104.0])
 
     def test_rejects_bad_start_values(self):
@@ -368,7 +368,7 @@ class TestGgomnbdProperties:
             ggomnbd.fit_ggomnbd([], [], [])
         with pytest.raises(ValueError, match="non-negative"):
             ggomnbd.fit_ggomnbd([-1, 2], [0.0, 30.0], [104.0, 104.0])
-        with pytest.raises(ValueError, match="cannot exceed T"):
+        with pytest.raises(ValueError, match="t_x exceeds T"):
             ggomnbd.fit_ggomnbd([1, 2], [200.0, 30.0], [104.0, 104.0])
         with pytest.raises(ValueError, match="five values"):
             ggomnbd.fit_ggomnbd([0, 2], [0.0, 30.0], [104.0, 104.0], start=(1.0, 1.0))

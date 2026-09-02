@@ -42,14 +42,20 @@ Time-varying covariates and process correlation are Pareto/NBD only, likewise.
 
 ```python
 import clvtools
-from clvtools import ClvData, latent_attrition, load_apparel_trans, predict, spending
+from clvtools import (
+    ClvData, latent_attrition, load_apparel_trans, predict, spending,
+)
+from clvtools.predict import discount_factor
 
 data = ClvData(load_apparel_trans(), time_unit="week", estimation_split=104)
 
 pnbd = latent_attrition(family=clvtools.pnbd, data=data)
 gg = spending(family=clvtools.gg, data=data)
 
-predict(data, pnbd, gg)   # PAlive, CET, DERT, predicted.CLV, and the actuals
+# discount_factor() turns an annual rate into a per-period one. Without it,
+# CLVTools' default discounts at log(1.1) *per week* on weekly data, and the
+# total DERT here is 92.92 against 2642.78 -- see the findings below.
+predict(data, pnbd, gg, continuous_discount_factor=discount_factor(0.10))
 pnbd.summary()            # estimates, standard errors, z- and p-values
 data.summary()            # §6.1.2's descriptive table
 ```

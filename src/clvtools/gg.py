@@ -33,6 +33,7 @@ from numpy.typing import ArrayLike, NDArray
 from scipy import optimize, special
 
 from clvtools._optimize import options_for
+from clvtools._validate import finished
 from clvtools.inference import Fitted, numerical_hessian
 
 __all__ = [
@@ -344,6 +345,7 @@ def fit_gg(
         method=method,
         options=options_for(method, maxiter, np.log(start_arr), options),
     )
+    result = finished(result, "Gamma-Gamma")
 
     p, q, gamma = (float(v) for v in np.exp(result.x))
     hess = None

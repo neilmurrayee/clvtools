@@ -679,3 +679,42 @@ class TestCovariatePredictionForTheOtherFamilies:
                 params,
             )
             assert got == pytest.approx(want[key], rel=1e-9), key
+
+
+class TestArgumentsThatCannotBeUsedAreRejected:
+    """Finding 12: ``predict()`` used to ignore two of its four arguments.
+
+    ``predict(newcustomer(52), fit, gg, prediction_end=99)`` returned a
+    transaction count, silently dropping both the spending model and the
+    horizon -- neither of which has anywhere to go for a scenario that returns
+    a single number.
+    """
+
+    @staticmethod
+    @pytest.fixture(scope="class")
+    def fits(transactions):
+        from clvtools import ClvData, gg, latent_attrition, pnbd, spending
+
+        data = ClvData(transactions, time_unit="week", estimation_split=104)
+        return (
+            latent_attrition(family=pnbd, data=data, hessian=False),
+            spending(family=gg, data=data, hessian=False),
+        )
+
+    def test_a_spending_model_with_a_prospective_customer_raises(self, fits):
+        from clvtools import newcustomer, predict
+
+        fit, gg_fit = fits
+        with pytest.raises(ValueError, match="spending_params"):
+            predict(newcustomer(52), fit, gg_fit)
+
+    def test_a_prediction_end_with_a_prospective_customer_raises(self, fits):
+        from clvtools import newcustomer, predict
+
+        with pytest.raises(ValueError, match="prediction_end"):
+            predict(newcustomer(52), fits[0], prediction_end=99)
+
+    def test_the_scenario_itself_still_works(self, fits):
+        from clvtools import newcustomer, predict
+
+        assert predict(newcustomer(52), fits[0]) > 0

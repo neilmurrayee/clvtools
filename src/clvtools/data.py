@@ -200,6 +200,15 @@ class ClvData:
         has_price = name_price is not None and name_price in transactions.columns
         if has_price:
             cols[name_price] = "Price"
+        elif name_price not in (None, "Price"):
+            # An explicit column that is not there is a typo, not a decision to
+            # model without spending. Naming it costs one line; not naming it
+            # costs a silent switch to a transaction-only model, which surfaces
+            # much later as `no Price column: spending cannot be modelled`.
+            raise ValueError(
+                f"name_price={name_price!r} is not a column of the transaction "
+                f"data; pass name_price=None to model transactions only"
+            )
 
         missing = [c for c in cols if c not in transactions.columns]
         if missing:
@@ -210,6 +219,20 @@ class ClvData:
         df["Date"] = pd.to_datetime(df["Date"])
         if not has_price:
             df["Price"] = np.nan
+        elif not np.isfinite(df["Price"].to_numpy(dtype=float)).all():
+            # A customer whose prices are all NaN is counted in ``x`` and
+            # dropped from the mean, and ``fillna(0.0)`` then records
+            # ``Spending = 0``. The Gamma-Gamma silently excludes that row and
+            # ``predict()`` reports the population mean for the customer --
+            # 7.72 against 88.65 with real prices, in the review's example.
+            # Finding 6 of ``docs/review-2026-09-02.md``.
+            bad = df.loc[~np.isfinite(df["Price"].to_numpy(dtype=float)), "Id"]
+            raise ValueError(
+                f"Price is not finite for {len(bad)} transaction"
+                f"{'s' if len(bad) > 1 else ''} "
+                f"(customers e.g. {sorted(set(bad))[:3]}); "
+                "drop or impute those rows, or pass name_price=None"
+            )
         self.has_spending = has_price
 
         self.transactions = self._aggregate_to_day(df)
@@ -694,6 +717,17 @@ class ClvDataStaticCov(ClvData):
                 f"{which} covariate data is missing {len(missing)} customers, "
                 f"e.g. {list(missing[:3])}"
             )
+        # A repeated id makes ``.loc`` return more rows than there are
+        # customers -- 601 for 600 in the review's example -- and the mismatch
+        # then surfaces as a broadcast error deep inside the likelihood, which
+        # names neither the customer nor the frame. Finding 12.
+        duplicated = out.index[out.index.duplicated()].unique()
+        if len(duplicated):
+            raise ValueError(
+                f"{which} covariate data has {len(duplicated)} duplicated "
+                f"customer id{'s' if len(duplicated) > 1 else ''}, "
+                f"e.g. {list(duplicated[:3])}: one row per customer is required"
+            )
         out = out.loc[customers]
 
         # Everything that is not already a number becomes dummies. Selected by
@@ -710,7 +744,22 @@ class ClvDataStaticCov(ClvData):
         ]
         if categorical:
             out = pd.get_dummies(out, columns=categorical, drop_first=True)
-        return out.astype(float)
+        out = out.astype(float)
+
+        # A NaN here is not a modelling choice, it is a hole. Left alone it
+        # travels: ``exp(gamma' x)`` is NaN, every customer's likelihood
+        # contribution is NaN, the objective is ``-inf`` everywhere and the
+        # covariate "fit" comes back at its start values with no exception and
+        # several hundred RuntimeWarnings. Named here, with the ids, it is a
+        # data-cleaning problem the caller can act on -- finding 6 of
+        # ``docs/review-2026-09-02.md``.
+        bad = out.index[~np.isfinite(out.to_numpy()).all(axis=1)]
+        if len(bad):
+            raise ValueError(
+                f"{which} covariate data is not finite for {len(bad)} "
+                f"customer{'s' if len(bad) > 1 else ''}, e.g. {list(bad[:3])}"
+            )
+        return out
 
     def with_covariates(
         self, names_life: list[str] | None = None,

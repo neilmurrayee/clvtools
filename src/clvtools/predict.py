@@ -589,6 +589,27 @@ def predict(
     True
     """
     if isinstance(clv_data, (NewCustomer, NewCustomerSpending)):
+        # A prospective customer's horizon is the one carried by the spec, and
+        # a scenario returns a single number rather than a table, so a spending
+        # model and a prediction end have nowhere to go. Silently dropping them
+        # meant `predict(newcustomer(52), fit, gg, prediction_end=99)` returned
+        # a transaction count with no hint that two of its four arguments were
+        # ignored. Finding 12 of ``docs/review-2026-09-02.md``.
+        unused = [
+            name
+            for name, value in (
+                ("spending_params", spending_params),
+                ("prediction_end", prediction_end),
+            )
+            if value is not None
+        ]
+        if unused:
+            raise ValueError(
+                f"{', '.join(unused)} cannot be used with a prospective "
+                "customer: the horizon comes from newcustomer(num_periods) and "
+                "spending is predicted by passing newcustomer_spending() with a "
+                "Gamma-Gamma fit instead"
+            )
         return _predict_new_customer(clv_data, params)
 
     last = _resolve_prediction_end(clv_data, prediction_end)

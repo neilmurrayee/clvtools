@@ -41,6 +41,7 @@ from scipy import integrate, optimize, special
 # `fit_static_covariates` inside the function, where it is needed.
 from clvtools._optimize import options_for
 from clvtools._staticcov import StaticCovResult
+from clvtools._validate import customer_history, finished
 from clvtools.data import ClvDataStaticCov
 from clvtools.inference import Fitted, numerical_hessian
 
@@ -423,14 +424,7 @@ def fit_ggomnbd(
     one numerical integral per customer.
     """
     x, t_x, T = (np.asarray(v, dtype=float).ravel() for v in (x, t_x, T))
-    if not (x.shape == t_x.shape == T.shape):
-        raise ValueError("x, t_x and T must have the same shape")
-    if x.size == 0:
-        raise ValueError("no customers to fit")
-    if np.any(x < 0):
-        raise ValueError("frequencies x must be non-negative")
-    if np.any(t_x > T + 1e-9):
-        raise ValueError("t_x cannot exceed T: a purchase after the window closed")
+    x, t_x, T = customer_history(x, t_x, T)
 
     start_arr = np.asarray(start, dtype=float)
     if start_arr.shape != (5,):
@@ -450,6 +444,7 @@ def fit_ggomnbd(
         negative_ll, x0=np.log(start_arr), method=method,
         options=options_for(method, maxiter, np.log(start_arr), options),
     )
+    result = finished(result, "GGom/NBD")
     r_, alpha_, b_, s_, beta_ = (float(v) for v in np.exp(result.x))
     hess = None
     if hessian:

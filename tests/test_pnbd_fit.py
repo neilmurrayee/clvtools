@@ -209,8 +209,44 @@ class TestValidation:
             fit_pnbd([-1, 2], [0.0, 30.0], [104.0, 104.0])
 
     def test_rejects_recency_beyond_the_window(self):
-        with pytest.raises(ValueError, match="cannot exceed T"):
+        with pytest.raises(ValueError, match="t_x exceeds T for 1 customer"):
             fit_pnbd([1, 2], [200.0, 30.0], [104.0, 104.0])
+
+    def test_a_recency_a_hair_over_the_window_is_clamped_not_accepted(self):
+        """The failure mode this replaced, from the outside review's finding 5.
+
+        Date arithmetic produces ``t_x = T + 1e-10`` routinely. The validator
+        used to accept anything within 1e-9, and the likelihood needs
+        ``t_x <= T`` exactly: the ratio goes above one, an intermediate goes
+        negative, its log is NaN, and *every* objective evaluation is
+        infinite. The fit then returned its own start values -- ``r = alpha =
+        s = beta = 1``, ``log_likelihood = -inf``, ``converged = False`` --
+        and raised nothing, so a whole fit collapsed into a plausible-looking
+        object. Now the slack is clamped away and the fit is a fit.
+        """
+        x = [2.0, 3.0, 0.0]
+        T = [104.0, 104.0, 104.0]
+        t_over = [104.0 + 1e-10, 40.0, 0.0]
+        fitted = fit_pnbd(x, t_over, T, hessian=False)
+        assert np.isfinite(fitted.log_likelihood)
+        assert fitted.log_likelihood < 0
+        exact = fit_pnbd(x, [104.0, 40.0, 0.0], T, hessian=False)
+        assert fitted.log_likelihood == pytest.approx(exact.log_likelihood)
+
+    def test_a_fit_that_stops_early_says_so(self):
+        """No ``warnings.warn`` existed anywhere in ``src/`` (finding 7).
+
+        ``maxiter=2`` stops at ``[0.384, 1.682, 0.309, 1.335]``, which is not
+        a fit of anything. The only signal was the ``converged`` flag, which a
+        caller has to know to read.
+        """
+        from clvtools._validate import ConvergenceWarning
+
+        with pytest.warns(ConvergenceWarning, match="Pareto/NBD"):
+            stopped = fit_pnbd(
+                [1, 2], [50.0, 30.0], [104.0, 104.0], hessian=False, maxiter=2
+            )
+        assert not stopped.converged
 
     def test_rejects_nonzero_recency_for_zero_purchases(self):
         with pytest.raises(ValueError, match=r"t_x must be 0 where x == 0"):

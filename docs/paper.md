@@ -194,9 +194,9 @@ space".
 ```python
 >>> print(pnbd.summary().round(3).to_string())
        Estimate  Std. Error  z-val  Pr(>|z|)
-r  1.44...  0.24...  NaN  NaN
-alpha  48.63...  7.48...  NaN  NaN
-s  0.56...  0.27...  NaN  NaN
+r  1.44...  0.2...  NaN  NaN
+alpha  48.63...  7.4...  NaN  NaN
+s  0.56...  0.2...  NaN  NaN
 beta  46.88...  35.6...  NaN  NaN
 >>> print(pnbd.confint().round(3).to_string())
         2.5 %   97.5 %

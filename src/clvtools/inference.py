@@ -188,9 +188,9 @@ class Fitted:
         >>> spend = ClvData(load_apparel_trans(), estimation_split=104).spending_summary()
         >>> print(fit_gg(spend["x"], spend["Spending"]).summary().round(3).to_string())
                Estimate  Std. Error  z-val  Pr(>|z|)
-        p  3.09...  0.56...  NaN  NaN
-        q  5.65...  0.84...  NaN  NaN
-        gamma  56.50...  18.60...  NaN  NaN
+        p  3.09...  0.5...  NaN  NaN
+        q  5.65...  0.8...  NaN  NaN
+        gamma  56.50...  18.6...  NaN  NaN
         """
         errors = self.standard_errors()
         table = pd.DataFrame(
@@ -280,7 +280,29 @@ def likelihood_ratio_test(restricted, unrestricted) -> LikelihoodRatioTest:
             "the unrestricted model must have more parameters than the "
             f"restricted one; got {k_unrestricted} against {k_restricted}"
         )
+    n_r = getattr(restricted, "n_customers", None)
+    n_u = getattr(unrestricted, "n_customers", None)
+    if n_r is not None and n_u is not None and n_r != n_u:
+        raise ValueError(
+            "a likelihood ratio test compares two fits of the same data; "
+            f"these were fitted on {n_r} and {n_u} customers"
+        )
+
     statistic = 2 * (value(unrestricted) - value(restricted))
+    if statistic < -1e-6:
+        # A restricted model is a special case of the unrestricted one, so it
+        # cannot fit better. A negative statistic means either that the two are
+        # not nested -- in which case the chi-square has no meaning and this
+        # used to return one anyway (finding 12 of the outside review) -- or
+        # that the unrestricted fit stopped somewhere worse, which is worth
+        # knowing before reading a p-value off it.
+        raise ValueError(
+            f"the restricted model fits better than the unrestricted one "
+            f"({value(restricted):.6f} against {value(unrestricted):.6f}), so "
+            "they are not nested in the order given, or the unrestricted fit "
+            "did not converge; a likelihood ratio test needs a genuine "
+            "restriction"
+        )
     return LikelihoodRatioTest(
         n_parameters_restricted=k_restricted,
         n_parameters_unrestricted=k_unrestricted,

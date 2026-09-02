@@ -26,6 +26,7 @@ from numpy.typing import ArrayLike
 from scipy import optimize
 
 from clvtools._optimize import options_for
+from clvtools._validate import customer_history, finished
 from clvtools.inference import Fitted, numerical_hessian
 from clvtools.pnbd.aggregate import log_likelihood
 
@@ -103,21 +104,6 @@ class PnbdParams(Fitted):
     def names(self) -> list[str]:
         r""":math:`(r, \alpha, s, \beta)`, the order everything else uses."""
         return list(_NAMES)
-
-
-def _validate(x: np.ndarray, t_x: np.ndarray, T: np.ndarray) -> None:
-    if not (x.shape == t_x.shape == T.shape):
-        raise ValueError("x, t_x and T must have the same shape")
-    if x.size == 0:
-        raise ValueError("no customers to fit")
-    if np.any(x < 0):
-        raise ValueError("frequencies x must be non-negative")
-    if np.any(t_x < 0) or np.any(T <= 0):
-        raise ValueError("t_x must be non-negative and T strictly positive")
-    if np.any(t_x > T + 1e-9):
-        raise ValueError("t_x cannot exceed T: a purchase after the window closed")
-    if np.any((x == 0) & (t_x != 0)):
-        raise ValueError("t_x must be 0 where x == 0")
 
 
 def fit_pnbd(
@@ -204,7 +190,7 @@ def fit_pnbd(
     (0.03, 0.012)
     """
     x, t_x, T = (np.asarray(v, dtype=float).ravel() for v in (x, t_x, T))
-    _validate(x, t_x, T)
+    x, t_x, T = customer_history(x, t_x, T)
 
     start_arr = np.asarray(start, dtype=float)
     if start_arr.shape != (4,):
@@ -232,6 +218,7 @@ def fit_pnbd(
         method=method,
         options=options_for(method, maxiter, np.log(start_arr), options),
     )
+    result = finished(result, "Pareto/NBD")
 
     hess = None
     if hessian:

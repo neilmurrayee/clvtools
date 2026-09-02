@@ -36,7 +36,12 @@ from paper_values import (
     N_TRANSACTIONS,
 )
 
-from clvtools.data import ClvData
+from clvtools.data import (
+    ClvData,
+    ClvDataStaticCov,
+    load_apparel_static_cov,
+    load_apparel_trans,
+)
 
 
 class TestTheDatasetsShipWithThePackage:
@@ -302,3 +307,129 @@ class TestOtherDatasets:
         cdnow = load_cdnow()
         assert len(cdnow) == 6696
         assert {"Id", "Date"} <= set(cdnow.columns)
+
+
+class TestBadInputIsLoud:
+    """Findings 6 and 12 of ``docs/review-2026-09-02.md``.
+
+    Each of these used to be accepted and to come back as a plausible number
+    much later, which is the failure mode the review calls silent-wrong. The
+    reproductions are in the messages: what the value *was* before it raised.
+    """
+
+    def test_non_finite_prices_are_rejected(self):
+        """A customer whose prices are all NaN was recorded as Spending = 0.
+
+        Counted in ``x``, dropped from the mean, and then ``fillna(0.0)``.
+        The Gamma-Gamma silently excluded the row and ``predict()`` reported
+        the population mean for that customer.
+        """
+        trans = load_apparel_trans().copy()
+        victim = trans["Id"].iloc[0]
+        trans.loc[trans["Id"] == victim, "Price"] = np.nan
+        with pytest.raises(ValueError, match="Price is not finite"):
+            ClvData(trans, estimation_split=104)
+
+    def test_a_misspelled_price_column_raises(self):
+        """It used to disable spending silently, surfacing much later."""
+        with pytest.raises(ValueError, match="name_price='Prise'"):
+            ClvData(load_apparel_trans(), estimation_split=104, name_price="Prise")
+
+    def test_name_price_none_still_means_no_spending(self):
+        """The escape hatch the error above points at."""
+        data = ClvData(load_apparel_trans(), estimation_split=104, name_price=None)
+        assert not data.has_spending
+
+    def test_non_finite_covariates_are_rejected(self):
+        """One NaN gave a fit at the start values with -inf and no exception."""
+        cov = load_apparel_static_cov().copy()
+        cov.loc[0, "Gender"] = np.nan
+        data = ClvData(load_apparel_trans(), estimation_split=104)
+        with pytest.raises(ValueError, match="not finite for 1 customer"):
+            ClvDataStaticCov(
+                data, cov,
+                names_cov_life=["Gender", "Channel"],
+                names_cov_trans=["Gender", "Channel"],
+            )
+
+    def test_duplicated_covariate_rows_are_rejected(self):
+        """601 design rows for 600 customers, then a broadcast error deep in
+        the likelihood that named neither the customer nor the frame."""
+        cov = load_apparel_static_cov()
+        data = ClvData(load_apparel_trans(), estimation_split=104)
+        with pytest.raises(ValueError, match="duplicated customer id"):
+            ClvDataStaticCov(
+                data, pd.concat([cov, cov.head(1)], ignore_index=True),
+                names_cov_life=["Gender"], names_cov_trans=["Gender"],
+            )
+
+
+class TestTheSharedValidatorAndResultHelper:
+    """``clvtools._validate``: the two halves of the review's findings 5 and 7."""
+
+    def test_non_finite_history_is_rejected(self):
+        """NaN in x, t_x or T makes every likelihood evaluation NaN."""
+        from clvtools._validate import customer_history
+
+        with pytest.raises(ValueError, match="must all be finite"):
+            customer_history(
+                np.array([1.0, np.nan]),
+                np.array([10.0, 5.0]),
+                np.array([104.0, 104.0]),
+            )
+
+    def test_a_non_finite_objective_is_not_a_fit(self):
+        """The other half of finding 5: it used to be returned as estimates.
+
+        When the objective is infinite everywhere, the optimiser hands back
+        the point it started from. Dressed in a result object that is
+        indistinguishable from a fit except for a flag, which is how
+        ``r = alpha = s = beta = 1`` reached a caller as an estimate.
+        """
+        from types import SimpleNamespace
+
+        from clvtools._validate import finished
+
+        stuck = SimpleNamespace(success=False, fun=np.inf, message="ABNORMAL")
+        with pytest.raises(ValueError, match="not finite at the point"):
+            finished(stuck, "Pareto/NBD")
+
+    def test_a_polish_that_wins_without_converging_is_reported(self):
+        """Finding 7's ambiguous flag, in the one shape that cannot be fitted
+        into existence: the gradient search converges, the Nelder-Mead polish
+        finds a better point but hits its own 20,000-evaluation cap, and
+        ``converged`` then describes the polish rather than the search. The
+        objective and the candidates are stubs because what is under test is
+        the reporting, not the arithmetic.
+        """
+        from scipy import optimize
+
+        import clvtools._staticcov as staticcov
+        from clvtools._validate import ConvergenceWarning
+
+        calls = []
+
+        def fake_minimize(objective, x0, **kwargs):
+            calls.append(kwargs.get("method"))
+            if kwargs.get("method") == "Nelder-Mead":
+                return optimize.OptimizeResult(
+                    x=np.zeros(2), fun=1.0, success=False,
+                    message="Maximum number of function evaluations has been exceeded.",
+                )
+            return optimize.OptimizeResult(
+                x=np.zeros(2), fun=2.0, success=True, message="CONVERGENCE",
+            )
+
+        settings = staticcov.SearchSettings()
+        monkeypatched = pytest.MonkeyPatch()
+        monkeypatched.setattr(staticcov.optimize, "minimize", fake_minimize)
+        try:
+            with pytest.warns(ConvergenceWarning, match="polish improved"):
+                result = staticcov._search(
+                    lambda p: float(np.sum(p)), [np.zeros(2)], settings
+                )
+        finally:
+            monkeypatched.undo()
+
+        assert result.fun == 1.0          # the better point is what is reported
+        assert "Nelder-Mead" in calls

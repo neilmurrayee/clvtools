@@ -107,9 +107,9 @@ Every generic the vignette calls — `summary()`, `coef()`, `confint()`,
 ```python
 >>> print(fit.summary().round(4).to_string())
         Estimate  Std. Error  z-val  Pr(>|z|)
-r  1.448...  0.243...  NaN  NaN
-alpha  48.634...  7.488...  NaN  NaN
-s  0.561...  0.271...  NaN  NaN
+r  1.448...  0.24...  NaN  NaN
+alpha  48.634...  7.48...  NaN  NaN
+s  0.561...  0.27...  NaN  NaN
 beta  46.88...  35.6...  NaN  NaN
 
 ```
@@ -207,14 +207,14 @@ formula names them, attrition process first.
 ...     formula="~ . | .", family=pnbd_family, data=static)
 >>> print(covariate_fit.summary().round(4).to_string())
         Estimate  Std. Error  z-val  Pr(>|z|)
-r  1.839...  0.345...  NaN  NaN
-alpha  92.963...  16.979...  NaN  NaN
-s  0.591...  0.260...  NaN  NaN
-beta  49.513...  36.143...  NaN  NaN
-life.Gender  -0.641...  0.295...  -2.172...  0.029...
-life.Channel  0.789...  0.305...  2.582...  0.009...
-trans.Gender  0.286...  0.104...  2.747...  0.006...
-trans.Channel  0.623...  0.104...  5.945...  0.000...
+r  1.839...  0.34...  NaN  NaN
+alpha  92.963...  16.97...  NaN  NaN
+s  0.591...  0.26...  NaN  NaN
+beta  49.513...  36.14...  NaN  NaN
+life.Gender  -0.641...  0.29...  -2.172...  0.029...
+life.Channel  0.789...  0.30...  2.582...  0.009...
+trans.Gender  0.286...  0.10...  2.747...  0.006...
+trans.Channel  0.623...  0.10...  5.945...  0.000...
 
 ```
 
@@ -243,13 +243,13 @@ The constrained covariate is then reported once, as `constr.Gender`:
 ...     names_cov_constr=["Gender"])
 >>> print(constrained.summary().round(4).to_string())
         Estimate  Std. Error  z-val  Pr(>|z|)
-r  1.793...  0.331...  NaN  NaN
-alpha  94.735...  17.222...  NaN  NaN
-s  0.428...  0.141...  NaN  NaN
-beta  59.06...  34.50...  NaN  NaN
-life.Channel  1.023...  0.354...  2.888...  0.003...
-trans.Channel  0.638...  0.106...  5.999...  0.000...
-constr.Gender  0.328...  0.107...  3.057...  0.002...
+r  1.793...  0.33...  NaN  NaN
+alpha  94.735...  17.22...  NaN  NaN
+s  0.428...  0.14...  NaN  NaN
+beta  59.06...  34.5...  NaN  NaN
+life.Channel  1.023...  0.35...  2.888...  0.003...
+trans.Channel  0.638...  0.10...  5.999...  0.000...
+constr.Gender  0.328...  0.10...  3.057...  0.002...
 
 ```
 
@@ -327,9 +327,9 @@ The walkthrough re-splits the data at 40 weeks for the spending model.
 >>> gg_40 = spending(family=gg_family, data=data_40)
 >>> print(gg_40.summary().round(4).to_string())
         Estimate  Std. Error  z-val  Pr(>|z|)
-p  3.675...  0.762...  NaN  NaN
-q  4.629...  0.801...  NaN  NaN
-gamma  36.110...  13.834...  NaN  NaN
+p  3.675...  0.76...  NaN  NaN
+q  4.629...  0.80...  NaN  NaN
+gamma  36.110...  13.83...  NaN  NaN
 
 ```
 

@@ -50,6 +50,7 @@ from numpy.typing import ArrayLike, NDArray
 from scipy import optimize
 
 from clvtools._optimize import options_for
+from clvtools._validate import finished
 from clvtools.inference import Fitted
 from clvtools.pnbd.aggregate import log_likelihood_ind
 
@@ -346,6 +347,7 @@ def fit_pnbd_correlated(
         method=method,
         options=options_for(method, maxiter, x0, options),
     )
+    result = finished(result, "correlated Pareto/NBD")
 
     r, alpha, s, beta = (float(v) for v in np.exp(result.x[:4]))
     return PnbdCorrelatedParams(
