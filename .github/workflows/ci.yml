@@ -8,7 +8,7 @@
 # Two properties of this repo are asserted by the workflow rather than stated:
 #
 #   * **It runs without R.** The R package CLVTools is the oracle, but its
-#     output is committed under `tests/fixtures/` (118 files) and `data/`
+#     output is committed under `tests/fixtures/` (123 files) and `data/`
 #     precisely so that the suite never shells out to `Rscript`. No R is
 #     installed below; if that promise is ever broken, this job is where it
 #     breaks.
@@ -84,8 +84,11 @@ jobs:
       - name: Lint
         run: uv run ruff check src tests tools docs
 
-      # 888 tests including the doctests in `src/` and `docs/paper.md`, plus the
+      # 906 tests including the doctests in `src/` and `docs/paper.md`, plus the
       # standing bar: 100% line coverage of `src/`, which `--cov-fail-under`
-      # turns from a habit into a gate.
+      # turns from a habit into a gate. Both figures are what a run prints --
+      # `906 passed, 1 deselected` and `TOTAL 2694 0 100%` on 2026-09-02 -- and
+      # a comment that drifts from them is worth correcting, since this file is
+      # where a reader comes to find out what green means.
       - name: Test
         run: uv run pytest --cov=clvtools --cov-fail-under=100

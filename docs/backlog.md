@@ -590,7 +590,7 @@ outlived the pre-`gc` object store.
 Nothing was pushed at any point, so this cost a force-push to nobody. That
 window is now closed by item 13.
 
-## 11. `[ ]` Correct three counts that are wrong in the workflow comments
+## 11. `[x]` Correct three counts that are wrong in the workflow comments
 
 Found by counting rather than by reading. None of them is a gate — all three are
 comments — but they are the first thing a reader meets in the file that claims
@@ -605,6 +605,38 @@ to define green, and one of them was wrong on the day it was written.
 
 *Done when:* each figure is what the command it describes actually prints, and
 the counts are quoted from a run rather than from the last time someone looked.
+
+**Done, and it was four rather than three.** Counting again before editing --
+which is the whole method of this item -- turned up one the review had missed:
+`dyncov.yml:5` describes the job as "~1,870 likelihood evaluations", which is
+the count from *before* item 9 vectorised the likelihood. `docs/performance.md`
+already records the vectorised fit converging in 1,925 and 1,562, and the test
+docstring already says "some 1,900"; only the workflow still quoted the old
+number, in the file whose entire purpose is to run that fit.
+
+The four, each replaced with what the command prints today:
+
+| Where | Was | Is |
+|---|---|---|
+| `ci.yml:11` | `tests/fixtures/` "118 files" | **123** |
+| `ci.yml:87` | "888 tests" | **906** |
+| `dyncov.yml:5` | "~1,870 likelihood evaluations" | **some 1,900** |
+| `dyncov.yml:89` | `1/892 tests collected (891 deselected)` | `1/907 (906)` |
+
+`ci.yml`'s note now also carries `TOTAL 2694 0 100%` beside the test count and
+the date both were read, so the next reader can tell staleness from
+disagreement. Measured rather than reasoned: `ls tests/fixtures | wc -l`,
+`pytest --collect-only`, and `pytest -m dyncov_fit --collect-only` for the line
+that quotes a deselection count the job itself never prints.
+
+Also reflowed a three-line comment in `dyncov.yml` that an earlier edit had
+left wrapped mid-sentence ("A GitHub-hosted / runner is / markedly slower").
+
+Verified: both files still parse (`yaml.safe_load` under `uvx --with pyyaml`,
+no dependency added) and both still name the job they did; `pytest -m quality`
+green. Nothing executable changed -- every edit is inside a comment, which is
+also why this item could not be verified by a run and had to be verified by
+counting.
 
 ## 12. `[ ]` Point `CLAUDE.md`'s layout at the two documents it omits
 

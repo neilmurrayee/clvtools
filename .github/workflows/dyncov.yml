@@ -2,7 +2,7 @@
 #
 # `addopts` in `pyproject.toml` carries `-m 'not dyncov_fit'`, so
 # `tests/test_pnbd_dyncov.py::TestFit::test_reaches_at_least_the_oracles_optimum`
-# -- the time-varying covariate MLE, ~1,870 likelihood evaluations over 600
+# -- the time-varying covariate MLE, some 1,900 likelihood evaluations over 600
 # customers, the most intricate estimator in the package -- is deselected from
 # every routine run, including `ci.yml`. That default is deliberate and stays:
 # ~10 minutes on an M-series Mac is too long to put in front of a push. The
@@ -58,9 +58,9 @@ jobs:
     runs-on: ubuntu-latest
     # Measured at 10:07 on an M-series Mac, twice, agreeing to a second --
     # down from 13.5 before the likelihood was vectorised. A GitHub-hosted
-    # runner is
-    # markedly slower at single-threaded floating point, so budget ~3x and add
-    # room on top: 120 minutes is roughly double the worst plausible honest run
+    # runner is markedly slower at single-threaded floating point, so budget
+    # ~3x and add room on top: 120 minutes is roughly double the worst
+    # plausible honest run
     # and still far under the 6-hour default, which would burn an entire
     # afternoon of runner time before reporting that the optimiser had hung.
     # If this limit is ever hit, that is itself the finding.
@@ -86,7 +86,7 @@ jobs:
       # The second `-m` wins over the `-m 'not dyncov_fit'` in `addopts`, which
       # is the whole trick: the marker is selected rather than merely
       # un-deselected, so this run is the single `TestFit` case and nothing
-      # else. Verified by collection -- `1/892 tests collected (891
+      # else. Verified by collection -- `1/907 tests collected (906
       # deselected)`. No `--cov` here: coverage of one test cannot clear the
       # 100% bar `ci.yml` enforces, and asking it to would only teach us to
       # loosen the bar.
