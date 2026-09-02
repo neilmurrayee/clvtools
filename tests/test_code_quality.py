@@ -58,9 +58,15 @@ ROOT = Path(__file__).resolve().parent.parent
 #: Everything that is ours. ``docs/`` holds the executable case study.
 TARGETS = ("src", "tests", "tools", "docs")
 
-#: Measured: the largest module is ``pnbd/dyncov.py`` at 655 code lines, and
-#: the largest test module is ``test_families.py`` at 662. The limit leaves a
-#: little headroom over both and catches anything that runs away from there.
+#: Measured: the largest module under ``src/`` is ``pnbd/dyncov.py`` at 455
+#: code lines, and the largest anywhere is ``tests/test_predict.py`` at 553.
+#: The limit catches anything that runs away from there.
+#:
+#: ``test_families.py`` reached 697 against this 700 and was split; a gate
+#: three lines from tripping is one the next commit trips for no reason.
+#: :meth:`TestSize.test_the_limit_still_binds` is the other half of that --
+#: re-measure this note when a module is split, and bring the limit down if
+#: the largest module has dropped away from it.
 MAX_CODE_LINES = 700
 
 

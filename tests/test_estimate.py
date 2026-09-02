@@ -15,7 +15,6 @@ from paper_values import GG_MLE, PNBD_MLE, PNBD_STATIC_MLE
 from clvtools import (
     ClvData,
     ClvDataDynCov,
-    ClvDataStaticCov,
     bgnbd,
     gg,
     ggomnbd,
@@ -32,16 +31,6 @@ NAMES_DYN = ["High.Season", "Gender", "Channel"]
 @pytest.fixture(scope="module")
 def data(apparel_trans) -> ClvData:
     return ClvData(apparel_trans, time_unit="week", estimation_split=104)
-
-
-@pytest.fixture(scope="module")
-def static_data(apparel_trans, apparel_static_cov) -> ClvDataStaticCov:
-    return ClvDataStaticCov(
-        ClvData(apparel_trans, time_unit="week", estimation_split=104),
-        apparel_static_cov,
-        names_cov_life=["Gender", "Channel"],
-        names_cov_trans=["Gender", "Channel"],
-    )
 
 
 class TestFormula:

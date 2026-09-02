@@ -17,7 +17,7 @@ import numpy as np
 import pytest
 from conftest import fixture_json
 
-from clvtools import ClvData, ClvDataStaticCov, bgnbd, ggomnbd
+from clvtools import ClvData, bgnbd, ggomnbd
 from clvtools.gg import log_likelihood as gg_log_likelihood
 from clvtools.inference import (
     likelihood_ratio_test,
@@ -30,16 +30,6 @@ from clvtools.pnbd.aggregate import log_likelihood as pnbd_log_likelihood
 @pytest.fixture(scope="module")
 def data(apparel_trans) -> ClvData:
     return ClvData(apparel_trans, time_unit="week", estimation_split=104)
-
-
-@pytest.fixture(scope="module")
-def static_data(apparel_trans, apparel_static_cov) -> ClvDataStaticCov:
-    return ClvDataStaticCov(
-        ClvData(apparel_trans, time_unit="week", estimation_split=104),
-        apparel_static_cov,
-        names_cov_life=["Gender", "Channel"],
-        names_cov_trans=["Gender", "Channel"],
-    )
 
 
 def _cbs(data):

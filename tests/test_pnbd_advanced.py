@@ -71,16 +71,6 @@ def xtt(cbs):
     return cbs["x"].to_numpy(), cbs["t.x"].to_numpy(), cbs["T.cal"].to_numpy()
 
 
-@pytest.fixture(scope="module")
-def static_data():
-    return ClvDataStaticCov(
-        ClvData(load_apparel_trans(), time_unit="week", estimation_split=104),
-        load_apparel_static_cov(),
-        names_cov_life=["Gender", "Channel"],
-        names_cov_trans=["Gender", "Channel"],
-    )
-
-
 # -- correlation, S3.4 and S6.5.2 ---------------------------------------------
 
 

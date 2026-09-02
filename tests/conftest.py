@@ -67,6 +67,31 @@ def apparel_static_cov() -> pd.DataFrame:
     return pd.read_csv(DATA / "apparelStaticCov.csv", dtype={"Id": str})
 
 
+@pytest.fixture(scope="module")
+def static_data():
+    """S6.4's covariate data object: Gender and Channel on both processes.
+
+    Four test modules had built this identically and privately. Module scope
+    rather than session, which is the scope all four used: a fitted object is
+    cheap to build from the frames above, and one shared instance per module
+    keeps a mutation in one module from reaching another.
+    """
+    from clvtools import ClvData, ClvDataStaticCov
+
+    return ClvDataStaticCov(
+        ClvData(
+            pd.read_csv(
+                DATA / "apparelTrans.csv", dtype={"Id": str}, parse_dates=["Date"]
+            ),
+            time_unit="week",
+            estimation_split=104,
+        ),
+        pd.read_csv(DATA / "apparelStaticCov.csv", dtype={"Id": str}),
+        names_cov_life=["Gender", "Channel"],
+        names_cov_trans=["Gender", "Channel"],
+    )
+
+
 @pytest.fixture(scope="session")
 def cbs_estimation() -> pd.DataFrame:
     """Oracle ``(x, t_x, T)`` over the 104-week estimation period."""
