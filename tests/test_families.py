@@ -749,7 +749,8 @@ class TestGgomnbdStaticCovariateFit:
     @pytest.mark.oracle
     def test_a_short_fit_runs_and_reports_its_shape(self, static_data):
         got = ggomnbd.fit_ggomnbd_staticcov(
-            static_data, polish=False, options={"maxiter": 2, "maxfun": 24}
+            static_data, polish=False, hessian=False,
+            options={"maxiter": 2, "maxfun": 24},
         )
         assert got.names == [
             "r", "alpha", "b", "s", "beta",
@@ -762,7 +763,8 @@ class TestGgomnbdStaticCovariateFit:
     def test_constraints_reduce_the_parameter_count(self, static_data):
         got = ggomnbd.fit_ggomnbd_staticcov(
             static_data, names_cov_constr=["Gender"],
-            polish=False, options={"maxiter": 2, "maxfun": 24},
+            polish=False, hessian=False,
+            options={"maxiter": 2, "maxfun": 24},
         )
         assert "constr.Gender" in got.names
         assert got.n_parameters == 8
@@ -780,8 +782,15 @@ class TestCovariateParamsObjects:
     @staticmethod
     @pytest.fixture(scope="class")
     def gg(static_data):
+        # ``hessian=False`` on all three: these check the *shape* of a fit
+        # over two iterations and never read a standard error. Since item 22
+        # gave this family the argument and the usual default of True, leaving
+        # it on cost each of them a nine-parameter difference of a likelihood
+        # that integrates per customer -- 7.4 s on a 50 s fit -- for numbers
+        # that come back NaN on this data anyway.
         return ggomnbd.fit_ggomnbd_staticcov(
-            static_data, polish=False, options={"maxiter": 2, "maxfun": 24}
+            static_data, polish=False, hessian=False,
+            options={"maxiter": 2, "maxfun": 24},
         )
 
     def test_coefficients_align_names_with_values(self, bg, gg):
