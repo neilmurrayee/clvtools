@@ -139,11 +139,33 @@ class NewCustomerSpending:
     """A prospective customer's order value. Cf. ``newcustomer.spending()``."""
 
 
+def _require_horizon(num_periods: float) -> float:
+    """``num_periods`` as a number, or a named error saying why it is not one.
+
+    ``num_periods`` reached ``<`` directly, so a string raised the unhelpful
+    ``'<' not supported between instances of 'str' and 'int'`` and a ``NaN``
+    passed the check outright -- ``nan < 0`` is ``False`` -- to become a
+    ``NaN`` prediction several frames later. Spec NC-13: "``num.periods`` must
+    be numeric and ``>= 0``". CLVTools 0.12.1 answers "num.periods has to be
+    numeric!" to both ``"52"`` and ``NA``, so neither is coerced here either.
+    """
+    if isinstance(num_periods, bool) or not isinstance(
+        num_periods, (int, float, np.integer, np.floating)
+    ):
+        raise TypeError(
+            f"num_periods must be a number, got {type(num_periods).__name__}"
+        )
+    value = float(num_periods)
+    if np.isnan(value):
+        raise ValueError("num_periods must be a number, got NaN")
+    if value < 0:
+        raise ValueError("num_periods must not be negative")
+    return value
+
+
 def newcustomer(num_periods: float) -> NewCustomer:
     """A prospective customer observed for ``num_periods``. See :class:`NewCustomer`."""
-    if num_periods < 0:
-        raise ValueError("num_periods must not be negative")
-    return NewCustomer(float(num_periods))
+    return NewCustomer(_require_horizon(num_periods))
 
 
 def newcustomer_static(
@@ -154,9 +176,9 @@ def newcustomer_static(
     ``cov_life`` and ``cov_trans`` map covariate name to value, one scenario at
     a time.
     """
-    if num_periods < 0:
-        raise ValueError("num_periods must not be negative")
-    return NewCustomerStatic(float(num_periods), dict(cov_life), dict(cov_trans))
+    return NewCustomerStatic(
+        _require_horizon(num_periods), dict(cov_life), dict(cov_trans)
+    )
 
 
 def newcustomer_dynamic(
@@ -172,10 +194,8 @@ def newcustomer_dynamic(
     constructors this one does arithmetic on dates, and the parameters do not
     carry the unit they were estimated in.
     """
-    if num_periods < 0:
-        raise ValueError("num_periods must not be negative")
     return NewCustomerDynamic(
-        float(num_periods), cov_life, cov_trans,
+        _require_horizon(num_periods), cov_life, cov_trans,
         pd.Timestamp(first_transaction), time_unit,
     )
 
@@ -273,6 +293,20 @@ def _new_customer_rates(params, spec: NewCustomerStatic) -> dict:
         missing = [n for n in names if n not in values]
         if missing:
             raise ValueError(f"no value given for covariates: {missing}")
+        # A name the fit does not carry used to be dropped here, so a typo in
+        # a scenario returned a plausible number computed from the *other*
+        # covariates with nothing said. Spec NC-13. CLVTools 0.12.1, asked
+        # directly, refuses it: "The Lifetime covariate data has to contain
+        # exactly the following columns: Gender, Channel!" -- exactly, so both
+        # directions are errors there. The two get different messages here
+        # because they are different mistakes: one value is absent, the other
+        # belongs to no covariate.
+        unknown = [n for n in values if n not in names]
+        if unknown:
+            raise ValueError(
+                f"these are not covariates of this fit: {unknown}; "
+                f"it carries {names}"
+            )
         return np.array([[float(values[n]) for n in names]])
 
     life = row(spec.cov_life, params.names_cov_life)
