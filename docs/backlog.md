@@ -785,7 +785,7 @@ the dispatches, so an attempt cannot quietly change the arithmetic.
 green expression by expression and the gain recorded, or the attempt is
 abandoned and `docs/performance.md` records what was learned about why.
 
-## 15. `[needs-decision]` Publish to PyPI
+## 15. `[x]` Publish to PyPI — decided: no
 
 Item 4 got the metadata to where `uv build` is clean, and `dist/` holds a
 `clvtools-0.1.0` wheel and sdist that have never been uploaded. The name is
@@ -801,6 +801,19 @@ has to land before anyone can configure.
 Note the ordering trap: the name is claimed by the first upload, and the
 metadata that upload carries is what PyPI shows until the next release. Item 13
 first, so the URLs on that page resolve.
+
+**Decided, 2026-09-02: not publishing.** The maintainer's call, and it closes
+the item rather than deferring it. What the work for it bought stays and was
+worth having on its own terms: the wheel now carries its datasets (item 18,
+where `pip install` of the built artifact raised `FileNotFoundError` on the
+README's first line), the metadata is complete, and `CHANGELOG.md` says plainly
+that 0.1.0 was built and never published. `pip install
+git+https://github.com/neilmurrayee/clvtools` is the supported route and is
+verified end to end from a clean environment — the README's Installation
+section leads with it.
+
+If this is ever revisited, the name was free on both indexes as of today and
+Trusted Publishing from Actions is the shape to use; nothing here blocks it.
 
 ## 16. `[needs-decision]` `bgbb`
 
@@ -1151,6 +1164,25 @@ alive-only likelihood, with no signal. That is the same silent-degradation
 shape as findings 4 and 5, in the one estimator whose fixtures cannot see it:
 CLVTools arranges the arithmetic the same way, so the 30 committed
 intermediates agree with the broken version by construction.
+
+**Attempted and reverted, 2026-09-02 — the spike's negative result.** The
+cheap version of this does not work. Scaling every term of one customer's
+:math:`F_2` by a single offset, :math:`(r+s+x)\log\alpha_1` of the first term,
+keeps the sum O(1) and looks like it should be equivalent. It is not: customer
+93 at `dyncov_fit_full`'s parameters has `x = 52` and a true `F2` of
+**5.57e-165** — comfortably representable, computed correctly by the existing
+code — and the scaled version moved its likelihood by 2.4e-3, disagreeing with
+CLVTools where the two had agreed. Five prediction columns moved with it.
+
+Why: one offset cannot serve terms whose own :math:`\alpha` differ, so the
+scaled terms lose accuracy in the *other* direction. The fix needs per-term
+logs and a signed log-sum-exp at each level — inside an arm, across
+`F2.1/F2.2/F2.3`, and finally against `F1` and `F3` — which is the larger
+change described below rather than a shortcut around it.
+
+Kept from the attempt: nothing in `src/`. What it bought is the knowledge that
+the shortcut is wrong, and a reminder that CLAUDE.md's warning about order of
+operations here is not decorative.
 
 *Done when:* the two `F2` terms are combined with a signed log-sum-exp, `_f2`
 reports a log magnitude and a sign rather than a value that can vanish,
