@@ -31,7 +31,7 @@ from numpy.typing import ArrayLike, NDArray
 from scipy import optimize
 
 from clvtools._optimize import options_for
-from clvtools._validate import ConvergenceWarning, finished
+from clvtools._validate import ConvergenceWarning, finished, start_values
 from clvtools.inference import Fitted, numerical_hessian
 
 __all__ = ["SearchSettings", "StaticCovResult", "fit_static_covariates"]
@@ -198,20 +198,6 @@ class _Layout:
             np.log(np.asarray(model_values, dtype=float)),
             np.full(self.n_cov_coords, float(cov_value)),
         ])
-
-
-def _validated_start(
-    start: tuple[float, ...] | None, n_model_params: int
-) -> NDArray[np.float64] | None:
-    """The caller's model start, checked against what the family expects."""
-    if start is None:
-        return None
-    start_arr = np.asarray(start, dtype=float)
-    if start_arr.shape != (n_model_params,):
-        raise ValueError(f"start must give {n_model_params} model parameters")
-    if np.any(start_arr <= 0):
-        raise ValueError("start values must be strictly positive")
-    return start_arr
 
 
 def _validated_reg_lambdas(
@@ -413,7 +399,13 @@ def fit_static_covariates(
     layout = _Layout.build(
         names_cov_life, names_cov_trans, names_cov_constr, n_model_params
     )
-    start_arr = _validated_start(settings.start, n_model_params)
+    start_arr = (
+        None
+        if settings.start is None
+        else start_values(
+            settings.start, count=n_model_params, parameters="model parameters"
+        )
+    )
     reg_lambdas = _validated_reg_lambdas(settings.reg_lambdas)
 
     cov_start = DEFAULT_COV_START if settings.start_cov is None else settings.start_cov

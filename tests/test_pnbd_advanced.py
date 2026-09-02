@@ -188,7 +188,7 @@ class TestCorrelatedFit:
 
     def test_rejects_bad_start_values(self, xtt):
         x, t_x, T = xtt
-        with pytest.raises(ValueError, match="four values"):
+        with pytest.raises(ValueError, match="4 values"):
             fit_pnbd_correlated(x, t_x, T, start=(1.0, 1.0))
         with pytest.raises(ValueError, match="strictly positive"):
             fit_pnbd_correlated(x, t_x, T, start=(1.0, -1.0, 1.0, 1.0))

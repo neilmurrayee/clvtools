@@ -34,7 +34,13 @@ import warnings
 
 import numpy as np
 
-__all__ = ["ConvergenceWarning", "customer_history", "finished"]
+__all__ = [
+    "ConvergenceWarning",
+    "customer_history",
+    "finished",
+    "spending_history",
+    "start_values",
+]
 
 
 class ConvergenceWarning(UserWarning):
@@ -100,6 +106,72 @@ def customer_history(
         raise ValueError("t_x must be 0 where x == 0")
 
     return x, np.minimum(t_x, T), T
+
+
+def spending_history(
+    x: np.ndarray, z_bar: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    r"""Validate a frequency and mean-spend pair for the Gamma-Gamma.
+
+    The spending model's counterpart to :func:`customer_history`, and its rules
+    are the ones eq. (17) needs: matching shapes, at least one customer,
+    :math:`x \ge 0`, :math:`\bar{z} \ge 0`, and at least one customer with
+    both a transaction and a spend -- without one the likelihood is constant
+    and there is nothing to maximise.
+
+    >>> import numpy as np
+    >>> x, z_bar = spending_history(np.array([2.0, 0.0]), np.array([30.0, 0.0]))
+    >>> x.tolist(), z_bar.tolist()
+    ([2.0, 0.0], [30.0, 0.0])
+
+    >>> spending_history(np.array([0.0]), np.array([0.0]))
+    Traceback (most recent call last):
+        ...
+    ValueError: no customer has both a transaction and a spend: nothing to estimate
+    """
+    if x.shape != z_bar.shape:
+        raise ValueError("x and z_bar must have the same shape")
+    if x.size == 0:
+        raise ValueError("no customers to fit")
+    if np.any(x < 0):
+        raise ValueError("frequencies x must be non-negative")
+    if np.any(z_bar < 0):
+        raise ValueError("mean spending must be non-negative")
+    if not np.any((x > 0) & (z_bar > 0)):
+        raise ValueError(
+            "no customer has both a transaction and a spend: nothing to estimate"
+        )
+    return x, z_bar
+
+
+def start_values(
+    start, *, count: int, parameters: str
+) -> np.ndarray:
+    """The caller's start vector, checked against what the family expects.
+
+    Every fit took the same two views of a start vector -- it must have the
+    family's own length, and every value must be strictly positive, because
+    the search runs over their logarithms. Five modules said so in five
+    near-identical pairs of lines. ``parameters`` is the noun phrase that
+    names them, so each family's message stays as specific as it was.
+
+    >>> start_values((1.0, 2.0), count=2, parameters="values (r, alpha)")
+    array([1., 2.])
+    >>> start_values((1.0,), count=2, parameters="values (r, alpha)")
+    Traceback (most recent call last):
+        ...
+    ValueError: start must give 2 values (r, alpha)
+    >>> start_values((1.0, 0.0), count=2, parameters="values (r, alpha)")
+    Traceback (most recent call last):
+        ...
+    ValueError: start values must be strictly positive
+    """
+    values = np.asarray(start, dtype=float)
+    if values.shape != (count,):
+        raise ValueError(f"start must give {count} {parameters}")
+    if np.any(values <= 0):
+        raise ValueError("start values must be strictly positive")
+    return values
 
 
 def finished(result, family: str):

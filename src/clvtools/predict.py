@@ -538,6 +538,59 @@ def _has_covariates(params) -> bool:
     )
 
 
+def _reject_unused_for_new_customer(spending_params, prediction_end) -> None:
+    """Arguments a prospective customer has nowhere to put.
+
+    A scenario's horizon is the one carried by the spec, and it returns a
+    single number rather than a table, so a spending model and a prediction
+    end have nowhere to go. Silently dropping them meant
+    ``predict(newcustomer(52), fit, gg, prediction_end=99)`` returned a
+    transaction count with no hint that two of its four arguments were
+    ignored. Finding 12 of ``docs/review-2026-09-02.md``.
+    """
+    unused = [
+        name
+        for name, value in (
+            ("spending_params", spending_params),
+            ("prediction_end", prediction_end),
+        )
+        if value is not None
+    ]
+    if unused:
+        raise ValueError(
+            f"{', '.join(unused)} cannot be used with a prospective "
+            "customer: the horizon comes from newcustomer(num_periods) and "
+            "spending is predicted by passing newcustomer_spending() with a "
+            "Gamma-Gamma fit instead"
+        )
+
+
+def _add_spending(
+    table: pd.DataFrame, clv_data: ClvData, spending_params: GgParams,
+    has_dert: bool,
+) -> None:
+    """S6.3's spending columns, appended in the order CLVTools emits them.
+
+    Total spending expected in the prediction period is ``CET`` times mean
+    spending; CLV is ``DERT`` times mean spending, so a family without a
+    ``DERT`` has no ``predicted.CLV`` either.
+    """
+    if not clv_data.has_spending:
+        raise ValueError(
+            "spending was requested but the transaction data has no Price column"
+        )
+    spend = clv_data.spending_summary().set_index("Id").loc[table.index]
+    mean_spending = expected_mean_spending(
+        spend["x"].to_numpy(),
+        spend["Spending"].to_numpy(),
+        **spending_params.as_dict(),
+    )
+    table["predicted.mean.spending"] = mean_spending
+    table["predicted.period.spending"] = table["CET"] * mean_spending
+    if has_dert:
+        table["predicted.CLV"] = table["DERT"] * mean_spending
+
+
 def predict(
     clv_data: ClvData | NewCustomer | NewCustomerSpending,
     params: PnbdParams,
@@ -625,27 +678,7 @@ def predict(
     True
     """
     if isinstance(clv_data, (NewCustomer, NewCustomerSpending)):
-        # A prospective customer's horizon is the one carried by the spec, and
-        # a scenario returns a single number rather than a table, so a spending
-        # model and a prediction end have nowhere to go. Silently dropping them
-        # meant `predict(newcustomer(52), fit, gg, prediction_end=99)` returned
-        # a transaction count with no hint that two of its four arguments were
-        # ignored. Finding 12 of ``docs/review-2026-09-02.md``.
-        unused = [
-            name
-            for name, value in (
-                ("spending_params", spending_params),
-                ("prediction_end", prediction_end),
-            )
-            if value is not None
-        ]
-        if unused:
-            raise ValueError(
-                f"{', '.join(unused)} cannot be used with a prospective "
-                "customer: the horizon comes from newcustomer(num_periods) and "
-                "spending is predicted by passing newcustomer_spending() with a "
-                "Gamma-Gamma fit instead"
-            )
+        _reject_unused_for_new_customer(spending_params, prediction_end)
         return _predict_new_customer(clv_data, params)
 
     last = _resolve_prediction_end(clv_data, prediction_end)
@@ -690,22 +723,6 @@ def predict(
         table["DERT"] = dert(x, t_x, T, continuous_discount_factor, **model)
 
     if spending_params is not None:
-        if not clv_data.has_spending:
-            raise ValueError(
-                "spending was requested but the transaction data has no Price column"
-            )
-        spend = clv_data.spending_summary().set_index("Id").loc[cbs.index]
-        mean_spending = expected_mean_spending(
-            spend["x"].to_numpy(),
-            spend["Spending"].to_numpy(),
-            **spending_params.as_dict(),
-        )
-        table["predicted.mean.spending"] = mean_spending
-        # S6.3: total spending expected in the prediction period is CET times
-        # mean spending; CLV is DERT times mean spending, so a family without a
-        # DERT has no CLV column either.
-        table["predicted.period.spending"] = table["CET"] * mean_spending
-        if dert is not None:
-            table["predicted.CLV"] = table["DERT"] * mean_spending
+        _add_spending(table, clv_data, spending_params, has_dert=dert is not None)
 
     return table

@@ -121,6 +121,53 @@ def _family_name(family) -> str:
     return name
 
 
+def _reject_use_cor(name: str, covariates: bool) -> None:
+    """S6.5.2's ``use.cor`` is offered on the plain Pareto/NBD, and only there.
+
+    Two ways to be outside that, and each is worth naming separately: the data
+    carries covariates, or the family is not the Pareto/NBD. Table 4 marks both
+    as unavailable. Which of the two the caller hit is the caller's to know --
+    it is already dispatching on the data's type -- so the covariate case
+    arrives as a flag rather than being re-derived here.
+    """
+    if covariates:
+        raise ValueError("process correlation is for the plain Pareto/NBD")
+    if name != "pnbd":
+        raise ValueError(
+            f"Table 4 gives process correlation to the Pareto/NBD alone, "
+            f"not to the {name}"
+        )
+
+
+def _narrowed[Data: (ClvDataStaticCov, ClvDataDynCov)](
+    data: Data, names_life: list[str] | None, names_trans: list[str] | None
+) -> Data:
+    """The covariate data a formula asks for, or all of it when none was given.
+
+    Generic over the two covariate data classes because each narrows to its own
+    type -- a :class:`~clvtools.data.ClvDataDynCov` must still be one
+    afterwards, or the time-varying fit has nothing to walk.
+    """
+    if names_life is None and names_trans is None:
+        return data
+    return data.with_covariates(names_life, names_trans)
+
+
+def _fit_dyncov(name: str, data: ClvDataDynCov, **kwargs):
+    """S6.4.2's time-varying covariates -- the Pareto/NBD alone, per Table 4."""
+    if name != "pnbd":
+        raise ValueError(
+            f"Table 4 gives time-varying covariates to the Pareto/NBD "
+            f"alone; {name} takes time-invariant ones"
+        )
+    return fit_pnbd_dyncov(
+        data.walks(),
+        names_cov_life=data.names_cov_life,
+        names_cov_trans=data.names_cov_trans,
+        **kwargs,
+    )
+
+
 def latent_attrition(
     family,
     data: ClvData,
@@ -173,43 +220,26 @@ def latent_attrition(
     names_life, names_trans = (
         parse_formula(formula) if formula is not None else (None, None)
     )
+    if use_cor:
+        _reject_use_cor(name, isinstance(data, ClvDataStaticCov | ClvDataDynCov))
 
     if isinstance(data, ClvDataDynCov):
-        if name != "pnbd":
-            raise ValueError(
-                f"Table 4 gives time-varying covariates to the Pareto/NBD "
-                f"alone; {name} takes time-invariant ones"
-            )
-        if use_cor:
-            raise ValueError("process correlation is for the plain Pareto/NBD")
-        if names_life is not None or names_trans is not None:
-            data = data.with_covariates(names_life, names_trans)
-        return fit_pnbd_dyncov(
-            data.walks(),
-            names_cov_life=data.names_cov_life,
-            names_cov_trans=data.names_cov_trans,
-            **kwargs,
+        return _fit_dyncov(
+            name, _narrowed(data, names_life, names_trans), **kwargs
         )
 
     if isinstance(data, ClvDataStaticCov):
-        if use_cor:
-            raise ValueError("process correlation is for the plain Pareto/NBD")
-        if names_life is not None or names_trans is not None:
-            data = data.with_covariates(names_life, names_trans)
-        return FAMILIES[name]["staticcov"](data, **kwargs)
+        return FAMILIES[name]["staticcov"](
+            _narrowed(data, names_life, names_trans), **kwargs
+        )
 
-    if formula is not None and (names_life or names_trans):
+    if names_life or names_trans:
         raise ValueError(
             "the data has no covariates: build it with ClvDataStaticCov or "
             "ClvDataDynCov before naming any in a formula"
         )
     cbs = data.customer_summary()
     fit = fit_pnbd_correlated if use_cor else FAMILIES[name]["plain"]
-    if use_cor and name != "pnbd":
-        raise ValueError(
-            f"Table 4 gives process correlation to the Pareto/NBD alone, "
-            f"not to the {name}"
-        )
     return fit(cbs["x"], cbs["t_x"], cbs["T"], **kwargs)
 
 
