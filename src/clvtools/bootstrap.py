@@ -37,7 +37,7 @@ import numpy as np
 import pandas as pd
 
 from clvtools._validate import ConvergenceWarning
-from clvtools.data import ClvData, ClvDataStaticCov
+from clvtools.data import ClvData, ClvDataDynCov, ClvDataStaticCov
 
 __all__ = [
     "BOOTSTRAP_SUFFIX",
@@ -131,6 +131,23 @@ def _resample_covariates(
     )
 
 
+def _drawer(sample, rng) -> Callable[[np.ndarray], np.ndarray]:
+    """The customer sampler, given the generator ``seed`` produced.
+
+    A caller's own sampler used to be invoked with the pool alone, so ``seed``
+    did nothing whenever one was passed: the runs were not reproducible and
+    nothing said so. It is offered the generator when it can take one, and a
+    one-argument sampler still works -- that is the shape
+    ``?clv.bootstrapped.apply``'s own example has. Finding 11 of
+    ``docs/review-2026-09-02.md``.
+    """
+    if sample is None:
+        return lambda pool: rng.choice(pool, size=len(pool), replace=True)
+    if len(inspect.signature(sample).parameters) >= 2:
+        return lambda pool: sample(pool, rng)
+    return sample
+
+
 def bootstrap_apply(
     data: ClvData,
     apply: Callable[[ClvData], object],
@@ -188,21 +205,27 @@ def bootstrap_apply(
         raise ValueError("num_boots must be at least 1")
 
     ids = np.array(sorted(data.transactions["Id"].unique()))
-    rng = np.random.default_rng(seed)
-    if sample is None:
-        def sample(pool, rng=rng):
-            return rng.choice(pool, size=len(pool), replace=True)
-        draw = sample
-    else:
-        # A user-supplied sampler used to be called with the pool alone, so
-        # ``seed`` did nothing whenever one was given -- the runs were not
-        # reproducible and nothing said so. It is offered the generator, and
-        # falls back for a one-argument sampler, which is the shape
-        # ``?clv.bootstrapped.apply``'s own example has.
-        takes_rng = len(inspect.signature(sample).parameters) >= 2
+    draw = _drawer(sample, np.random.default_rng(seed))
 
-        def draw(pool, _sample=sample, _rng=rng, _takes=takes_rng):
-            return _sample(pool, _rng) if _takes else _sample(pool)
+    if isinstance(data, ClvDataDynCov):
+        # `ClvDataDynCov` subclasses `ClvData` rather than `ClvDataStaticCov`,
+        # so the covariate branch below never fired for it: a dyncov object
+        # went in and `apply` received a plain `ClvData` with every covariate
+        # silently gone, then refitted a model that is *defined* by those
+        # covariates without them. Reproduced before this guard existed.
+        #
+        # Resampling a time-varying covariate series is not the static case
+        # with more rows: a customer drawn twice needs its whole per-period
+        # series duplicated under the new id and re-aligned to the resampled
+        # window. Until that exists, refusing is the only honest answer -- the
+        # alternative is an interval computed from the wrong model. Finding A2
+        # of `docs/spec-audit.md`.
+        raise NotImplementedError(
+            "bootstrapping time-varying covariate data is not supported: the "
+            "covariate series would have to be resampled with the customers, "
+            "and until it is, the refit would silently drop every covariate. "
+            "Bootstrap the static-covariate or plain model instead."
+        )
 
     results = []
     failures: list[str] = []

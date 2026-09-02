@@ -142,6 +142,42 @@ def load_cdnow() -> pd.DataFrame:
     )
 
 
+def _identified(df: pd.DataFrame) -> pd.DataFrame:
+    """``Id`` as a string and ``Date`` as a timestamp, or an explanation.
+
+    A row that does not say who or when is not a transaction. Both used to
+    travel silently: an NA ``Id`` became the string ``"None"`` and an NA
+    ``Date`` was dropped by ``to_datetime``, so transactions could leave the
+    data between a caller's frame and the model with nothing said -- five of
+    them, in the case that found this. Finding A4 of ``docs/spec-audit.md``.
+
+    >>> import pandas as pd
+    >>> _identified(pd.DataFrame({"Id": [None], "Date": ["2005-01-02"]}))
+    Traceback (most recent call last):
+        ...
+    ValueError: 1 transaction has no Id; drop or repair those rows before modelling them
+    """
+    for column in ("Id", "Date"):
+        missing = df[column].isna()
+        if missing.any():
+            count = int(missing.sum())
+            raise ValueError(
+                f"{count} transaction{'s have' if count > 1 else ' has'} no "
+                f"{column}; drop or repair those rows before modelling them"
+            )
+
+    df["Id"] = df["Id"].astype(str)
+    parsed = pd.to_datetime(df["Date"], errors="coerce")
+    unparsed = parsed.isna()
+    if unparsed.any():
+        raise ValueError(
+            f"{int(unparsed.sum())} transaction dates could not be parsed, "
+            f"e.g. {list(df['Date'][unparsed][:3])}"
+        )
+    df["Date"] = parsed
+    return df
+
+
 class ClvData:
     """A transaction log with an estimation/holdout split. Cf. ``clvdata()``.
 
@@ -196,6 +232,14 @@ class ClvData:
         self.time = timeunit.get(time_unit)
         self.time_unit = time_unit
 
+        if not isinstance(transactions, pd.DataFrame):
+            raise TypeError(
+                "transactions must be a pandas DataFrame with Id and Date "
+                f"columns, not {type(transactions).__name__}"
+            )
+        if transactions.empty:
+            raise ValueError("transaction data is empty: there is nothing to model")
+
         cols = {name_id: "Id", name_date: "Date"}
         has_price = name_price is not None and name_price in transactions.columns
         if has_price:
@@ -214,9 +258,7 @@ class ClvData:
         if missing:
             raise ValueError(f"transaction data is missing columns: {missing}")
 
-        df = transactions[list(cols)].rename(columns=cols).copy()
-        df["Id"] = df["Id"].astype(str)
-        df["Date"] = pd.to_datetime(df["Date"])
+        df = _identified(transactions[list(cols)].rename(columns=cols).copy())
         if not has_price:
             df["Price"] = np.nan
         elif not np.isfinite(df["Price"].to_numpy(dtype=float)).all():

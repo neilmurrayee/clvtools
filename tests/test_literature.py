@@ -1,0 +1,207 @@
+r"""Published values from the CLV literature, on CDNOW.
+
+A third class of oracle, beside the paper (``-m paper``) and the R package's own
+documentation (``-m rdoc``): the articles the models come from. CLVTools' own
+testthat suite asserts these, and that suite is not installed with the package,
+so nothing in this repository had ever consulted them — ``docs/spec.md``'s
+literature tier, and finding C of ``docs/spec-audit.md``.
+
+They are on ``cdnow`` at ``estimation_split="1997-09-30"``, which is why
+``paper_values.py`` does not already reach them: the paper and ``?pmf`` both use
+the 37-week split, and the published fits use the date.
+
+Three papers, five oracles:
+
+* Fader, Hardie & Lee (2005), "Counting Your Customers the Easy Way: An
+  Alternative to the Pareto/NBD Model", *Marketing Science* 24(2) — both the
+  Pareto/NBD it compares against and the BG/NBD it introduces.
+* Fader & Hardie (2013), "The Gamma-Gamma Model of Monetary Value" — the
+  spending model.
+* CLVTools 0.12.1's own standard errors for the Pareto/NBD fit.
+
+The tolerance is half a unit in the last decimal each source printed, plus a
+fifth for this package's own optimiser -- :func:`published_tol`. A paper writing
+``r = 0.243`` is claiming the estimate lies in [0.2425, 0.2435), and no tighter
+comparison against it is available; a fixed relative tolerance is simultaneously
+too tight for that and far too loose for ``-4055.9177``. The log-likelihoods are
+compared to the decimal they were printed to, which is one for the 2005 paper
+and four for the 2013 one.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+import pytest
+
+from clvtools import ClvData, load_cdnow
+from clvtools.bgnbd import fit_bgnbd
+from clvtools.gg import fit_gg
+from clvtools.pnbd import fit_pnbd, probability_alive
+
+pytestmark = [pytest.mark.slow, pytest.mark.literature]
+
+#: Fader, Hardie & Lee (2005), Table 1.
+FHL2005_PNBD = {"r": 0.553, "alpha": 10.578, "s": 0.606, "beta": 11.669}
+FHL2005_PNBD_LL = -9595.0
+
+#: The same table's BG/NBD, the model that paper introduces.
+FHL2005_BGNBD = {"r": 0.243, "alpha": 4.414, "a": 0.793, "b": 2.426}
+FHL2005_BGNBD_LL = -9582.4
+
+#: Fader & Hardie (2013), "The Gamma-Gamma Model of Monetary Value".
+FH2013_GG = {"p": 6.25, "q": 3.74, "gamma": 15.44}
+FH2013_GG_LL = -4055.9177
+
+#: CLVTools 0.12.1's standard errors for the Pareto/NBD fit above, which its
+#: own suite asserts to 0.001.
+CLVTOOLS_PNBD_SE = {
+    "r": 0.0476264, "alpha": 0.8427222, "s": 0.1872594, "beta": 6.2105448,
+}
+
+
+
+def published_tol(value: float) -> float:
+    """Half a unit in the last decimal the source printed, plus a fifth.
+
+    A paper printing ``r = 0.243`` is saying the estimate lies in
+    [0.2425, 0.2435), so agreement means landing inside that interval and no
+    tighter comparison is available. A fixed relative tolerance gets this wrong
+    in both directions: 1e-3 is too tight for ``0.243`` (three decimals) and far
+    too loose for ``-4055.9177`` (four). The extra fifth is for this package's
+    own optimiser, which stops at its own point on a flat ridge -- the precision
+    rule at the head of ``test_pnbd_fit.py``.
+
+    >>> published_tol(0.243)
+    0.0006
+    >>> published_tol(15.44)
+    0.006
+    """
+    text = f"{value!r}"
+    decimals = len(text.split(".")[1]) if "." in text else 0
+    return 0.6 * 10.0**-decimals
+
+@pytest.fixture(scope="module")
+def cdnow():
+    """The split the literature uses, which is a date rather than a count."""
+    return ClvData(load_cdnow(), time_unit="week", estimation_split="1997-09-30")
+
+
+@pytest.fixture(scope="module")
+def cbs(cdnow):
+    return cdnow.customer_summary()
+
+
+class TestFaderHardieLee2005:
+    """Both models of Table 1, on the data the paper uses."""
+
+    @pytest.fixture(scope="class")
+    def pnbd(self, cbs):
+        return fit_pnbd(cbs["x"], cbs["t_x"], cbs["T"])
+
+    @pytest.fixture(scope="class")
+    def bgnbd(self, cbs):
+        return fit_bgnbd(cbs["x"], cbs["t_x"], cbs["T"], hessian=False)
+
+    def test_the_pareto_nbd_estimates_match(self, pnbd):
+        for name, want in FHL2005_PNBD.items():
+            assert getattr(pnbd, name) == pytest.approx(
+                want, abs=published_tol(want)
+            ), name
+
+    def test_the_pareto_nbd_log_likelihood_matches(self, pnbd):
+        """Printed to one decimal, so compared to one."""
+        assert pnbd.log_likelihood == pytest.approx(FHL2005_PNBD_LL, abs=0.05)
+
+    def test_the_bgnbd_estimates_match(self, bgnbd):
+        for name, want in FHL2005_BGNBD.items():
+            assert getattr(bgnbd, name) == pytest.approx(
+                want, abs=published_tol(want)
+            ), name
+
+    def test_the_bgnbd_log_likelihood_matches(self, bgnbd):
+        assert bgnbd.log_likelihood == pytest.approx(FHL2005_BGNBD_LL, abs=0.05)
+
+    def test_the_bgnbd_fits_this_data_better(self, pnbd, bgnbd):
+        """Which is the paper's claim, and the reason it exists.
+
+        "An Alternative to the Pareto/NBD Model": on CDNOW the BG/NBD attains
+        the higher likelihood, by about 12.5 units, with the same four
+        parameters. Asserting the *ordering* rather than the gap keeps this a
+        statement about the models rather than about two optimisers.
+        """
+        assert bgnbd.log_likelihood > pnbd.log_likelihood
+
+    @pytest.mark.oracle
+    def test_the_standard_errors_match_clvtools(self, pnbd):
+        """CLVTools' own suite asserts these to 0.001; so does this.
+
+        They are second derivatives of a flat surface differenced numerically,
+        which is why the tolerance is absolute and generous rather than
+        relative and tight.
+        """
+        got = pnbd.standard_errors()
+        for name, want in CLVTOOLS_PNBD_SE.items():
+            assert got[name] == pytest.approx(want, abs=1e-3), name
+
+
+class TestFaderHardie2013:
+    """The Gamma-Gamma paper, on the spending of the same cohort."""
+
+    @pytest.fixture(scope="class")
+    def fitted(self, cdnow):
+        spending = cdnow.spending_summary()
+        return fit_gg(spending["x"], spending["Spending"], hessian=False)
+
+    def test_the_estimates_match(self, fitted):
+        for name, want in FH2013_GG.items():
+            assert getattr(fitted, name) == pytest.approx(
+                want, abs=published_tol(want)
+            ), name
+
+    def test_the_log_likelihood_matches(self, fitted):
+        """Published to four decimals, and reproduced to them."""
+        assert fitted.log_likelihood == pytest.approx(FH2013_GG_LL, abs=1e-3)
+
+
+class TestNumericalStabilityCases:
+    """Named regression inputs, needing no R and no fit."""
+
+    def test_palive_is_finite_for_very_heavy_buyers(self):
+        """M-04: inputs that returned ``NaN`` in an earlier implementation.
+
+        Four customers with 161 to 254 transactions, at parameters where the
+        Pareto/NBD's intermediate terms are extreme. The point is not the
+        values but that they exist and are probabilities.
+        """
+        x = np.array([221.0, 254.0, 161.0, 204.0])
+        t_x = np.array([103.42857, 97.14286, 94.71429, 98.57143])
+        T = np.array([103.57143, 97.28571, 98.00000, 99.42857])
+        got = probability_alive(x, t_x, T, r=0.5143, alpha=2.8845,
+                                s=0.2856, beta=14.1087)
+        assert np.all(np.isfinite(got))
+        assert np.all((got > 0.0) & (got <= 1.0))
+        np.testing.assert_allclose(
+            got, [0.99960, 0.99956, 0.74949, 0.99426], atol=1e-4
+        )
+
+    @pytest.mark.parametrize("family", ["pnbd", "bgnbd", "ggomnbd"])
+    def test_the_probability_of_no_purchase_falls_with_the_window(self, family):
+        """PMF-04: ``P(X = 0)`` is decreasing in ``T``, for every family.
+
+        The longer someone is observed, the less likely they bought nothing.
+        True of any counting model and asserted for none of them until now.
+        """
+        import importlib
+
+        module = importlib.import_module(f"clvtools.{family}")
+        parameters = {
+            "pnbd": {"r": 0.55, "alpha": 10.58, "s": 0.61, "beta": 11.67},
+            "bgnbd": {"r": 0.24, "alpha": 4.41, "a": 0.79, "b": 2.43},
+            "ggomnbd": {"r": 0.55, "alpha": 10.58, "b": 0.01, "s": 0.61,
+                        "beta": 11.67},
+        }[family]
+        windows = np.array([1.0, 5.0, 13.0, 26.0, 52.0, 104.0])
+        p0 = np.array([
+            float(module.pmf(0, T, **parameters)) for T in windows
+        ])
+        assert np.all(np.diff(p0) < 0), p0

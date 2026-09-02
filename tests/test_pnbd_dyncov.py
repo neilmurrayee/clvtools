@@ -370,16 +370,44 @@ class TestWalkAssembly:
                 customer.aux_walk_trans.tjk
             )
 
-    def test_real_and_auxiliary_lifetime_walks_do_not_overlap(self, dyncov_walks):
-        """The interval containing the last transaction belongs to the auxiliary
-        walk alone, which ``d_i`` depends on."""
-        info = fixture_csv("dyncov_walkinfo")
-        has_real = info["real_life_from"].notna()
-        # Real and auxiliary lifetime walks index different arrays, so the
-        # non-overlap is structural; what must hold is that a customer with
-        # repeat purchases has both.
-        cbs = fixture_csv("dyncov_cbs")
-        assert (cbs.loc[has_real.to_numpy(), "x"] > 0).all()
+    def test_a_real_lifetime_walk_exists_exactly_for_repeat_buyers(self):
+        """Renamed to what it asserts, and made a biconditional.
+
+        It was called ``test_real_and_auxiliary_lifetime_walks_do_not_overlap``
+        and its own comment conceded that it tested something else -- finding
+        B2 of ``docs/spec-audit.md``. The non-overlap is not falsifiable in
+        this representation: the two walks index *different arrays*
+        (``real_life_from/to`` runs 1..93 for customer 1 while
+        ``aux_life_from/to`` runs 1..12), so there is no shared coordinate in
+        which they could overlap. A test cannot assert it, and a name should
+        not claim it.
+
+        What the fixture does say, and what ``d_i`` actually depends on, is
+        which customers have a real lifetime walk at all: exactly those who
+        bought more than once. Asserting both directions makes it a statement
+        with content -- the original only checked that having a walk implies
+        ``x > 0``, which a fixture of all-NaN walks would also satisfy.
+        """
+        info = fixture_csv("dyncov_walkinfo").set_index("Id")
+        cbs = fixture_csv("dyncov_cbs").set_index("Id")
+        has_real = info["real_life_from"].notna().reindex(cbs.index)
+        repeat_buyer = cbs["x"] > 0
+
+        # One direction always holds: a walk over real intervals needs a
+        # repeat purchase to bound it.
+        assert not (has_real & ~repeat_buyer).any()
+
+        # The converse does not, and the exception is worth pinning rather
+        # than papering over. Customer 129 buys again at t_x = 0.43 weeks --
+        # three days after the first purchase, inside the *first* covariate
+        # interval -- so there is no whole interval for a real walk to span.
+        # 386 walks against 387 repeat buyers, and that is the missing one.
+        without = repeat_buyer & ~has_real
+        assert list(cbs.index[without]) == ["129"]
+        assert float(cbs.loc["129", "t.x"]) < 1.0
+
+        assert int(has_real.sum()) == 386
+        assert int(repeat_buyer.sum()) == 387
 
     def test_rejects_a_covariate_parameter_mismatch(self, dyncov_walks):
         with pytest.raises(ValueError, match="3 attrition covariates but 2"):

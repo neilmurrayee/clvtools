@@ -433,3 +433,45 @@ class TestTheSharedValidatorAndResultHelper:
 
         assert result.fun == 1.0          # the better point is what is reported
         assert "Nelder-Mead" in calls
+
+
+class TestATransactionMustSayWhoAndWhen:
+    """Finding A4 of ``docs/spec-audit.md``: four ways in, all of them quiet.
+
+    The R suite is the only source that says what must happen on bad input, and
+    it is not installed with the package, so none of this had ever been
+    checked. Each reproduction is in the assertion: what the data *became*
+    before it raised.
+    """
+
+    def test_a_missing_id_is_rejected(self):
+        """It became the string ``"None"`` and modelled as a customer."""
+        trans = load_apparel_trans().copy()
+        trans.loc[0, "Id"] = None
+        with pytest.raises(ValueError, match="1 transaction has no Id"):
+            ClvData(trans, time_unit="week", estimation_split=104)
+
+    def test_missing_dates_are_rejected_with_a_count(self):
+        """``to_datetime`` dropped them: 3,187 rows in, 3,182 out, silently."""
+        trans = load_apparel_trans().copy()
+        trans.loc[[0, 1, 2], "Date"] = None
+        with pytest.raises(ValueError, match="3 transactions have no Date"):
+            ClvData(trans, time_unit="week", estimation_split=104)
+
+    def test_an_unparseable_date_is_rejected(self):
+        """Distinct from a missing one, and it says which values failed."""
+        trans = load_apparel_trans().copy()
+        trans["Date"] = trans["Date"].astype(str)
+        trans.loc[0, "Date"] = "the fourth of never"
+        with pytest.raises(ValueError, match="could not be parsed"):
+            ClvData(trans, time_unit="week", estimation_split=104)
+
+    def test_an_empty_frame_is_rejected(self):
+        """It was accepted, and failed later somewhere less obvious."""
+        with pytest.raises(ValueError, match="nothing to model"):
+            ClvData(pd.DataFrame(columns=["Id", "Date", "Price"]), time_unit="week")
+
+    def test_something_that_is_not_a_frame_is_rejected(self):
+        """A list of dicts gave ``AttributeError`` from inside pandas."""
+        with pytest.raises(TypeError, match="must be a pandas DataFrame"):
+            ClvData([{"Id": "1", "Date": "2005-01-02"}], time_unit="week")

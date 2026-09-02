@@ -535,11 +535,37 @@ class TestProspectiveCustomers:
         assert got == pytest.approx(want[key], rel=1e-9)
 
     def test_covariates_separate_the_scenarios(self):
-        """S6.3.4's "region A versus region B" comparison."""
-        want, _ = self._static_fit()
-        scenarios = [want[f"gender{g}.channel{c}"]
-                     for g in (0, 1) for c in (0, 1)]
-        assert len(set(scenarios)) == 4
+        """S6.3.4's "region A versus region B" comparison.
+
+        This used to read the four values out of the *fixture* and assert that
+        they differ from each other -- a statement about CLVTools' output, true
+        no matter what this package computed, and it would have passed with
+        ``predict`` deleted. Finding B1 of ``docs/spec-audit.md``. It now
+        predicts the four scenarios here and asserts they are distinct, which
+        is what "the covariates separate the scenarios" means.
+
+        The test above already checks each against the oracle one at a time;
+        what this adds is that the *spread* survives, which is the property
+        S6.3.4 asks a covariate model for.
+        """
+        want, params = self._static_fit()
+        got = [
+            predict(
+                newcustomer_static(
+                    want["num.periods"],
+                    {"Gender": g, "Channel": c},
+                    {"Gender": g, "Channel": c},
+                ),
+                params,
+            )
+            for g in (0, 1) for c in (0, 1)
+        ]
+        assert len(set(got)) == 4, got
+        # Not merely distinct: far enough apart to be a difference a reader
+        # would act on. Measured, the closest pair is 0.0376 transactions over
+        # the horizon apart and the widest 0.55, so 0.03 is a floor under the
+        # measurement rather than a guess at one.
+        assert min(abs(a - b) for a in got for b in got if a != b) > 0.03
 
     def test_a_covariate_model_refuses_a_plain_new_customer(self):
         _, params = self._static_fit()

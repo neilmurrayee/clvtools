@@ -767,3 +767,33 @@ class TestTheBootstrapReportsWhatHappened:
 
         got = bootstrap_apply(small, lambda d: d.nobs(), num_boots=1, sample=half)
         assert got == [small.nobs() // 2]
+
+
+class TestBootstrappingDynamicCovariatesRefuses:
+    """Finding A2: the audit's only wrong *answer*, rather than a silence.
+
+    ``ClvDataDynCov`` subclasses ``ClvData`` and not ``ClvDataStaticCov``, so
+    the covariate-resampling branch never fired for it. Reproduced before the
+    guard existed: a ``ClvDataDynCov`` went in and ``apply`` received a plain
+    ``ClvData`` -- every covariate gone -- which then refitted a model that is
+    *defined* by those covariates without them, and returned an interval from
+    it.
+    """
+
+    def test_it_raises_rather_than_dropping_the_covariates(self):
+        from clvtools import ClvData, load_apparel_dyn_cov, load_apparel_trans
+        from clvtools.bootstrap import bootstrap_apply
+        from clvtools.data import ClvDataDynCov
+
+        names = ["High.Season", "Gender", "Channel"]
+        trans = load_apparel_trans()
+        ids = sorted(trans["Id"].unique())[:20]
+        covariates = load_apparel_dyn_cov()
+        data = ClvDataDynCov(
+            ClvData(trans[trans["Id"].isin(ids)], time_unit="week",
+                    estimation_split=104),
+            covariates[covariates["Id"].isin(ids)],
+            names_cov_life=names, names_cov_trans=names,
+        )
+        with pytest.raises(NotImplementedError, match="time-varying covariate"):
+            bootstrap_apply(data, lambda resampled: resampled.nobs(), num_boots=1)
