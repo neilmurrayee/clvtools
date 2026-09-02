@@ -325,9 +325,27 @@ class TestAgainstThePaper:
             assert got[name] == pytest.approx(PNBD_STATIC_MLE[name], rel=5e-3), name
 
     def test_standard_errors_match(self, fitted):
+        """The paper's printed values, at the precision printing leaves."""
         got = fitted.standard_errors()
         for name in ("life.Gender", "life.Channel", "trans.Gender", "trans.Channel"):
             assert got[name] == pytest.approx(PNBD_STATIC_SE[name], rel=5e-2), name
+
+    @pytest.mark.oracle
+    def test_standard_errors_match_the_oracle_exactly(self, fitted):
+        """And the oracle's own, which are not rounded to four decimals.
+
+        ``inference_pnbd_staticcov.json`` has carried CLVTools' full-precision
+        standard errors all along while the check above compared against the
+        paper's printed four, at 5% -- so the fixture was written, committed
+        and never read (finding 16 of ``docs/review-2026-09-02.md``). 2e-3 is
+        what two optimisers stopping at different points on this ridge can
+        agree to, and it is 25 times tighter than the printed comparison.
+        """
+        want = fixture_json("inference_pnbd_staticcov")
+        oracle = dict(zip(want["names"], want["se"], strict=True))
+        got = fitted.standard_errors()
+        for name in ("life.Gender", "life.Channel", "trans.Gender", "trans.Channel"):
+            assert got[name] == pytest.approx(oracle[name], rel=2e-3), name
 
     def test_z_values_match(self, fitted):
         """S6.4.1's ``z-val`` column, and the significance it reports."""

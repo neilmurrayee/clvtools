@@ -21,7 +21,7 @@ import time
 
 import numpy as np
 
-from clvtools._staticcov import fit_static_covariates
+from clvtools._staticcov import SearchSettings, fit_static_covariates
 from clvtools.pnbd import fit_pnbd
 from clvtools.pnbd.staticcov import log_likelihood as staticcov_log_likelihood
 
@@ -83,8 +83,16 @@ def _static_fit(x, t_x, T, covariate):
         x=x, t_x=t_x, T=T, cov_life=design, cov_trans=design,
         names_cov_life=["Dummy"], names_cov_trans=["Dummy"],
         log_likelihood=objective, n_model_params=4,
-        model_start=(1.0, 1.0, 1.0, 1.0), method="L-BFGS-B",
-        maxiter=10_000, hessian=False, polish=False,
+        model_start=(1.0, 1.0, 1.0, 1.0),
+        # The optimiser knobs moved into SearchSettings when the covariate
+        # fits were unified; this still passed them loose and had been raising
+        # TypeError on every invocation since. Nothing noticed because ty
+        # checks `src/` only, `tools/` is not in `testpaths`, and no test
+        # imports this file -- finding 14 of ``docs/review-2026-09-02.md``,
+        # now covered by a smoke test in tests/test_code_quality.py.
+        search=SearchSettings(
+            method="L-BFGS-B", maxiter=10_000, hessian=False, polish=False
+        ),
     )
 
 

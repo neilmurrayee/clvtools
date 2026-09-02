@@ -299,7 +299,7 @@ compares across models:
 >>> round(regularized.log_likelihood, 4)
 -9.7313
 >>> round(regularized.unpenalised_log_likelihood, 4)
--5833.3274
+-5833.327...
 
 ```
 
@@ -311,12 +311,19 @@ this package computes them from the unpenalised sum instead:
 
 ```python
 >>> round(regularized.aic, 4)
-11682.6547
+11682.65...
 
 ```
 
 That is a deliberate deviation from CLVTools; it is pinned by a test and
 recorded in the README's findings.
+
+The last digits are elided for the same reason as the estimates above, and here
+the reason is sharper: a regularized fit's optimum sits where the coefficients
+have been shrunk to about 1e-3 and the objective is nearly flat, so the *point*
+the search stops at moves between platforms more than an unregularized one
+does. ``-9.7313`` is stable because it is the penalised mean, dominated by the
+penalty; the unpenalised sum evaluated at that point is not.
 
 ## Spending
 

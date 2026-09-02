@@ -209,3 +209,84 @@ class TestSize:
             f"the largest module is {largest} code lines against a "
             f"{MAX_CODE_LINES} limit; lower MAX_CODE_LINES to keep it binding."
         )
+
+
+class TestTheToolsRun:
+    """Finding 14: ``tools/benchmark.py`` had been raising on every invocation.
+
+    ``fit_static_covariates``' optimiser arguments moved into a
+    ``SearchSettings`` when the covariate fits were unified, and the benchmark
+    still passed them loose. Nothing noticed: ``ty`` checks ``src/`` only,
+    ``tools/`` is not in ``testpaths``, and no test imported it -- while the
+    README documents running it. Twenty customers and one period keep this a
+    smoke test rather than a benchmark.
+    """
+
+    def test_benchmark_runs(self):
+        import subprocess
+        import sys
+
+        result = subprocess.run(
+            [sys.executable, "tools/benchmark.py", "--sizes", "20",
+             "--periods", "13", "--repeats", "1"],
+            capture_output=True, text=True, cwd=ROOT, check=False,
+        )
+        assert result.returncode == 0, result.stderr[-2000:]
+        assert "customers" in result.stdout
+
+    def test_profile_runs(self):
+        """``tools/profile.py`` has doctests that never run for the same
+        reason, and shadows the standard library's ``profile`` -- the trap its
+        own docstring describes. Importing it is the cheap half of that."""
+        import subprocess
+        import sys
+
+        # Registered in sys.modules before executing, because doctest looks a
+        # module up by name -- and because profile.py shadows the standard
+        # library's `profile`, which is the trap its own docstring describes.
+        result = subprocess.run(
+            [sys.executable, "-c", (
+                "import doctest, importlib.util, pathlib, sys\n"
+                "spec = importlib.util.spec_from_file_location("
+                "'clv_profile_tool', pathlib.Path('tools/profile.py'))\n"
+                "m = importlib.util.module_from_spec(spec)\n"
+                "sys.modules['clv_profile_tool'] = m\n"
+                "spec.loader.exec_module(m)\n"
+                "sys.exit(doctest.testmod(m, verbose=False).failed)\n"
+            )],
+            capture_output=True, text=True, cwd=ROOT, check=False,
+        )
+        assert result.returncode == 0, (result.stdout + result.stderr)[-2000:]
+
+
+class TestTheSlowFitStaysDeselected:
+    """Finding 15: a caller's own ``-m`` used to replace the deselection.
+
+    ``-m 'not dyncov_fit'`` was in ``addopts``, and pytest does not compose two
+    ``-m`` expressions -- the later one wins. So ``pytest -m "not slow"``, which
+    reads as "everything quick", collected the ten-minute time-varying fit.
+    """
+
+    def test_a_users_marker_expression_does_not_reselect_it(self):
+        import subprocess
+        import sys
+
+        result = subprocess.run(
+            [sys.executable, "-m", "pytest", "-m", "not slow",
+             "tests/test_pnbd_dyncov.py", "--collect-only", "-q"],
+            capture_output=True, text=True, cwd=ROOT, check=False,
+        )
+        assert "test_reaches_at_least_the_oracles_optimum" not in result.stdout
+
+    def test_but_asking_for_it_by_name_still_works(self):
+        """Which is what ``.github/workflows/dyncov.yml`` runs."""
+        import subprocess
+        import sys
+
+        result = subprocess.run(
+            [sys.executable, "-m", "pytest", "-m", "dyncov_fit",
+             "--collect-only"],
+            capture_output=True, text=True, cwd=ROOT, check=False,
+        )
+        assert "test_reaches_at_least_the_oracles_optimum" in result.stdout
+        assert "1/" in result.stdout, result.stdout[-500:]

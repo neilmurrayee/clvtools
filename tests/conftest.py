@@ -97,3 +97,37 @@ def dyncov_walks():
         covdata_aux_trans=covdata["aux_trans"],
         covdata_real_trans=covdata["real_trans"],
     )
+
+
+def pytest_addoption(parser) -> None:
+    """``--run-dyncov-fit``, the other way to ask for the slow fit by name."""
+    parser.addoption(
+        "--run-dyncov-fit",
+        action="store_true",
+        default=False,
+        help="run the time-varying covariate MLE (about ten minutes)",
+    )
+
+
+def pytest_collection_modifyitems(config, items) -> None:
+    """Deselect ``dyncov_fit`` unless it was asked for.
+
+    This lived in ``addopts`` as ``-m 'not dyncov_fit'``, which a caller's own
+    ``-m`` silently replaced: ``pytest -m "not slow"`` collected the
+    ten-minute fit, the slowest test here and the clearest thing that phrase
+    excludes. Here it composes instead. Asking for it still works two ways --
+    ``-m dyncov_fit``, which is what ``.github/workflows/dyncov.yml`` runs, or
+    ``--run-dyncov-fit`` -- and both are checked for rather than assumed.
+    """
+    if config.getoption("--run-dyncov-fit"):
+        return
+    asked_by_marker = "dyncov_fit" in (config.getoption("-m") or "").replace(
+        "not dyncov_fit", ""
+    )
+    if asked_by_marker:
+        return
+
+    deselected = [item for item in items if item.get_closest_marker("dyncov_fit")]
+    if deselected:
+        config.hook.pytest_deselected(items=deselected)
+        items[:] = [item for item in items if item not in deselected]
