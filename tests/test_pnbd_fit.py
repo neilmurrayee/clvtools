@@ -228,9 +228,14 @@ class TestValidation:
         T = [104.0, 104.0, 104.0]
         t_over = [104.0 + 1e-10, 40.0, 0.0]
         fitted = fit_pnbd(x, t_over, T, hessian=False)
-        assert np.isfinite(fitted.log_likelihood)
-        assert fitted.log_likelihood < 0
         exact = fit_pnbd(x, [104.0, 40.0, 0.0], T, hessian=False)
+        # Finite, and identical to the same data with the slack removed by
+        # hand -- which is the whole claim. Not "negative": these three
+        # customers are few enough that the fit reaches a log-likelihood of
+        # 0.0 on x86-64 Linux, and a continuous density's log-likelihood is
+        # not required to be negative anyway. CI caught that; the assertion
+        # was mine and it was wrong.
+        assert np.isfinite(fitted.log_likelihood)
         assert fitted.log_likelihood == pytest.approx(exact.log_likelihood)
 
     def test_a_fit_that_stops_early_says_so(self):

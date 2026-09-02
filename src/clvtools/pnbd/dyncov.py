@@ -281,7 +281,16 @@ def _hyp_alpha_ge_beta(
     for alpha, beta, sign in ((alpha_1, beta_1, 1.0), (alpha_2, beta_2, -1.0)):
         z = 1.0 - beta / alpha
         value = special.hyp2f1(a, s + 1.0, a + 1.0, z)
-        term = value / alpha**a
+        # ``value / alpha**a``, formed so that the divisor cannot overflow
+        # before the quotient underflows. At alpha = 200 and x = 160,
+        # ``alpha**a`` is past the top of float64 while the quotient is around
+        # 1e-370, so the direct form gave ``value / inf = 0`` -- and the
+        # customer's likelihood then took the alive-only branch with no signal.
+        # Finding 10 of ``docs/review-2026-09-02.md``. This does not make an
+        # unrepresentable quotient representable; it stops a representable one
+        # being lost.
+        with np.errstate(divide="ignore"):
+            term = np.exp(np.log(value) - a * np.log(alpha))
         failed = ~np.isfinite(value)
         if np.any(failed):
             # Computed here rather than up front: the fallback fires rarely,
@@ -291,7 +300,9 @@ def _hyp_alpha_ge_beta(
                 - special.gammaln(a) - special.gammaln(s + 1.0)
             )
             term = np.where(
-                failed, (1.0 - z) ** (r + x) * np.exp(log_c) / beta**a, term
+                failed,
+                np.exp((r + x) * np.log1p(-z) + log_c - a * np.log(beta)),
+                term,
             )
         out = out + sign * term
     return out
@@ -320,7 +331,8 @@ def _hyp_beta_gt_alpha(
     for alpha, beta, sign in ((alpha_1, beta_1, 1.0), (alpha_2, beta_2, -1.0)):
         z = 1.0 - alpha / beta
         value = special.hyp2f1(a, r + x, a + 1.0, z)
-        term = value / beta**a
+        with np.errstate(divide="ignore"):
+            term = np.exp(np.log(value) - a * np.log(beta))
         failed = ~np.isfinite(value)
         if np.any(failed):
             log_c = (

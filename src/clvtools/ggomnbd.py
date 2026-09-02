@@ -131,20 +131,37 @@ def log_likelihood_ind(
         + s * (np.log(beta_flat) - np.log(beta_flat - 1.0 + np.exp(b * T_flat)))
     )
 
-    def integrand(y: float, i: int) -> float:
-        # Written as exp(log(...)) for the same reason CLVTools does: the two
-        # powers overflow separately long before their product does.
-        return np.exp(
+    def log_integrand(y: float, i: int) -> float:
+        return (
             -(r + x_flat[i]) * np.log(y + alpha_flat[i])
             - (s + 1.0) * np.log(beta_flat[i] - 1.0 + np.exp(b * y))
             + b * y
         )
 
-    integrals = _integrate(integrand, t_x_flat, T_flat)
+    # Scaled by the integrand's value at the lower limit, where it is largest:
+    # ``(alpha + y)^-(r + x)`` decreases in ``y``, and ``b`` is small enough on
+    # real data that the other factor is nearly flat. Integrating
+    # ``exp(log f(y) - log f(t_x))`` therefore integrates something that starts
+    # at 1 and decays, and the offset goes back on in log space afterwards.
+    #
+    # Unscaled, this underflowed: at the apparel fit's parameters
+    # ``(r + x) log(y + alpha)`` is about 808 by ``x = 160``, ``exp(-808)`` is
+    # exactly 0, its log is ``-inf``, and ``logaddexp`` then returned the alive
+    # branch alone -- ``PAlive`` exactly 1.0 for a heavy buyer, with no warning.
+    # On daily data, where ``T`` runs to a thousand, that starts around
+    # ``x = 105``. Finding 4 of ``docs/review-2026-09-02.md``.
+    offset = np.array(
+        [log_integrand(t_x_flat[i], i) for i in range(t_x_flat.size)]
+    )
+
+    def scaled(y: float, i: int) -> float:
+        return np.exp(log_integrand(y, i) - offset[i])
+
+    integrals = _integrate(scaled, t_x_flat, T_flat)
     with np.errstate(divide="ignore"):
         log_l2 = shared + (
             np.log(b) + r * np.log(alpha_flat) + np.log(s)
-            + s * np.log(beta_flat) + np.log(integrals)
+            + s * np.log(beta_flat) + offset + np.log(integrals)
         )
 
     return np.logaddexp(log_l1, log_l2).reshape(shape)
@@ -239,22 +256,55 @@ def conditional_expected_transactions(
         at_T / at_T_plus
     ) ** s * _hyp2f1_1_s_splus1(s, beta_minus_1 / at_T_plus)
 
-    def integrand(tau: float, i: int) -> float:
-        return np.exp(b * tau) / (
-            (np.exp(b * tau) + beta_minus_1[i]) ** (s + 1.0)
-            * (alpha_flat[i] + tau) ** (r + x_flat[i])
+    def log_integrand(tau: float, i: int) -> float:
+        return (
+            b * tau
+            - (s + 1.0) * np.log(np.exp(b * tau) + beta_minus_1[i])
+            - (r + x_flat[i]) * np.log(alpha_flat[i] + tau)
         )
 
-    integral = _integrate(integrand, t_x_flat, T_flat)
-    lower = b * s * (
-        1.0
-        + (b * s)
-        * (alpha_flat + T_flat) ** (r + x_flat)
-        * at_T**s
-        * integral
+    # The same rescaling as the likelihood's, and here it fixes a worse
+    # failure. ``(alpha + T)^(r + x)`` *overflows* to ``inf`` at about the same
+    # frequency at which the integral *underflows* to 0, so the product was
+    # ``inf * 0`` -- NaN, returned as a conditional expectation, from x = 140 on
+    # the apparel fit. Finding 4 of ``docs/review-2026-09-02.md``.
+    offset = np.array(
+        [log_integrand(t_x_flat[i], i) for i in range(t_x_flat.size)]
     )
+
+    def scaled(tau: float, i: int) -> float:
+        return np.exp(log_integrand(tau, i) - offset[i])
+
+    integral = _integrate(scaled, t_x_flat, T_flat)
+
+    # ``log P`` where ``P = (alpha + T)^(r + x) * at_T^s * integral``: the
+    # product that used to be formed from two doomed factors.
+    with np.errstate(divide="ignore"):
+        log_product = (
+            (r + x_flat) * np.log(alpha_flat + T_flat)
+            + s * np.log(at_T)
+            + offset
+            + np.log(integral)
+        )
+
     front = (r + x_flat) / (alpha_flat + T_flat)
-    return (front * upper / lower).reshape(shape)
+    log_front_upper = np.log(front) + np.log(upper)
+    log_bs = np.log(b) + np.log(s)
+
+    # ``lower = b*s * (1 + b*s*P)``. Where ``P`` is representable, form it and
+    # divide; where it is not, the 1 is negligible beside it and the whole
+    # expression is done in logs instead of being allowed to become NaN.
+    with np.errstate(over="ignore"):
+        product = np.exp(log_product)
+    result = np.empty_like(product)
+    finite = np.isfinite(product)
+    result[finite] = np.exp(
+        log_front_upper[finite] - log_bs - np.log1p(np.exp(log_bs) * product[finite])
+    )
+    result[~finite] = np.exp(
+        log_front_upper[~finite] - 2.0 * log_bs - log_product[~finite]
+    )
+    return result.reshape(shape)
 
 
 def expectation(

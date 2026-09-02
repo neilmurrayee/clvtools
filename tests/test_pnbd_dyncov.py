@@ -949,3 +949,46 @@ class TestTheDyncovHessianIsOptional:
             fit = fit_pnbd_dyncov(small_walks, maxiter=1, hessian=True)
         assert fit.hessian is not None
         assert fit.hessian.shape == (len(fit.names), len(fit.names))
+
+
+class TestTheF2TermsDoNotOverflowBeforeTheyUnderflow:
+    """Finding 10, and the half of it that arithmetic can fix.
+
+    Each term was ``value / alpha ** (r + s + x)``. At ``alpha = 200`` the
+    divisor passes the top of float64 by ``x = 160`` while the quotient is
+    around 1e-370, so the direct form returned 0 for the wrong reason -- and a
+    quotient that *is* representable, 2.4e-279 at ``x = 120``, was computed
+    through an intermediate of 4.5e+278 that is one step from overflowing too.
+
+    Forming ``exp(log value - a log alpha)`` fixes that. It does not make an
+    unrepresentable number representable: at ``x = 160`` the true term is below
+    float64 and the result is honestly 0. What remains -- combining the two
+    terms and ``F1 * F2 + F3`` in log space, so that a genuine underflow stops
+    silently selecting the alive-only branch -- is backlog item 28, because it
+    changes what the oracle fixtures compare.
+
+    The oracle cannot see any of this: CLVTools forms the same quotient the
+    same way, so agreement with a fixture is agreement about the arrangement,
+    not about the arithmetic.
+    """
+
+    @pytest.mark.parametrize(
+        "x,expected", [(10.0, 1.234719e-26), (50.0, 2.590707e-118),
+                       (120.0, 2.395442e-279)]
+    )
+    def test_representable_terms_are_computed(self, x, expected):
+        from clvtools.pnbd.dyncov import _hyp_alpha_ge_beta
+
+        got = float(_hyp_alpha_ge_beta(0.5, 0.6, x, 200.0, 190.0, 210.0, 195.0))
+        assert got == pytest.approx(expected, rel=1e-5)
+
+    @pytest.mark.parametrize("x", [160.0, 200.0])
+    def test_unrepresentable_terms_are_zero_and_not_nan(self, x):
+        """The pre-fix code gave 0 here by dividing by ``inf``, and could give
+        ``nan``; the true value is below float64 either way. The point is that
+        it is now zero for the honest reason."""
+        from clvtools.pnbd.dyncov import _hyp_alpha_ge_beta
+
+        got = float(_hyp_alpha_ge_beta(0.5, 0.6, x, 200.0, 190.0, 210.0, 195.0))
+        assert got == 0.0
+        assert not np.isnan(got)

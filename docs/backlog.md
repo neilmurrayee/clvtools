@@ -1007,7 +1007,7 @@ is what the GGom covariate fit produces at `b = 8.1e-07`.
   unregularized fit's -- which neither CLVTools nor the paper says anywhere,
   and is the part that protects whoever reads the table.
 
-## 23. `[ ]` Log-domain integrals for the regimes the oracle cannot see — findings 4 and 10
+## 23. `[~]` Log-domain integrals for the regimes the oracle cannot see — findings 4 and 10
 
 The GGom/NBD forms its integrand as `(alpha + tau)^(r + x)` in the direct
 domain: at the fitted parameters `x = 140` gives `CET 0.00` and `x = 160` gives
@@ -1021,6 +1021,28 @@ agreement proves nothing here**.
 dyncov CET guards `s` near 1 as the aggregate module does, the `pmf` call falls
 back on a non-finite hypergeometric, and each carries a heavy-buyer test —
 against the Pareto/NBD limit the README documents where no oracle can reach.
+
+**The GGom/NBD half is done.** Both integrals are now scaled by the integrand's
+value at the lower limit, where it is largest, and the `CET`'s divisor is formed
+in log space with an asymptotic branch for where the product overflows. At the
+fitted parameters `CET` was `nan` from `x = 140` and `PAlive` exactly 1.0 from
+`x = 160`; both are now finite and monotone out to `x = 400`, `CET` running
+3.57 → 123.28 and `PAlive` declining 0.9947 → 0.9818.
+
+The check is the one this item asked for, because no oracle reaches here: as
+`b → 0` with `beta = b·beta_P` the GGom/NBD **is** the Pareto/NBD, and the two
+agree to 1.2e-3 relative on `CET` and 1e-6 absolute on `PAlive` at
+`x = 5, 50, 160, 400` — including the two values where the old code returned
+`nan`. Fourteen tests, and the 33 GGom oracle checks unmoved.
+
+**The dyncov half is partly done, and the rest is item 28.** Each `F2` term was
+`value / alpha**(r+s+x)`, whose divisor passes the top of float64 by `x = 160`
+while the quotient is about 1e-370. It is now `exp(log value - a·log alpha)`,
+so a representable quotient is no longer lost through an overflowing
+intermediate — 2.4e-279 at `x = 120` was being computed through 4.5e+278. What
+that cannot do is make an unrepresentable number representable, so at `x = 160`
+the term is honestly 0, and `log_likelihood_customer` still takes the
+alive-only branch there without saying so.
 
 ## 24. `[ ]` Bootstrap: report failures, and rebuild once — finding 11
 
@@ -1050,6 +1072,36 @@ the `newcustomer_static` example belongs.
 Three validators, two result shapes, two weight conventions, `ClvData(` in
 subclass reprs, `scipy.stats` imported at module scope for 0.36 s of a 0.4 s
 import, and `.claude/settings.local.json` tracked when its name says otherwise.
+
+
+## 28. `[ ]` Combine `F1·F2 + F3` in log space — the rest of finding 10
+
+Split from item 23 because it changes what the oracle fixtures compare, which
+is not a thing to do at the end of a long session.
+
+The `F2` terms are now formed in log space individually (item 23), but they are
+still *combined* as values: `_f2` returns a float, and
+`log_likelihood_customer` branches on its sign at `dyncov.py:589-600`. When a
+customer's `F2` underflows to zero — genuinely, at `x >= 160` on the arguments
+the review names — the `else` branch quietly returns `log_F0 + log_F3`, the
+alive-only likelihood, with no signal. That is the same silent-degradation
+shape as findings 4 and 5, in the one estimator whose fixtures cannot see it:
+CLVTools arranges the arithmetic the same way, so the 30 committed
+intermediates agree with the broken version by construction.
+
+*Done when:* the two `F2` terms are combined with a signed log-sum-exp, `_f2`
+reports a log magnitude and a sign rather than a value that can vanish,
+`log_likelihood_customer` forms `log(F1·F2 + F3)` from logs throughout, and a
+heavy-buyer customer's likelihood is finite and correct where it is currently
+the alive-only branch. The fixture comparison needs rethinking in the same
+commit: `F2.1`, `F2.2`, `F2.3` and `F2` are compared as values against
+`tests/fixtures/`, so either they keep a value form for comparison or the
+fixture columns move to logs on both sides.
+
+Also still open from finding 10, and cheap by comparison: the dyncov `CET`
+divides by `s - 1` unguarded where `aggregate.py` raises near `s = 1`, and
+`aggregate.py`'s `pmf` calls `hyp2f1` with no fallback, returning `NaN` for
+`k >= 23` at `alpha = 500, beta = 1`.
 
 ---
 

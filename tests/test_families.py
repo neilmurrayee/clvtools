@@ -16,11 +16,13 @@ another the fits must agree.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 import numpy as np
 import pytest
 from conftest import fixture_csv, fixture_json
 
-from clvtools import bgnbd, ggomnbd
+from clvtools import bgnbd, ggomnbd, pnbd
 from clvtools.pnbd import log_likelihood as pnbd_log_likelihood
 
 BG_GRID = fixture_json("bgnbd_nocov_grid")
@@ -935,3 +937,75 @@ class TestCovariateResultAccessors:
         fit = self._wrapped(family, model, None)
         with pytest.raises(ValueError, match="hessian=True"):
             fit.confint()
+
+
+class TestTheGgomnbdSurvivesHeavyBuyers:
+    r"""Finding 4: it used to lose its death term entirely for large ``x``.
+
+    The integrands were formed in the direct domain with
+    :math:`(\alpha + \tau)^{r+x}` and nothing factored out. At the apparel
+    fit's parameters that exponent reaches 808 by ``x = 160``, so the
+    likelihood's integral underflowed to exactly 0, its log to ``-inf``, and
+    ``logaddexp`` kept the alive branch alone -- ``PAlive`` exactly 1.0. The
+    ``CET`` was worse: ``(alpha + T)^(r + x)`` *overflows* at about the same
+    point the integral underflows, so the product was ``inf * 0`` and the
+    conditional expectation came back ``nan``. On daily data, where ``T`` runs
+    to a thousand, this starts near ``x = 105``.
+
+    Both integrals are now scaled by their value at the lower limit, and the
+    ``CET``'s divisor is formed in log space.
+
+    The oracle cannot check any of this: CLVTools arranges the same arithmetic
+    the same way, so a fixture would agree with the broken version. The
+    independent check is the limit the README already documents -- as
+    :math:`b \to 0` with :math:`\beta = b\beta_P`, the GGom/NBD *is* the
+    Pareto/NBD -- and that holds at every ``x`` here.
+    """
+
+    MLE: ClassVar[dict[str, float]] = {
+        "r": 1.446493, "alpha": 48.564777, "b": 9e-06,
+        "s": 0.559243, "beta": 0.000418,
+    }
+
+    @pytest.mark.parametrize("x", [100, 140, 160, 200, 400])
+    def test_the_conditional_expectation_is_finite(self, x):
+        got = float(ggomnbd.conditional_expected_transactions(
+            x, 103.0, 104.0, 52.0, **self.MLE))
+        assert np.isfinite(got)
+        assert got > 0
+
+    def test_it_increases_with_frequency(self):
+        """It used to be nan, which is neither increasing nor decreasing."""
+        values = [
+            float(ggomnbd.conditional_expected_transactions(
+                x, 103.0, 104.0, 52.0, **self.MLE))
+            for x in (100, 140, 160, 200, 400)
+        ]
+        assert values == sorted(values)
+
+    @pytest.mark.parametrize("x", [140, 160, 200, 400])
+    def test_palive_is_not_pinned_at_one(self, x):
+        got = float(ggomnbd.probability_alive(x, 103.0, 104.0, **self.MLE))
+        assert 0.0 < got < 1.0
+
+    @pytest.mark.parametrize("x", [5, 50, 160, 400])
+    def test_the_pareto_nbd_limit_holds_where_no_oracle_reaches(self, x):
+        r"""``b`` at 1e-8 with :math:`\beta = b\beta_P`, against the plain model.
+
+        This is the whole check for the heavy-buyer regime, so it is worth
+        saying what it would catch: the pre-fix code returns ``nan`` at
+        ``x = 160`` and ``x = 400`` here, and the Pareto/NBD returns 0.00245
+        and 0.0.
+        """
+        r, alpha, s, b, beta_p = 1.4489, 48.6348, 0.5613, 1e-8, 46.8837
+        ggom = float(ggomnbd.conditional_expected_transactions(
+            x, 90.0, 104.0, 52.0, r=r, alpha=alpha, b=b, s=s, beta=b * beta_p))
+        plain = float(pnbd.conditional_expected_transactions(
+            x, 90.0, 104.0, 52.0, r=r, alpha=alpha, s=s, beta=beta_p))
+        assert ggom == pytest.approx(plain, rel=5e-3)
+
+        alive_ggom = float(ggomnbd.probability_alive(
+            x, 90.0, 104.0, r=r, alpha=alpha, b=b, s=s, beta=b * beta_p))
+        alive_plain = float(pnbd.probability_alive(
+            x, 90.0, 104.0, r=r, alpha=alpha, s=s, beta=beta_p))
+        assert alive_ggom == pytest.approx(alive_plain, abs=1e-6)
