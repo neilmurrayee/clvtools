@@ -32,7 +32,8 @@ tools/oracle/*.R    fixture generators — the only thing that needs R
 tools/setup_oracle.sh   installs CLVTools into ./.Rlib (never the system library)
 tools/benchmark.py  run times in the shape of the paper's Appendix B
 tools/profile.py    cProfile summaries of the standard paths, as markdown
-data/               CLVTools' bundled datasets as CSV
+src/clvtools/data/  CLVTools' bundled datasets as CSV — inside the package,
+                    so they ship in the wheel
 ```
 
 Module ↔ paper mapping lives in `src/clvtools/__init__.py` and the README table.

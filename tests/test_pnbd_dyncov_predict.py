@@ -159,10 +159,18 @@ class TestPredictionAgainstTheOracle:
 
         CLVTools' own value for that customer is over one by the same amount,
         so this is the arithmetic rather than a difference between the two.
+
+        What is asserted is the *size* of the excess rather than how many
+        customers show one. Counting equality with the oracle asks whether a
+        value 1.4e-14 above one lands on the same side of one on both
+        platforms, which is not something either implementation determines --
+        the precision rule at the top of ``test_pnbd_fit.py``, applied here.
         """
         assert predicted["PAlive"].between(0, 1 + 1e-12).all()
         want = fixture_csv("dyncov_predict_holdout").set_index("Id")
-        assert (predicted["PAlive"] > 1).sum() == (want["PAlive"] > 1).sum()
+        assert (want["PAlive"] - 1).max() < 1e-12
+        excess = (predicted["PAlive"] - 1).clip(lower=0)
+        assert excess.max() < 1e-12
 
     def test_dect_is_below_cet(self, predicted):
         """Discounting can only reduce a positive count."""

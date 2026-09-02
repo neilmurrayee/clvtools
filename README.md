@@ -101,7 +101,7 @@ ordering slip cannot ship as a plausible-looking expectation.
 
 | Quantity | Paper | This implementation |
 |---|---|---|
-| Pareto/NBD `r, α, s, β` | 1.4490, 48.6361, 0.5613, 46.8844 | 1.449, 48.635, 0.561, 46.884 |
+| Pareto/NBD `r, α, s, β` | 1.4490, 48.6361, 0.5613, 46.8844 | to 1e-3 — the last digit is platform-dependent, below |
 | Pareto/NBD log-likelihood | — | −5848.0978 (oracle: −5848.0978) |
 | Mean purchase / attrition rate | 0.030 / 0.012 | 0.030 / 0.012 |
 | Gamma-Gamma `p, q, γ` | 3.099, 5.654, 56.504 | identical |
@@ -278,13 +278,20 @@ SciPy's default) and `gtol = 1e-10`, and every published number is unchanged.
 
 **The last printed digit of a Pareto/NBD estimate is not portable.** The same
 ridge that moves the estimate 3e-5 for 1e-10 of log-likelihood moves it about
-3e-4 between macOS/ARM and x86-64 Linux — `beta` lands on 46.8837 here and
-46.8834 there, which is a different third decimal. Six doctests asserted the
-digit that differs. They now elide it (`46.88...`, `-22.92...`), so every digit
-printed is one both platforms agree on and the elision marks exactly where
-agreement stops. The tolerance-based comparisons against the paper and against
-the oracle were unaffected: none of them was ever asserting more precision than
-the platform can carry, which is the argument for writing them that way.
+1e-4 to 2e-3 between macOS/ARM and x86-64 Linux, depending on the tolerance the
+search stops at — `beta` lands on 46.8837 here and 46.8815 there, and the
+z-value of a covariate coefficient on −2.1721 against −2.1722. Every doctest
+that printed a fitted quantity was asserting one of those digits. They now elide
+the last one (`46.88...`, `-22.9...`), so what is printed is what both platforms
+agree on and the elision marks where agreement stops; quantities computed at
+*published* parameters, like `gg.py`'s 39.1372, stay exact, because a fixed
+input is reproducible by construction.
+
+One precision rule now covers the suite: an estimate is compared to no better
+than 1e-3 relative, a log-likelihood tightly (the two platforms agree to 9e-10
+on −5848), "at least as good as the oracle" carries 1e-6 of slack, and no test
+asserts a printed digit of an estimate. It took four red CI runs to arrive at
+it, because a failing doctest aborts its file and hides every failure after it.
 
 **A partly covered period gets no observed count.** The tracking plot's grid
 runs one period past the data so the last period is shown whole; CLVTools
@@ -411,7 +418,9 @@ useful on their own, so it stays out of the core.
 
 ## Data
 
-`data/` holds the datasets bundled with CLVTools 0.12.1, exported to CSV:
+`src/clvtools/data/` holds the datasets bundled with CLVTools 0.12.1, exported
+to CSV. They live inside the package rather than beside it so that an installed
+wheel carries them:
 `apparelTrans` (3,187 transactions from 600 customers, one acquisition cohort
 whose first purchase was 2005-01-02), `apparelStaticCov`, `apparelDynCov`,
 `apparelDynCovFuture` — the covariate series continued into the prediction
@@ -429,6 +438,6 @@ GPL-3.0-only. See [`LICENSE`](LICENSE).
 The code here is written from scratch against the paper rather than translated
 from CLVTools: R never enters `src/`, and the oracle is invoked out-of-process
 by the fixture generators. The licence nonetheless matches CLVTools 0.12.1's
-own, because `data/` redistributes the four datasets that package bundles.
+own, because the package redistributes the five datasets CLVTools bundles.
 `cdnow` is the CDNOW cohort of Fader and Hardie (*Interfaces*, 2001) and
 predates it; the three `apparel*` tables come from CLVTools itself.

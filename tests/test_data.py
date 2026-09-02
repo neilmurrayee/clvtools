@@ -22,6 +22,8 @@ Two details of S6.1 that the arithmetic depends on:
 
 from __future__ import annotations
 
+import pathlib
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -36,6 +38,38 @@ from paper_values import (
 
 from clvtools.data import ClvData
 
+
+class TestTheDatasetsShipWithThePackage:
+    """The wheel has to carry the CSVs, and no test in a checkout can see it.
+
+    ``load_cdnow()`` resolved ``__file__/../../../data``, which is the
+    repository root in a source tree and a directory that does not exist under
+    ``site-packages``. Every test here passed while the built wheel raised
+    ``FileNotFoundError`` on its first call, because the checkout always has
+    the files whether or not they are packaged. The two checks below are what
+    that costs to prevent: the data has to be *inside* the package, and it has
+    to be reachable the way an installed package reaches it.
+    """
+
+    def test_the_data_lives_inside_the_package(self):
+        import clvtools.data as module
+
+        package = pathlib.Path(module.__file__).resolve().parent
+        assert module.DATA_DIR.is_relative_to(package), (
+            f"DATA_DIR is {module.DATA_DIR}, outside the package at {package}. "
+            "Anything outside it is absent from the wheel."
+        )
+
+    def test_every_dataset_is_a_package_resource(self):
+        """Reached through ``importlib.resources``, as an installed one is."""
+        from importlib import resources
+
+        root = resources.files("clvtools") / "data"
+        for name in (
+            "apparelTrans", "apparelStaticCov", "apparelDynCov",
+            "apparelDynCovFuture", "cdnow",
+        ):
+            assert (root / f"{name}.csv").is_file(), f"{name}.csv is not packaged"
 
 class TestApparelTrans:
     """The dataset itself, as described in S6.1."""

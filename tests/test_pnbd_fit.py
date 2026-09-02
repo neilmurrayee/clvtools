@@ -18,6 +18,22 @@ What is asserted instead:
     likelihood.
 """
 
+# One precision rule, applied across the suite after CI showed the old one was
+# a statement about macOS/ARM (``docs/backlog.md`` item 17, finding 13 of
+# ``docs/review-2026-09-02.md``):
+#
+#   * an **estimate** is compared with a tolerance no tighter than 1e-3
+#     relative -- the Pareto/NBD ridge moves the parameters by ~1e-4 between
+#     libms while the log-likelihood moves by 1e-9, so anything tighter is
+#     asserting a property of a C library;
+#   * a **log-likelihood** is compared tightly, because it is what the search
+#     actually optimises and it is flat-bottomed: the two platforms agree to
+#     9e-10 on a value of -5848;
+#   * "at least as good as the oracle" is asserted with 1e-6 of slack, not
+#     1e-9, for the same reason;
+#   * and no test asserts a *printed* digit of an estimate.
+
+
 from __future__ import annotations
 
 import numpy as np
@@ -43,8 +59,14 @@ def fitted(cbs):
 @pytest.mark.paper
 class TestAgainstThePaper:
     def test_estimates_match_the_published_values(self, fitted):
+        """S6.2.1's four estimates, to the precision a fit reproduces.
+
+        1e-3 rather than the 1e-4 this asserted until CI ran on a second
+        platform: ``s`` used 80% of a 1e-4 allowance on macOS/ARM and at least
+        89% on x86-64 Linux, so the margin was luck rather than agreement.
+        """
         for name, want in PNBD_MLE.items():
-            assert getattr(fitted, name) == pytest.approx(want, rel=1e-4)
+            assert getattr(fitted, name) == pytest.approx(want, rel=1e-3)
 
     def test_mean_rates_match_the_published_values(self, fitted):
         r"""S6.2.1: "an average purchase rate of :math:`r/\alpha` = 0.030
@@ -67,7 +89,7 @@ class TestAgainstTheOracle:
     def test_reaches_at_least_the_oracles_optimum(self, fitted):
         """A lower likelihood would mean a worse fit; a higher one is fine."""
         want = fixture_json("pnbd_nocov_fit")["logLik"]
-        assert fitted.log_likelihood >= want - 1e-9
+        assert fitted.log_likelihood >= want - 1e-6
 
     def test_aic_and_bic_match(self, fitted):
         want = fixture_json("pnbd_nocov_fit")
@@ -94,7 +116,7 @@ class TestAgainstTheOracle:
         want = fixture_json("pnbd_nocov_fit_full")
         got = fit_pnbd(full["x"], full["t.x"], full["T.cal"], hessian=False)
         assert got.log_likelihood == pytest.approx(want["logLik"], abs=1e-5)
-        assert got.log_likelihood >= want["logLik"] - 1e-9
+        assert got.log_likelihood >= want["logLik"] - 1e-6
         for name, value in want["coefficients"].items():
             assert getattr(got, name) == pytest.approx(value, rel=1e-3)
 
@@ -152,7 +174,7 @@ class TestWeights:
         )
         for name in PNBD_MLE:
             assert getattr(weighted, name) == pytest.approx(
-                getattr(full, name), rel=1e-4
+                getattr(full, name), rel=1e-3
             )
 
 

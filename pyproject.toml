@@ -9,8 +9,9 @@ authors = [
 requires-python = ">=3.12"
 # GPL-3.0-only, matching CLVTools 0.12.1. The code here is written from scratch
 # against the paper rather than translated from that package -- R never enters
-# `src/`, and the oracle runs out-of-process -- but `data/` redistributes the
-# four datasets CLVTools bundles, exported to CSV by `tools/extract_data.R`.
+# `src/`, and the oracle runs out-of-process -- but `src/clvtools/data/`
+# redistributes the five datasets CLVTools bundles, exported to CSV by
+# `tools/extract_data.R` and shipped inside the wheel.
 # Matching the upstream licence is what makes that redistribution unambiguous.
 license = "GPL-3.0-only"
 license-files = ["LICENSE"]

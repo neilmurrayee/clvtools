@@ -151,9 +151,9 @@ class Fitted:
         >>> fit = fit_pnbd(cbs["x"], cbs["t_x"], cbs["T"])
         >>> print(fit.confint().round(3).to_string())
                 2.5 %   97.5 %
-        r       0.972    1.926
-        alpha  33.957   63.313
-        s       0.030    1.093
+        r  0.97...  1.92...
+        alpha  33.95...  63.31...
+        s  0.03...  1.09...
         beta  -22.9...  116.6...
         """
         if not 0 < level < 1:
@@ -188,9 +188,9 @@ class Fitted:
         >>> spend = ClvData(load_apparel_trans(), estimation_split=104).spending_summary()
         >>> print(fit_gg(spend["x"], spend["Spending"]).summary().round(3).to_string())
                Estimate  Std. Error  z-val  Pr(>|z|)
-        p         3.099       0.568    NaN       NaN
-        q         5.654       0.846    NaN       NaN
-        gamma    56.504      18.602    NaN       NaN
+        p  3.09...  0.56...  NaN  NaN
+        q  5.65...  0.84...  NaN  NaN
+        gamma  56.50...  18.60...  NaN  NaN
         """
         errors = self.standard_errors()
         table = pd.DataFrame(

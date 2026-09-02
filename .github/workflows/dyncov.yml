@@ -12,13 +12,12 @@
 #
 # This job is that gate, moved off the push path and onto a clock.
 #
-# Nothing here has ever executed. There is no remote and nothing has been
-# pushed, so -- exactly as with `ci.yml` -- this file is a statement of what
-# should run, verified locally, not a record of a run that happened. One
-# further consequence of that, which is easy to miss: GitHub only fires
-# `schedule:` from the workflow file on the **default branch**. Until this
-# lands on `main` the cron below is inert, and `workflow_dispatch` is the only
-# trigger that will do anything.
+# This file is on `main` as of 2026-09-02, which means the cron below is live:
+# GitHub fires `schedule:` from the workflow file on the default branch, and
+# this is now that branch. The job has still never run -- nothing has dispatched
+# it and no night has passed since it landed -- so the first run will be the
+# nightly one unless somebody presses the button first, which `docs/backlog.md`
+# item 13 asks for so that the first run is watched rather than nocturnal.
 name: Time-varying covariate MLE
 
 on:

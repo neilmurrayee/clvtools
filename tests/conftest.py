@@ -15,7 +15,7 @@ import pandas as pd
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
-DATA = ROOT / "data"
+DATA = ROOT / "src" / "clvtools" / "data"
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 

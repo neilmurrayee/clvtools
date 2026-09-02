@@ -246,7 +246,7 @@ class TestAgainstOracle:
     def test_fit_reaches_the_oracles_optimum(self, fitted):
         want = fixture_json("pnbd_staticcov_fit")
         assert fitted.log_likelihood == pytest.approx(want["logLik"], abs=1e-4)
-        assert fitted.log_likelihood >= want["logLik"] - 1e-9
+        assert fitted.log_likelihood >= want["logLik"] - 1e-6
 
 
 class TestNesting:

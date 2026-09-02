@@ -44,7 +44,14 @@ __all__ = [
     "load_cdnow",
 ]
 
-DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
+#: The bundled datasets, *inside* the package. They used to live at the
+#: repository root, two directories up from here, which works in a source
+#: checkout and fails in an installed one: the wheel carried no CSVs at all and
+#: ``load_cdnow()`` raised ``FileNotFoundError`` pointing at a path under
+#: ``site-packages/`` that never existed. Verified by installing the built
+#: wheel into a throwaway environment, which is the only way to see it -- every
+#: test in this repo runs from the checkout, where the old path resolved.
+DATA_DIR = Path(__file__).resolve().parent / "data"
 
 #: Every unit :class:`ClvData` accepts. See :mod:`clvtools.timeunit` for the
 #: calendar arithmetic the month and year units need.

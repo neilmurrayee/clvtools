@@ -10,11 +10,19 @@ speculation.
 stop. Do not add items without evidence, and do not work an item marked
 `[needs-decision]` — those need the maintainer.
 
-**Round 3 is open**, from a review on 2026-09-02. Items 1-9 are closed, item 9
-last, and both audit rounds with them. What the review found is below, item 10
-first: the port is correct and gated, and none of it has ever left this machine.
-Item 10 blocks the rest — it is the only one that becomes impossible to do
-properly once something is pushed.
+**Rounds 3 and 4 are open**, from two reviews on 2026-09-02. Items 1-12 and 17
+are closed; 13 is open on its last step. The code is public at
+<https://github.com/neilmurrayee/clvtools> on `main`, and CI has run four times
+and **has never been green** — the last, run
+[33602019629](https://github.com/neilmurrayee/clvtools/actions/runs/33602019629),
+failed one doctest on both interpreters.
+
+**A rule this file did not have, and should have.** A claim about an external
+system — CI, PyPI, GitHub — carries the run id, URL or command output that
+established it. Item 17 was ticked with "green on GitHub on both interpreters"
+while that run was still in progress and then failed; the tick was written from
+a local suite and an expectation. Ticking on an expectation is how a record
+becomes wrong, and correcting it is cheaper than trusting it afterwards.
 
 Definition of done for every item: `uv run pytest` green (906 tests at the time
 of writing), `uv run ruff check src tests tools docs` clean, and 100% line
@@ -673,12 +681,16 @@ by the same cause.
 Everything item 1 built is unexercised. Four things need settling in the same
 breath, because they contradict each other today:
 
-- The repository does not exist yet under `neilmurrayee`.
-- `pyproject.toml`'s `[project.urls]` point at `blob/main/...` while the local
-  default branch is `master`, so the Documentation and Changelog links would
-  404 on the branch name even once the repository exists.
-- `dyncov.yml`'s schedule fires only from the default branch, so the nightly
-  fit stays inert until this history lands there.
+- ~~The repository does not exist yet under `neilmurrayee`.~~ **Done:** created
+  public on 2026-09-02, <https://github.com/neilmurrayee/clvtools>.
+- ~~`pyproject.toml`'s URLs point at `blob/main/...` while the default branch is
+  `master`.~~ **Done:** `master` was renamed to `main`, fast-forwarded to the
+  tip, and `interface-layer` retired into it, so the URLs resolve.
+- ~~`dyncov.yml`'s schedule fires only from the default branch.~~ It is now on
+  `main`, so **the nightly cron is live and has never been watched**. Dispatching
+  it once by hand is the outstanding half of this item.
+- **Still open: CI has never been green.** Four runs, four failures. This item
+  cannot be ticked until a run id says otherwise.
 - **`[needs-decision]` The paper is in the repository.** `git ls-files` tracks
   40 files under `arXiv-2602.09845v1/` plus `2602.09845v1.pdf` — 3.2 MB, the
   complete LaTeX source and typeset PDF of somebody else's article. Locally
@@ -834,12 +846,155 @@ where the basin exists without asserting a falsehood where it does not.
 *Done when:* CI is green on 3.12 and 3.13, the fits still reproduce every
 published number, and both deviations are in the README's findings.
 
-**Done:** all four classes fixed, README findings written for the two that are
-deviations rather than test hygiene. Locally: 906 passed, `TOTAL 2694 0 100%`,
-ruff and ty clean, with every `-m paper` and `-m rdoc` number unchanged -- the
-tolerance change moves no estimate, it only lets the optimiser say so. Green on
-GitHub on both interpreters, which is the first time any of this has been true
-of a machine that is not the author's.
+**Done, over four CI runs rather than the one this claimed.** All four classes
+fixed, README findings written for the two that are deviations rather than test
+hygiene, and a fifth class found afterwards: printed digits in the docs, which
+took three more rounds because a failing doctest aborts its whole file and hides
+what follows it.
+
+The original text of this paragraph said "green on GitHub on both interpreters"
+while [run 33599631277](https://github.com/neilmurrayee/clvtools/actions/runs/33599631277)
+was still in progress. It then failed, seven tests. That is corrected here
+rather than quietly: the local suite is not evidence about CI, and the tick
+should have waited for the run id. See the rule added to this file's header.
+
+Runs, in order: 33597654955 (could not resolve `setup-uv@v10`), 33597787901 (9
+failures), 33599631277 (7), 33602019629 (1). Each fixed a real class of defect
+and each was ticked only after the *next* run reported.
+
+
+# Round 4 — an outside review
+
+`docs/review-2026-09-02.md`, commissioned from a second model at commit
+`faea7f6` and reviewed on 2026-09-02: four independent read-only passes over
+the models, the API and data layer, the test suite, and the docs, with every
+ranked claim re-run before it was ranked. Twenty findings. Its own summary of
+what is sound is worth keeping in view — the oracle discipline, the log-space
+Pareto/NBD path, the typing and lint gates, and that **nothing in it suggests a
+wrong equation**. What it found is the layer built after the port: packaging,
+CI, input validation, and the regimes the oracle fixtures never visit.
+
+Items below follow its recommended order rather than its numbering; the finding
+number is given for each so the two can be read together. `[x]` items were done
+in the same session that received the review.
+
+## 18. `[x]` Ship the datasets inside the package — finding 1
+
+**Blocker, and the one that would have shipped.** `DATA_DIR` was
+`Path(__file__).parent.parent.parent / "data"`: the repository root in a
+checkout, and a directory that does not exist under `site-packages`. The built
+wheel contained **zero CSVs**, so `load_apparel_trans()` — the first statement
+of the README's usage block — raised `FileNotFoundError` on any installed copy.
+Every test passed throughout, because they all run from the checkout.
+
+**Done:** `data/` moved to `src/clvtools/data/`, `DATA_DIR` resolved inside the
+package, and `tools/extract_data.R`, `tests/conftest.py`, `CLAUDE.md`,
+`README.md` and `pyproject.toml` follow. `uv build` now puts five CSVs in the
+wheel, and in a throwaway environment the installed package loads CDNOW and
+fits the Pareto/NBD to `[1.449, 48.635, 0.561, 46.884]`. Two tests guard it:
+`DATA_DIR` must be inside the package, and every dataset must be reachable
+through `importlib.resources`, which is how an installed package reaches it.
+
+## 19. `[x]` One precision rule, everywhere — findings 2 and 13
+
+The suite pinned digits the platforms do not fix, in more places than the CI
+failures showed. **Done:** the rule is written at the top of
+`tests/test_pnbd_fit.py` and applied across the suite — estimates to no better
+than 1e-3 relative, log-likelihoods tightly, "at least as good as the oracle"
+with 1e-6 of slack, and no assertion on a printed digit of an estimate. The
+1e-4 paper check (which was using 80% of its allowance here and 89% on Linux),
+three `>= oracle - 1e-9` checks, the dyncov PAlive count and every fitted table
+in `docs/` and `src/` are covered.
+
+## 20. `[x]` Say only what a run id supports — finding 3
+
+Six statements about the repository's own state were false, and the worst was
+this file's: item 17 was ticked "green on GitHub on both interpreters" while
+that run was in progress, and it then failed. **Done:** all six corrected, and
+the header carries the rule they were missing — a claim about an external
+system carries the run id, URL or command output that established it.
+
+## 21. `[ ]` Make bad input loud — findings 5, 6, 7, 12
+
+The largest cluster, and the review's estimate is "perhaps a hundred lines" for
+a shared validator and a shared optimiser-result helper:
+
+- `t_x <= T + 1e-9` is accepted where the likelihood needs `t_x <= T` exactly,
+  so one customer a hair over collapses a whole fit to its start values with
+  `-inf` and no exception (finding 5);
+- NaN covariates and NaN prices flow through `astype(float)` into the
+  likelihoods and come back as plausible numbers — a customer with all-NaN
+  prices is predicted at 7.72 mean spending against 88.65 with real ones
+  (finding 6);
+- **there is no `warnings.warn` anywhere in `src/`**, so no fit says anything
+  when it fails to converge; CLVTools warns (finding 7);
+- and seven smaller silent paths: duplicate covariate rows, timezone-aware
+  dates, `predict()` ignoring arguments it was given, a `name_price` typo
+  silently disabling spending, the README's own snippet discounting at the
+  unscaled annual rate, `likelihood_ratio_test` accepting non-nested models,
+  and `ClvDataDynCov` validating nothing at construction (finding 12).
+
+*Done when:* one validator and one result helper are called from all six fits,
+each of the above raises or warns with the offending id or column named, and
+each has a test. The README snippet is fixed in the same commit.
+
+## 22. `[ ]` Standard errors that exist and can be trusted — findings 8 and 9
+
+`latent_attrition`'s docstring forwards `hessian`, which three estimators do
+not accept, so `summary()` on a correlated fit raises with advice that cannot
+be followed. And `_covariance` inverts without checking definiteness, so the
+BG/NBD covariate fit on the apparel ridge ships `nan` standard errors with
+`converged = True`.
+
+*Done when:* `hessian` reaches the correlated, GGom covariate and dyncov fits;
+`_covariance` checks `eigvalsh > 0` and warns naming the flat directions; `m`
+gets its z-value as CLVTools prints one; and the regularized-fit question — the
+Hessian is differenced on the unpenalised sum while the objective is the
+penalised mean — is answered, documented, and covered by one oracle fixture.
+
+## 23. `[ ]` Log-domain integrals for the regimes the oracle cannot see — findings 4 and 10
+
+The GGom/NBD forms its integrand as `(alpha + tau)^(r + x)` in the direct
+domain: at the fitted parameters `x = 140` gives `CET 0.00` and `x = 160` gives
+`CET nan` with `PAlive` exactly 1.0, because the integral underflows and
+`logaddexp` keeps the alive branch alone. On daily data that starts near
+`x = 105`. The dyncov `F2` terms divide by `alpha**(r + s + x)`, which is
+exactly 0.0 by `x = 160`; CLVTools arranges it the same way, so **fixture
+agreement proves nothing here**.
+
+*Done when:* both are evaluated in log space with a signed log-sum-exp, the
+dyncov CET guards `s` near 1 as the aggregate module does, the `pmf` call falls
+back on a non-finite hypergeometric, and each carries a heavy-buyer test —
+against the Pareto/NBD limit the README documents where no oracle can reach.
+
+## 24. `[ ]` Bootstrap: report failures, and rebuild once — finding 11
+
+One exception on draw 3 of 5 loses every draw; non-converged refits are pooled
+silently; a user-supplied `sample` never receives the seeded generator, so
+`seed` is ignored with it; and `bootstrap_data` filters the whole frame per
+drawn customer — 0.95 s a draw on CDNOW against 0.16 s for the summary and fit
+together.
+
+## 25. `[ ]` Suite hygiene — findings 14, 15, 16, 17
+
+`tools/benchmark.py` crashes (`fit_static_covariates() got an unexpected
+keyword argument 'method'`) and nothing imports it; a user's own `-m` flag
+replaces `addopts` and re-selects the ten-minute dyncov fit; seven fixtures have
+no reader and two have no generator; one R self-check compares `coef(fit)` with
+itself; some `paper` and `oracle` marks are on classes that do not earn them;
+and two tests assert wall-clock seconds while the README says nothing does.
+
+## 26. `[ ]` Onboarding — finding 18
+
+No install instruction anywhere, no API index for 24 exports, a `Changelog` URL
+pointing at `docs/audit.md`, and an empty code block in `docs/paper.md` where
+the `newcustomer_static` example belongs.
+
+## 27. `[ ]` Reconcile the families — findings 19 and 20
+
+Three validators, two result shapes, two weight conventions, `ClvData(` in
+subclass reprs, `scipy.stats` imported at module scope for 0.36 s of a 0.4 s
+import, and `.claude/settings.local.json` tracked when its name says otherwise.
 
 ---
 
