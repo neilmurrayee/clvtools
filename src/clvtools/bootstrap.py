@@ -148,6 +148,35 @@ def _drawer(sample, rng) -> Callable[[np.ndarray], np.ndarray]:
     return sample
 
 
+def _kept(results: list, failures: list[str], num_boots: int) -> list:
+    """The draws that survived, having said what happened to the ones that did not.
+
+    An exception on draw 3 of 5 used to discard the two that had already
+    succeeded. A resample is a random object: some of them are degenerate, and
+    losing the whole run to one of those is the wrong trade. What is not
+    acceptable is losing it silently, so every failure is counted and named
+    here -- as an exception when nothing survived, and as a
+    :class:`~clvtools._validate.ConvergenceWarning` when something did. Only
+    one of the two: if nothing survived, the exception has already said so and
+    a warning beside it is noise.
+
+    >>> _kept([1, 2], [], num_boots=2)
+    [1, 2]
+    """
+    if not results:
+        raise ValueError(
+            f"all {num_boots} bootstrap draws failed. First: {failures[0]}"
+        )
+    if failures:
+        warnings.warn(
+            f"{len(failures)} of {num_boots} bootstrap draws failed and were "
+            f"dropped; {len(results)} were kept. First: {failures[0]}",
+            ConvergenceWarning,
+            stacklevel=3,
+        )
+    return results
+
+
 def bootstrap_apply(
     data: ClvData,
     apply: Callable[[ClvData], object],
@@ -237,27 +266,9 @@ def bootstrap_apply(
                 rebuilt = _resample_covariates(data, rebuilt, drawn)
             results.append(apply(rebuilt))
         except Exception as error:
-            # An exception on draw 3 of 5 used to discard the two that had
-            # already succeeded. A resample is a random object: some of them
-            # are degenerate, and losing the whole run to one of those is the
-            # wrong trade. What is not acceptable is losing it silently, so
-            # every failure is counted and named at the end.
             failures.append(f"draw {attempt + 1}: {type(error).__name__}: {error}")
 
-    if not results:
-        raise ValueError(
-            f"all {num_boots} bootstrap draws failed. First: {failures[0]}"
-        )
-    if failures:
-        # Only where something survived: if nothing did, the exception above
-        # has already said so and a warning beside it is noise.
-        warnings.warn(
-            f"{len(failures)} of {num_boots} bootstrap draws failed and were "
-            f"dropped; {len(results)} were kept. First: {failures[0]}",
-            ConvergenceWarning,
-            stacklevel=2,
-        )
-    return results
+    return _kept(results, failures, num_boots)
 
 
 def confidence_intervals(

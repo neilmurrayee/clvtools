@@ -196,6 +196,83 @@ def _identified(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _selected(
+    transactions: pd.DataFrame,
+    name_id: str,
+    name_date: str,
+    name_price: str | None,
+) -> tuple[pd.DataFrame, bool]:
+    """The columns the models need, under the names the rest of this uses.
+
+    Returns the renamed frame and whether it carries prices. A caller names its
+    own columns; everything downstream of here says ``Id``, ``Date`` and
+    ``Price``.
+
+    An explicitly named price column that is not there is a typo, not a
+    decision to model without spending. Naming it costs one line; not naming it
+    costs a silent switch to a transaction-only model, which surfaces much
+    later as ``no Price column: spending cannot be modelled``.
+
+    >>> import pandas as pd
+    >>> frame = pd.DataFrame({"cust": ["1"], "when": ["2005-01-02"]})
+    >>> selected, priced = _selected(frame, "cust", "when", None)
+    >>> list(selected.columns), priced
+    (['Id', 'Date'], False)
+    """
+    if not isinstance(transactions, pd.DataFrame):
+        raise TypeError(
+            "transactions must be a pandas DataFrame with Id and Date "
+            f"columns, not {type(transactions).__name__}"
+        )
+    if transactions.empty:
+        raise ValueError("transaction data is empty: there is nothing to model")
+
+    cols = {name_id: "Id", name_date: "Date"}
+    has_price = name_price is not None and name_price in transactions.columns
+    if has_price:
+        cols[name_price] = "Price"
+    elif name_price not in (None, "Price"):
+        raise ValueError(
+            f"name_price={name_price!r} is not a column of the transaction "
+            f"data; pass name_price=None to model transactions only"
+        )
+
+    missing = [c for c in cols if c not in transactions.columns]
+    if missing:
+        raise ValueError(f"transaction data is missing columns: {missing}")
+
+    return transactions[list(cols)].rename(columns=cols).copy(), has_price
+
+
+def _priced(df: pd.DataFrame, has_price: bool) -> pd.DataFrame:
+    """A finite ``Price`` on every row, or none at all -- never some of each.
+
+    A customer whose prices are all NaN is counted in ``x`` and dropped from
+    the mean, and ``fillna(0.0)`` then records ``Spending = 0``. The
+    Gamma-Gamma silently excludes that row and ``predict()`` reports the
+    population mean for the customer -- 7.72 against 88.65 with real prices, in
+    the review's example. Finding 6 of ``docs/review-2026-09-02.md``.
+
+    >>> import pandas as pd
+    >>> _priced(pd.DataFrame({"Id": ["1"]}), has_price=False)["Price"].isna().all()
+    np.True_
+    """
+    if not has_price:
+        df["Price"] = np.nan
+        return df
+
+    finite = np.isfinite(df["Price"].to_numpy(dtype=float))
+    if not finite.all():
+        bad = df.loc[~finite, "Id"]
+        raise ValueError(
+            f"Price is not finite for {len(bad)} transaction"
+            f"{'s' if len(bad) > 1 else ''} "
+            f"(customers e.g. {sorted(set(bad))[:3]}); "
+            "drop or impute those rows, or pass name_price=None"
+        )
+    return df
+
+
 class ClvData:
     """A transaction log with an estimation/holdout split. Cf. ``clvdata()``.
 
@@ -250,51 +327,10 @@ class ClvData:
         self.time = timeunit.get(time_unit)
         self.time_unit = time_unit
 
-        if not isinstance(transactions, pd.DataFrame):
-            raise TypeError(
-                "transactions must be a pandas DataFrame with Id and Date "
-                f"columns, not {type(transactions).__name__}"
-            )
-        if transactions.empty:
-            raise ValueError("transaction data is empty: there is nothing to model")
-
-        cols = {name_id: "Id", name_date: "Date"}
-        has_price = name_price is not None and name_price in transactions.columns
-        if has_price:
-            cols[name_price] = "Price"
-        elif name_price not in (None, "Price"):
-            # An explicit column that is not there is a typo, not a decision to
-            # model without spending. Naming it costs one line; not naming it
-            # costs a silent switch to a transaction-only model, which surfaces
-            # much later as `no Price column: spending cannot be modelled`.
-            raise ValueError(
-                f"name_price={name_price!r} is not a column of the transaction "
-                f"data; pass name_price=None to model transactions only"
-            )
-
-        missing = [c for c in cols if c not in transactions.columns]
-        if missing:
-            raise ValueError(f"transaction data is missing columns: {missing}")
-
-        df = _identified(transactions[list(cols)].rename(columns=cols).copy())
-        if not has_price:
-            df["Price"] = np.nan
-        elif not np.isfinite(df["Price"].to_numpy(dtype=float)).all():
-            # A customer whose prices are all NaN is counted in ``x`` and
-            # dropped from the mean, and ``fillna(0.0)`` then records
-            # ``Spending = 0``. The Gamma-Gamma silently excludes that row and
-            # ``predict()`` reports the population mean for the customer --
-            # 7.72 against 88.65 with real prices, in the review's example.
-            # Finding 6 of ``docs/review-2026-09-02.md``.
-            bad = df.loc[~np.isfinite(df["Price"].to_numpy(dtype=float)), "Id"]
-            raise ValueError(
-                f"Price is not finite for {len(bad)} transaction"
-                f"{'s' if len(bad) > 1 else ''} "
-                f"(customers e.g. {sorted(set(bad))[:3]}); "
-                "drop or impute those rows, or pass name_price=None"
-            )
-        self.has_spending = has_price
-
+        selected, self.has_spending = _selected(
+            transactions, name_id, name_date, name_price
+        )
+        df = _priced(_identified(selected), self.has_spending)
         self.transactions = self._aggregate_to_day(df)
 
         self.estimation_start = self.transactions["Date"].min()
