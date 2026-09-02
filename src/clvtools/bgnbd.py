@@ -36,7 +36,7 @@ from scipy import optimize, special
 # this closes no cycle; the covariate fit still imports
 # `fit_static_covariates` inside the function, where it is needed.
 from clvtools._optimize import options_for
-from clvtools._staticcov import DelegatesToCovariates, StaticCovResult
+from clvtools._staticcov import DelegatesToCovariates, StaticCovResult, design
 from clvtools._validate import customer_history, finished, start_values
 from clvtools.data import ClvDataStaticCov
 from clvtools.inference import Fitted, numerical_hessian
@@ -296,24 +296,12 @@ def alpha_i(
     Same convention as the Pareto/NBD: a covariate that raises the purchase
     rate lowers the rate parameter.
     """
-    covariates = np.atleast_2d(np.asarray(covariates, dtype=float))
-    gamma_trans = np.asarray(gamma_trans, dtype=float)
-    if covariates.shape[1] != gamma_trans.size:
-        raise ValueError(
-            f"{covariates.shape[1]} transaction covariates but "
-            f"{gamma_trans.size} parameters"
-        )
+    covariates, gamma_trans = design(covariates, gamma_trans, "transaction")
     return alpha * np.exp(-(covariates @ gamma_trans))
 
 
 def _life_scaled(value: float, gamma_life: ArrayLike, covariates: ArrayLike):
-    covariates = np.atleast_2d(np.asarray(covariates, dtype=float))
-    gamma_life = np.asarray(gamma_life, dtype=float)
-    if covariates.shape[1] != gamma_life.size:
-        raise ValueError(
-            f"{covariates.shape[1]} attrition covariates but "
-            f"{gamma_life.size} parameters"
-        )
+    covariates, gamma_life = design(covariates, gamma_life, "attrition")
     return value * np.exp(covariates @ gamma_life)
 
 

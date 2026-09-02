@@ -40,7 +40,7 @@ from scipy import integrate, optimize, special
 # this closes no cycle; the covariate fit still imports
 # `fit_static_covariates` inside the function, where it is needed.
 from clvtools._optimize import options_for
-from clvtools._staticcov import DelegatesToCovariates, StaticCovResult
+from clvtools._staticcov import DelegatesToCovariates, StaticCovResult, design
 from clvtools._validate import customer_history, finished
 from clvtools.data import ClvDataStaticCov
 from clvtools.inference import Fitted, numerical_hessian
@@ -388,13 +388,7 @@ def alpha_i(
     alpha: float, gamma_trans: ArrayLike, covariates: ArrayLike
 ) -> NDArray[np.float64]:
     r""":math:`\alpha_i = \alpha \exp(-\boldsymbol{\gamma}_{purch}'\mathbf{x})`."""
-    covariates = np.atleast_2d(np.asarray(covariates, dtype=float))
-    gamma_trans = np.asarray(gamma_trans, dtype=float)
-    if covariates.shape[1] != gamma_trans.size:
-        raise ValueError(
-            f"{covariates.shape[1]} transaction covariates but "
-            f"{gamma_trans.size} parameters"
-        )
+    covariates, gamma_trans = design(covariates, gamma_trans, "transaction")
     return alpha * np.exp(-(covariates @ gamma_trans))
 
 
@@ -406,13 +400,7 @@ def beta_i(
     Negative, as in the Pareto/NBD and unlike the BG/NBD's :math:`a_i, b_i`:
     :math:`\beta` scales the Gompertz hazard, so it behaves as a rate.
     """
-    covariates = np.atleast_2d(np.asarray(covariates, dtype=float))
-    gamma_life = np.asarray(gamma_life, dtype=float)
-    if covariates.shape[1] != gamma_life.size:
-        raise ValueError(
-            f"{covariates.shape[1]} attrition covariates but "
-            f"{gamma_life.size} parameters"
-        )
+    covariates, gamma_life = design(covariates, gamma_life, "attrition")
     return beta * np.exp(-(covariates @ gamma_life))
 
 
