@@ -15,6 +15,8 @@ fitted optimum would reveal.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -522,3 +524,93 @@ class TestTheCovariateJoinDoesNotDependOnOrder:
             canonical.coefficients["life.Gender"]
             - canonical.coefficients["life.Channel"]
         ) > 1.0
+
+
+class TestCategoricalCovariatesBecomeDummies:
+    """Spec C-01 to C-04, all `weak` and all holding -- one arm each was tested.
+
+    Four claims about how covariate columns reach the design matrix: character
+    and factor give the same dummies with and without a holdout (`C-01`); a
+    2-category variable gives 1 dummy and a 3-category one gives 2 (`C-02`);
+    categories convert whether or not numeric covariates are present (`C-03`);
+    and numeric covariates stay numeric either way (`C-04`).
+
+    The mixed case is the one worth reaching, and the audit said why: it "is
+    where ``get_dummies`` reorders". It does -- numerics come out first
+    regardless of the input order -- so what matters is not the order itself but
+    that :attr:`names_cov_life` still describes the matrix column for column.
+    A silent transposition there would give every coefficient the wrong name.
+    Backlog item 34, round 5.
+    """
+
+    @staticmethod
+    def _built(covariates: pd.DataFrame, *, holdout: bool = True):
+        from clvtools import ClvData, ClvDataStaticCov
+
+        transactions = pd.DataFrame([
+            {"Id": customer, "Date": pd.Timestamp("2005-01-03")
+             + pd.Timedelta(weeks=week)}
+            for customer in covariates["Id"]
+            for week in (0, 2, 6)
+        ])
+        data = ClvData(
+            transactions, time_unit="week",
+            estimation_split=3 if holdout else None,
+        )
+        return ClvDataStaticCov(data, covariates)
+
+    IDS: ClassVar[list[str]] = ["a", "b", "c", "d"]
+
+    def test_two_categories_give_one_dummy(self):
+        frame = pd.DataFrame({"Id": self.IDS, "G": ["m", "f", "m", "f"]})
+        assert self._built(frame).names_cov_life == ["G_m"]
+
+    def test_three_categories_give_two(self):
+        frame = pd.DataFrame({"Id": self.IDS, "G": ["m", "f", "x", "m"]})
+        assert self._built(frame).names_cov_life == ["G_m", "G_x"]
+
+    @pytest.mark.parametrize("holdout", [True, False])
+    def test_character_and_categorical_agree_either_side_of_a_split(
+        self, holdout
+    ):
+        """C-01's two arms: the dtype must not change the encoding."""
+        character = pd.DataFrame({"Id": self.IDS, "G": ["m", "f", "x", "m"]})
+        categorical = character.copy()
+        categorical["G"] = categorical["G"].astype("category")
+        assert (
+            self._built(character, holdout=holdout).names_cov_life
+            == self._built(categorical, holdout=holdout).names_cov_life
+            == ["G_m", "G_x"]
+        )
+
+    def test_numeric_covariates_stay_numeric_beside_categories(self):
+        """C-03 and C-04's mixed arm, and `get_dummies` reordering it."""
+        frame = pd.DataFrame({
+            "Id": self.IDS, "G": ["m", "f", "x", "m"],
+            "Num": [10.0, 20.0, 30.0, 40.0],
+        })
+        built = self._built(frame)
+        # Numerics first, whatever order the input frame had them in.
+        assert built.names_cov_life == ["Num", "G_m", "G_x"]
+
+    def test_and_the_names_still_describe_the_matrix_column_for_column(self):
+        """The claim the reordering actually threatens.
+
+        `Num` is the identity column, `G_m` marks a and d, `G_x` marks c. If the
+        names and the matrix disagreed, every coefficient would be labelled
+        with a neighbour's name and nothing else would notice.
+        """
+        frame = pd.DataFrame({
+            "Id": self.IDS, "G": ["m", "f", "x", "m"],
+            "Num": [10.0, 20.0, 30.0, 40.0],
+        })
+        built = self._built(frame)
+        matrix = np.asarray(built.design_life())
+        assert built.names_cov_life == ["Num", "G_m", "G_x"]
+        np.testing.assert_array_equal(matrix[:, 0], [10.0, 20.0, 30.0, 40.0])
+        np.testing.assert_array_equal(matrix[:, 1], [1.0, 0.0, 0.0, 1.0])
+        np.testing.assert_array_equal(matrix[:, 2], [0.0, 0.0, 1.0, 0.0])
+
+    def test_numeric_only_data_produces_no_dummies(self):
+        frame = pd.DataFrame({"Id": self.IDS, "Num": [1.0, 2.0, 3.0, 4.0]})
+        assert self._built(frame).names_cov_life == ["Num"]

@@ -723,3 +723,72 @@ class TestTransactionsAnEpsilonApartCannotLoseAWalk:
         data = ClvData(pd.DataFrame(rows), time_unit="week")
         assert len(data.as_data_frame()) == 2
         assert int(data.customer_summary()["x"].iloc[0]) == 1
+
+
+class TestTheTwoDynamicSeriesMayRunToDifferentDates:
+    """Spec C-08, and a divergence this package already reasoned about.
+
+    R requires it: "if one covariate's data is longer than the other's, all
+    data must be that long". Here they may differ, and
+    ``_check_covariate_coverage`` says why in its own docstring -- "the two
+    series may legitimately run to different dates ... so only the overlapping
+    prefix has to match here".
+
+    That is a deliberate weakening, and it is safe only because the questions
+    equal length would have answered are asked directly instead: the walks'
+    interval indices come from the lifetime grid, so it must reach the
+    estimation end (`_check_covariate_span`, backlog item 34); the transaction
+    grid must cover the walks it is sliced for (`_stack`); and the prediction
+    horizon must be reachable (`_require_coverage`). Three checks at the points
+    that matter rather than one blanket rule, which is worth pinning as a
+    decision rather than left as an omission.
+    """
+
+    START: ClassVar[pd.Timestamp] = pd.Timestamp("2005-01-03")
+
+    def _build(self, life_weeks: int, trans_weeks: int):
+        from clvtools import ClvData, ClvDataDynCov
+
+        transactions = pd.DataFrame([
+            {"Id": customer, "Date": self.START + pd.Timedelta(weeks=week)}
+            for customer in ("a", "b")
+            for week in range(6)
+        ])
+        data = ClvData(transactions, time_unit="week", estimation_split=4)
+
+        def grid(weeks: int):
+            return pd.DataFrame([
+                {"Id": customer, "Cov.Date": self.START + pd.Timedelta(weeks=w),
+                 "S": w % 2}
+                for customer in ("a", "b")
+                for w in range(weeks)
+            ])
+
+        return ClvDataDynCov(
+            data, grid(life_weeks), grid(trans_weeks),
+            names_cov_life=["S"], names_cov_trans=["S"],
+        ).walks()
+
+    @pytest.mark.parametrize("life,trans", [(9, 9), (12, 9), (9, 12), (12, 5)])
+    def test_unequal_lengths_are_accepted(self, life, trans):
+        """Where R would refuse three of these four."""
+        assert self._build(life, trans).n_customers == 2
+
+    def test_but_the_lifetime_grid_must_still_reach_the_estimation_end(self):
+        """The first of the three checks that replace R's blanket rule."""
+        with pytest.raises(ValueError, match="stops before the estimation period"):
+            self._build(3, 12)
+
+    def test_and_the_transaction_grid_must_cover_the_walks(self):
+        """The second. A longer lifetime grid does not excuse a short one here."""
+        from clvtools import ClvData, load_apparel_dyn_cov, load_apparel_trans
+        from clvtools.pnbd.dyncov import build_walks
+
+        data = ClvData(load_apparel_trans(), time_unit="week", estimation_split=104)
+        full = load_apparel_dyn_cov()
+        short = full[full["Cov.Date"] <= pd.Timestamp("2006-06-01")]
+        with pytest.raises(ValueError, match="periods its walk spans"):
+            build_walks(
+                data, full, short,
+                names_cov_life=["High.Season"], names_cov_trans=["High.Season"],
+            )

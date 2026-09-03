@@ -432,14 +432,14 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 
 | | | evidence / note |
 |---|---|---|
-| C-01 | w | `test_pnbd_staticcov.py:112`; one string column, no factor arm, no holdout arm; expected names are pandas' convention, not R's |
-| C-02 | w | only 3-cat→2-dummy; no 2-cat→1-dummy, no dynamic case |
-| C-03 | w | only the no-numeric arm; the mixed arm is where `get_dummies` reorders |
-| C-04 | w | `test_pnbd_staticcov.py:99`; the with-categoricals half absent |
+| C-01 | c | re-verdicted 2026-09-03: **round 5**: character and pandas `category` give the same dummies, asserted with *and* without a holdout |
+| C-02 | c | re-verdicted 2026-09-03: **round 5**: 2 categories -> 1 dummy, 3 -> 2 |
+| C-03 | c | re-verdicted 2026-09-03: **round 5**: the mixed arm reached — `get_dummies` does reorder (numerics first), and the names are asserted to describe the matrix column for column, which is the claim the reordering threatens |
+| C-04 | c | re-verdicted 2026-09-03: **round 5**: numeric covariates stay numeric with and without categoricals present |
 | C-05 | a ! | names never coerced; `my var!` survives verbatim (**A7**) |
 | C-06 | a | `frame.copy()` untested; `with_covariates` uses `copy.copy`, so `_cov_life` is shared when no term is derived |
 | C-07 | a | nothing feeds dyncov data longer than needed |
-| C-08 | w | `test_pnbd_dyncov.py:574,593` approximate it; claim never stated |
+| C-08 | c ! | **round 5**, a recorded divergence: R requires the two series to be equally long, this package allows them to differ and asks the questions equal length would have answered at three points instead — the lifetime grid reaching the estimation end, the transaction grid covering its walks, and the prediction horizon being reachable. Pinned, and in the README's findings |
 | C-09 | a ! | single-category covariate silently accepted → `(600, 0)` design (**A4**) |
 | C-10 | c ! | re-verdicted 2026-09-03: closed by **A4** — an unrecognised covariate name now raises; `test_predict.py:651` |
 | C-11 | a | dyncov has no duplicate, NA, or (Id, Date) completeness check |

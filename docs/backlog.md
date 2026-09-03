@@ -1893,6 +1893,36 @@ same floats), at :math:`\gamma \ne 0` — with :math:`\gamma = 0` every
 multiplier is 1 and the reconstruction holds for reasons having nothing to do
 with the walks, which is how DY-15's `d_omega` oracle came to be degenerate.
 
+### Batch 6 — the `C` section, and a decision that lived only in a docstring
+
+`C-01` to `C-04` all hold, each with one arm tested. `C-03` is the one whose
+note pointed at the right risk — "the mixed arm is where `get_dummies`
+reorders". It does: numerics come out first whatever order the input frame had
+them in. The reordering is harmless; what it threatens is that
+`names_cov_life` still describes the matrix **column for column**, and a silent
+transposition there would label every coefficient with a neighbour's name while
+everything else looked well formed. The test asserts that correspondence
+directly rather than the ordering.
+
+**`C-08` is a divergence the code had already reasoned about and no test
+recorded.** R requires that if one covariate series is longer than the other,
+all data must be that long. Here they may differ, and
+`_check_covariate_coverage`'s own docstring says why: "the two series may
+legitimately run to different dates ... so only the overlapping prefix has to
+match here". The weakening is safe only because the questions equal length
+would have answered are asked directly at three points — the lifetime grid
+reaching the estimation end (batch 2's check), the transaction grid covering
+the walks it is sliced for, and the prediction horizon being reachable. Three
+checks where they bite rather than one blanket rule at the door. Now pinned in
+all four directions, with a README findings entry.
+
+**That is the third divergence this round where the implementation made a
+considered choice that no test or finding recorded** — `FI-09`'s frame sharing
+and `T-11`'s stricter `data_end` rule were the others. Worth naming as a
+pattern: decisions taken while writing the code tended not to reach the
+findings log, and "the suite touches this but does not pin it" is exactly what
+that looks like from the audit's side.
+
 ### Batch 5 — the `I` section, and one missing method
 
 `I-01`, `I-02` and `I-04` hold and were narrowly tested: the agreement between

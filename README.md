@@ -391,6 +391,17 @@ were wrong in the fourth digit; at a *relative* 1e-4 they agree with
 GGom/NBD's `b = 8.1e-07` from being stepped negative, where the likelihood does
 not exist.
 
+**The two time-varying covariate series may run to different dates.** R
+requires that "if one covariate's data is longer than the other's, all data must
+be that long"; here they may differ. The weakening is deliberate and is safe
+only because the questions equal length would have answered are asked directly
+instead, at the three points that matter: the *lifetime* grid must reach the
+estimation end, since every walk's interval indices are derived from it and then
+used to slice both matrices; the *transaction* grid must cover the walks it is
+sliced for; and the prediction horizon must be reachable from whichever series
+runs shortest. Three checks where they bite rather than one blanket rule at the
+door. Spec C-08.
+
 **Two formula spellings R has that this does not, and one it shares.**
 S6.4's formula is `~ life | trans`, and three constructs inside it needed
 deciding. `.` expands to every covariate the data carries, *including* beside
