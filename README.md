@@ -172,14 +172,15 @@ R_LIBS=.Rlib Rscript tools/oracle/generate_fixtures.R     # -> tests/fixtures/
 R_LIBS=.Rlib Rscript tools/oracle/generate_family_fixtures.R
 R_LIBS=.Rlib Rscript tools/oracle/generate_interface_fixtures.R  # summary, plots, generics
 R_LIBS=.Rlib Rscript tools/oracle/generate_cdnow_fixtures.R      # the CDNOW fit, pmf, frequencies
+R_LIBS=.Rlib Rscript tools/oracle/generate_time_fixtures.R       # S5's calendar arithmetic
 R_LIBS=.Rlib Rscript tools/oracle/generate_dyncov_fixtures.R     # slow: fits dyncov twice
 ```
 
-Those five generators produce every fixture but two. `time_elapsed.csv` and
-`time_add_periods.csv` — the 840 spans and 280 additions the table below counts
-under "Time arithmetic, §5" — came from CLVTools' `clv.time` classes by a script
-that was never committed, so they are the one thing here that cannot currently
-be re-baselined. Writing that generator is backlog item 25.
+Every committed fixture is reachable from that list. Two were not until
+2026-09-03: `time_elapsed.csv` and `time_add_periods.csv` came from CLVTools'
+`clv.time` classes by a script that was never committed with them, and the
+generator above was reconstructed from the grid they describe — it reproduces
+both **byte for byte**.
 
 `setup_oracle.sh` never touches your system R library. CRAN's macOS binaries lag
 the newest R release, so it falls back through recent series; the 4.5 build

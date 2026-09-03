@@ -5,11 +5,8 @@ exported to CSV by ``tools/extract_data.R``. They live inside the package rather
 than beside it so that they ship in the wheel; a built wheel that could not load
 its own data is one of the README's findings.
 
-``tests/fixtures/`` holds expectations generated from that package by the five
+``tests/fixtures/`` holds expectations generated from that package by the six
 scripts in ``tools/oracle/``; they are committed, so the suite runs without R.
-Two are the exception: ``time_elapsed`` and ``time_add_periods``, read by
-``tests/test_timeunit.py``, came from CLVTools' ``clv.time`` classes by a script
-that was never committed, so they cannot be re-baselined today.
 """
 
 from __future__ import annotations
