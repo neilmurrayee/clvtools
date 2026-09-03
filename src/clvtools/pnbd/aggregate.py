@@ -481,6 +481,113 @@ def expectation(
     )
 
 
+#: Below this share of ``b1`` surviving the subtraction, form the difference as
+#: a series tail instead. ``b1 - b2`` loses ``-log10(surviving)`` leading digits
+#: of the sixteen float64 carries, so 1e-4 keeps about twelve -- and at the
+#: paper's own parameters the share stays above 2.5e-3 out to ``k = 20``, so
+#: every published PMF table is answered by the fast path exactly as before.
+_CANCELLATION_LIMIT = 1e-4
+
+#: Give up on the tail once a term is this many logs below the largest, or once
+#: this many terms have been taken. 40 is ~1e-17 of the leading term; the counts
+#: measured were 26-92 terms in the regime that needs this at all.
+_TAIL_LOG_FLOOR = 40.0
+_TAIL_MAX_TERMS = 5_000
+
+
+def _series_tail(k, r, s, b, rsk1, gap, hi, T, shape):
+    r"""``b1 - b2`` summed directly, as the tail of the series ``b2`` truncates.
+
+    ``b2`` is the first :math:`k+1` terms of a convergent series whose full sum
+    is ``b1``, so their difference is the rest of it:
+
+    .. math::
+        b_1 - b_2 = \sum_{i=k+1}^{\infty} t_i
+
+    Every term is positive, so summing them has nothing to cancel -- which is
+    the whole point. Forming the same quantity as a subtraction loses
+    :math:`-\log_{10}((b_1-b_2)/b_1)` leading digits, and that reaches sixteen,
+    the whole of float64, by :math:`k = 18` at :math:`\alpha = 500, \beta = 1`.
+
+    Summed in log space with :func:`~scipy.special.logsumexp` because the terms
+    span many orders of magnitude, and truncated when a term falls far enough
+    below the largest to change nothing.
+
+    Not the primary path: it costs tens of hypergeometrics where the
+    subtraction costs none, and the subtraction is accurate wherever little
+    cancels. :data:`_CANCELLATION_LIMIT` chooses between them.
+    """
+    T_flat = np.broadcast_to(np.asarray(T, dtype=float), shape).ravel()
+    hi_flat = np.broadcast_to(np.asarray(hi, dtype=float), shape).ravel()
+    gap_flat = np.broadcast_to(np.asarray(gap, dtype=float), shape).ravel()
+    b_flat = np.broadcast_to(np.asarray(b, dtype=float), shape).ravel()
+    out = np.empty(T_flat.shape)
+    # Terms eventually run past what `hyp2f1` and `gammaln` can answer, and the
+    # loop stops on the first that cannot. The guard is entered once around the
+    # whole sweep rather than per term, as `dyncov.log_likelihood_ind` does and
+    # for the same measured reason.
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        return _tail_terms(k, r, s, b_flat, rsk1, gap_flat, hi_flat, T_flat, out, shape)
+
+
+def _tail_terms(k, r, s, b_flat, rsk1, gap_flat, hi_flat, T_flat, out, shape):
+    """The per-element loop of :func:`_series_tail`, inside its ``errstate``."""
+    for j in range(T_flat.size):
+        logs: list[float] = []
+        for i in range(k + 1, k + 1 + _TAIL_MAX_TERMS):
+            log_term = (
+                special.gammaln(r + s + i)
+                + i * np.log(T_flat[j])
+                - special.gammaln(r + s)
+                - special.gammaln(i + 1.0)
+                + np.log(
+                    special.hyp2f1(
+                        r + s + i, b_flat[j], rsk1,
+                        gap_flat[j] / (hi_flat[j] + T_flat[j]),
+                    )
+                )
+                - (r + s + i) * np.log(hi_flat[j] + T_flat[j])
+            )
+            if not np.isfinite(log_term):
+                break
+            logs.append(float(log_term))
+            if len(logs) > 3 and log_term < max(logs) - _TAIL_LOG_FLOOR:
+                break
+        out[j] = np.exp(special.logsumexp(np.array(logs))) if logs else np.nan
+    return out.reshape(shape)
+
+
+def _warn_if_unresolved(difference, k, b1) -> None:
+    """Say so if the die-inside-the-window term could not be resolved at all.
+
+    A difference of exactly zero is *not* a failure: both terms have underflowed
+    and the answer really is zero to float64, which is right for -- say -- sixty
+    purchases in a window of 0.001. Only a **negative** one is impossible, this
+    being part of a probability mass, and it means neither the subtraction nor
+    :func:`_series_tail` could resolve the term. ``np.log`` of it is ``NaN``,
+    and a ``NaN`` is contagious: one term poisons ``sum(pmf(k) for k in ...)``
+    entirely, so a caller summing over ``k`` needs to be told where to stop.
+
+    No parameter set is known to reach this. A 2,430-point sweep over ``k``,
+    :math:`\alpha`, :math:`\beta`, :math:`r`, :math:`s` and ``T``, spanning
+    1e-8 to 1e8, produced none once the series tail was in place. It is kept as
+    the invariant it states rather than removed, and tested directly, since an
+    unreachable guard that silently stops being unreachable is the shape of
+    defect this function already has a README finding about.
+    """
+    if not np.any(difference < 0.0):
+        return
+    warnings.warn(
+        f"pmf could not resolve its second term at k={k}: the closed form "
+        f"subtracts two values of order {float(np.max(b1)):.2e} whose "
+        f"difference is below what float64 can carry, and the series tail that "
+        f"replaces it did not converge either. The result is NaN rather than a "
+        f"number.",
+        PrecisionWarning,
+        stacklevel=3,
+    )
+
+
 def pmf(
     k: int, T: ArrayLike, r: float, alpha: ArrayLike, s: float, beta: ArrayLike
 ) -> NDArray[np.float64]:
@@ -555,27 +662,18 @@ def pmf(
         )
 
     difference = b1 - b2
-    if np.any(difference <= 0.0):
-        # `b1` and `b2` are each O(1e-7) here and their difference O(1e-22):
-        # fifteen digits of cancellation, past which float64 has nothing left
-        # and the difference lands on zero or goes negative. `np.log` of that
-        # is a silent `NaN` -- and a `NaN` is contagious, so one negligible
-        # term poisons `sum(pmf(k) for k in ...)` entirely.
-        #
-        # Not repairable by a fallback to `part1`: measured against a 60-digit
-        # evaluation at `alpha=500, beta=1, s=1.5, T=52`, the dying-inside-the-
-        # window term is **9% of the answer** at `k = 18`, not a rounding
-        # correction. The fix is to form the difference without cancelling,
-        # which is item 28's treatment of `F2` applied here -- backlog item 32.
-        # Until then this says so rather than returning `NaN` quietly.
-        warnings.warn(
-            f"pmf lost the second term to cancellation at k={k}: the closed "
-            f"form subtracts two values of order {float(np.max(b1)):.2e} whose "
-            f"difference is below what float64 can carry, so the result is NaN "
-            f"rather than a number. Large k with a large alpha/beta ratio is "
-            f"where this happens; see docs/backlog.md item 32.",
-            PrecisionWarning,
-            stacklevel=2,
+    # `b1 - b2` is the *tail* of the very series `b2` truncates, so where the
+    # subtraction has cancelled the tail can be summed directly instead. See
+    # `_series_tail`.
+    surviving = np.divide(
+        difference, b1, out=np.zeros_like(difference), where=b1 != 0.0
+    )
+    cancelled = surviving < _CANCELLATION_LIMIT
+    if np.any(cancelled):
+        difference = np.where(
+            cancelled, _series_tail(k, r, s, b, rsk1, gap, hi, T, np.shape(difference)),
+            difference,
         )
+    _warn_if_unresolved(difference, k, b1)
     with np.errstate(divide="ignore", invalid="ignore"):
         return part1 + np.exp(log_p2 + np.log(difference))

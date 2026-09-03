@@ -288,64 +288,80 @@ class TestPmfProperties:
             assert abs(expected - observed) < 0.15 * len(cbs)
 
 
-class TestPmfSaysWhenItRanOutOfPrecision:
-    """Backlog item 29, from finding 10 -- and the finding's diagnosis was wrong.
+class TestPmfResolvesItsSecondTermByTheSeriesTail:
+    """Backlog items 29 and 32: `pmf` was quietly wrong long before it was NaN.
 
-    It read: "``pmf`` calls ``hyp2f1`` with no fallback and returns ``NaN`` for
-    ``k >= 23`` at ``alpha = 500, beta = 1``". Both halves are off.
-    ``hyp2f1`` returns a perfectly finite value at every one of those
-    arguments; what fails is the *subtraction* ``b1 - b2`` in the closed form,
-    where the two are each of order 1e-7 and their difference of order 1e-22.
-    Fifteen digits of cancellation, after which the difference lands on zero or
-    below and ``np.log`` of that is a silent ``NaN``. And it starts at
-    ``k = 18``, not 23.
+    Item 29 found `b1 - b2` losing its value to cancellation and made it warn.
+    Item 32 found the cancellation is not the whole story and the fix is not
+    the one it had planned.
 
-    A ``NaN`` is contagious, which is the damage: one negligible term takes
-    ``sum(pmf(k) for k in range(...))`` with it. Repairing the value needs the
-    difference formed without cancelling -- item 28's treatment of ``F2``,
-    applied here -- which is item 32. Until then it says so.
+    ``b2`` is the first ``k+1`` terms of a convergent series whose full sum is
+    ``b1``, so ``b1 - b2`` is the *rest of that series* -- and a tail of
+    positive terms has nothing to cancel. Summing it directly is exact where
+    subtracting was not. Item 32 had planned to carry the two sides as
+    ``(log magnitude, sign)`` the way item 28 did for the dyncov ``F2``; that
+    would not have worked, because item 28's problem was underflow (values
+    below float64 but well determined) and this one is cancellation (values
+    representable, their difference not determined by them). At
+    ``alpha=500, beta=1`` sixteen leading digits cancel by ``k = 18`` and
+    twenty-three by ``k = 25``, against the sixteen float64 carries.
+
+    Values below are from a 50-digit `mpmath` evaluation of the same closed
+    form. The oracle cannot see any of this: CLVTools arranges the arithmetic
+    the same way and cancels in the same place.
     """
 
     PARAMS: ClassVar[dict] = {"r": 1.0, "alpha": 500.0, "s": 1.5, "beta": 1.0}
 
-    def test_it_warns_rather_than_returning_a_bare_nan(self):
-        import warnings
+    #: k -> the true pmf, to 17 significant figures.
+    TRUTH: ClassVar[dict] = {
+        10: 1.5412767587045434e-13, 12: 1.3253773328766937e-15,
+        14: 1.150633672699335e-17, 16: 1.0047106506666268e-19,
+        17: 9.4024922935654658e-21, 18: 8.8059780391254463e-22,
+        19: 8.2525857324722396e-23, 25: 5.6411974990043909e-29,
+        40: 2.2448348382856926e-44,
+    }
 
-        from clvtools._validate import PrecisionWarning
+    @pytest.mark.parametrize("k", sorted(TRUTH))
+    def test_every_k_is_right_to_a_part_in_1e12(self, k):
+        got = float(np.asarray(pmf(k, 52.0, **self.PARAMS)))
+        assert got == pytest.approx(self.TRUTH[k], rel=1e-11)
 
-        with pytest.warns(PrecisionWarning, match="cancellation"):
-            got = pmf(18, 52.0, **self.PARAMS)
-        assert np.isnan(got), "the value is still NaN; only the silence changed"
-        # And the warning names the k it happened at, which is what a caller
-        # summing over k needs in order to know where to stop trusting it.
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            pmf(25, 52.0, **self.PARAMS)
-        assert "k=25" in str(caught[0].message)
-
-    def test_the_k_where_it_starts_is_18_not_23(self):
-        """Pinned, because the finding recorded 23 and the code says otherwise."""
-        import warnings
-
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            values = {k: float(np.asarray(pmf(k, 52.0, **self.PARAMS)))
-                      for k in range(30)}
-        first_bad = next(k for k, v in values.items() if not np.isfinite(v))
-        assert first_bad == 18
-
-    @pytest.mark.parametrize("k", [0, 5, 10, 17])
-    def test_and_it_stays_quiet_where_the_arithmetic_still_works(self, k):
+    def test_and_it_no_longer_warns_where_it_used_to(self):
+        """`k = 18` was `NaN` with a `PrecisionWarning` until item 32."""
         import warnings
 
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            got = pmf(k, 52.0, **self.PARAMS)
+            got = float(np.asarray(pmf(18, 52.0, **self.PARAMS)))
         assert np.isfinite(got)
-        assert not caught, f"warned at k={k}, where the value is fine"
+        assert not caught
 
-    def test_the_papers_parameters_are_untouched(self):
-        """The regime the whole suite runs in must not have acquired a warning."""
+    @pytest.mark.parametrize("k,was", [
+        (12, 9.00e-07), (14, 6.49e-05), (16, 1.02e-03),
+    ])
+    def test_the_silent_error_before_the_nan_was_the_larger_defect(self, k, was):
+        """`k >= 18` returning `NaN` was only where the rot became visible.
+
+        The subtraction degrades from about ``k = 5`` here, and by ``k = 16``
+        it was wrong in the **third decimal** with nothing said. Those are the
+        errors the old arrangement produced; the new one is at 1e-14.
+        """
+        got = float(np.asarray(pmf(k, 52.0, **self.PARAMS)))
+        now = abs(got - self.TRUTH[k]) / self.TRUTH[k]
+        # `was` is what the subtraction produced, measured before the change.
+        # Asserting the ratio rather than a bare bound keeps the size of the
+        # gain in the test rather than only in the commit message.
+        assert now < was / 1e5, f"k={k}: {was:.2e} -> {now:.2e}"
+
+    def test_the_papers_parameters_stay_on_the_subtraction(self):
+        """Where little cancels the fast path is kept, and is exact.
+
+        At the paper's own parameters the share of ``b1`` surviving stays above
+        2.5e-3 out to ``k = 20``, so every published PMF table is answered the
+        way it always was -- which is what keeps `-m paper` and `-m rdoc`
+        unmoved.
+        """
         import warnings
 
         with warnings.catch_warnings(record=True) as caught:
@@ -357,26 +373,39 @@ class TestPmfSaysWhenItRanOutOfPrecision:
         assert not caught
         assert total == pytest.approx(1.0, abs=1e-6)
 
-    def test_a_fallback_to_part1_would_have_been_wrong(self):
-        """Why this warns instead of dropping the term that cannot be computed.
+    def test_a_legitimate_underflow_to_zero_is_not_warned_about(self):
+        """Zero is the right answer for 60 purchases in a window of 0.001.
 
-        Against a 60-digit evaluation of the same closed form, the true pmf at
-        ``k = 18`` is 8.805978e-22 while the surviving first term alone is
-        8.012608e-22 -- the second term is **9% of the answer**, not a rounding
-        correction, so returning the first term would be quietly wrong rather
-        than quietly absent.
+        Both terms underflow there and the difference is exactly zero, which is
+        correct rather than lost. Before this was distinguished from a negative
+        difference, 72 parameter sets in a sweep warned about answers that were
+        right.
         """
-        from scipy import special
+        import warnings
 
-        r, s, alpha, beta, T, k = 1.0, 1.5, 500.0, 1.0, 52.0, 18
-        log_p1 = (
-            special.gammaln(r + k) - special.gammaln(r) - special.gammaln(k + 1.0)
-            + r * (np.log(alpha) - np.log(alpha + T))
-            + k * (np.log(T) - np.log(alpha + T))
-            + s * (np.log(beta) - np.log(beta + T))
-        )
-        part1_alone = float(np.exp(log_p1))
-        assert part1_alone == pytest.approx(8.012608e-22, rel=1e-5)
-        assert abs(part1_alone - 8.805978e-22) / 8.805978e-22 == pytest.approx(
-            0.09, abs=0.005
-        )
+        from clvtools._validate import PrecisionWarning
+        from clvtools.pnbd.aggregate import _warn_if_unresolved
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            _warn_if_unresolved(np.array([0.0, 1e-30]), 60, np.array([1e-7]))
+        assert not caught
+        assert issubclass(PrecisionWarning, UserWarning)
+
+    def test_but_a_negative_difference_is_impossible_and_says_so(self):
+        """It is part of a probability mass, so below zero means unresolved.
+
+        No parameter set is known to reach this -- a 2,430-point sweep over
+        ``k``, the four model parameters and ``T``, spanning 1e-8 to 1e8, found
+        none once the series tail was in place. The guard is tested directly
+        rather than left uncovered or deleted: an unreachable guard that quietly
+        stops being unreachable is the shape of defect this very function has a
+        README finding about.
+        """
+        from clvtools._validate import PrecisionWarning
+        from clvtools.pnbd.aggregate import _warn_if_unresolved
+
+        with pytest.warns(PrecisionWarning, match="could not resolve"):
+            _warn_if_unresolved(np.array([-1e-30]), 18, np.array([2.5e-7]))
+
+

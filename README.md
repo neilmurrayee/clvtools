@@ -342,6 +342,26 @@ agree to 1e-12 out to $x = 400$. The intermediates table keeps the value form,
 so a term below float64 still prints as zero — as CLVTools' does — and only
 the likelihood is formed from the logs.
 
+**The PMF's closed form was quietly wrong long before it was visibly wrong.**
+`pmf` computes the die-inside-the-window term as `b1 - b2`, and those two are
+nearly equal: at `alpha = 500, beta = 1, s = 1.5, T = 52` the share of `b1`
+surviving the subtraction falls from 3.6e-8 at `k = 10` to 5.5e-16 at `k = 18`,
+so **sixteen leading digits cancel** — the whole of float64 — and twenty-three
+by `k = 25`. `np.log` of what was left returned `NaN` from `k = 18`, which is
+where anyone would have noticed. The interesting part is what happened before
+that: measured against a 50-digit evaluation of the same closed form, the
+relative error was 2.4e-8 at `k = 10`, 6.5e-5 at `k = 14` and **1.0e-3 at
+`k = 16`** — wrong in the third decimal, finite, and silent. `b2` turns out to
+be the first `k+1` terms of a convergent series whose full sum is `b1`, so
+`b1 - b2` is the *tail* of that series, and a tail of positive terms has
+nothing to cancel: summed directly it is right to 1e-12 or better everywhere,
+including where the subtraction returned `NaN`. The subtraction is kept where
+little cancels, which is every published table — at the paper's own parameters
+the surviving share stays above 2.5e-3 out to `k = 20`, so `-m paper` and
+`-m rdoc` are unmoved. CLVTools arranges the arithmetic the same way and
+cancels in the same place, so no fixture could see any of it; the reference is
+`mpmath` at 50 digits.
+
 **The paper's §6.4.2 table cannot be reproduced by CLVTools 0.12.1 either.**
 Its time-varying covariate prediction prints `PAlive = 0.0139206` for customer
 1; CLVTools 0.12.1 predicts 0.0107292 from its own fit, and this package

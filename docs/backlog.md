@@ -10,8 +10,8 @@ speculation.
 stop. Do not add items without evidence, and do not work an item marked
 `[needs-decision]` — those need the maintainer.
 
-**Rounds 3 and 4 are open**, from two reviews on 2026-09-02. Open: 32 and the
-two `[~]` remainders of 23 and 25. Everything else is closed, and item
+**Rounds 3 and 4 are open**, from two reviews on 2026-09-02. Open: only the
+two `[~]` remainders of 23 and 25. Every numbered item is closed. Everything else is closed, and item
 16 was the last one carrying `[needs-decision]` — no item does now. The phrase
 survives on two settled sub-bullets inside closed items 13 and 22, which say so
 where they stand.
@@ -1627,30 +1627,65 @@ parameters of `_minimize_neldermead` and `_minimize_lbfgsb` *are* the contract,
 and a hard-coded copy would drift from it. An unrecognised method validates
 nothing rather than refusing something SciPy might accept.
 
-## 32. `[ ]` Form the `pmf`'s difference without cancelling — the rest of item 29
+## 32. `[x]` Form the `pmf`'s difference without cancelling — the rest of item 29
 
 Item 29 found that `aggregate.pmf` loses its second term to fifteen digits of
 cancellation from `k = 18` at `alpha = 500, beta = 1`, and that the lost term is
 **9% of the answer** rather than a rounding correction, so no fallback fixes it.
 It warns; it is still `NaN`.
 
-The shape of the fix is known, because item 28 did it for the dyncov `F2`:
-carry the two sides as `(log magnitude, sign)` and difference them with
-`_log_diff_exp`/`expm1` rather than subtracting values. `b1` is a single
-hypergeometric over `hi**(r+s)`; `b2` is a `k`-term sum. Both are products and
-sums of quantities that already have log forms.
+**Done, 2026-09-03 — and the planned fix would not have worked.** This item said
+"the shape of the fix is known, because item 28 did it for the dyncov `F2`:
+carry the two sides as `(log magnitude, sign)`". That cannot work here, and the
+reason is the distinction the item glossed: **item 28's problem was underflow**
+— values below float64 but perfectly well determined — and **this one is
+cancellation**, values representable whose *difference* is not determined by
+them. Measured at 50 digits: sixteen leading digits cancel by `k = 18` and
+twenty-three by `k = 25`, against float64's sixteen. No rearrangement of `b1`
+and `b2` recovers information that is not in them.
 
-*Done when:* `pmf` returns a finite, correct value where it now warns —
-checked against the 60-digit evaluation recorded in item 29 (8.805978e-22 at
-`k = 18`), and out to `k` where the true value underflows float64 honestly; the
-`PrecisionWarning` fires only where the answer really is unrepresentable; the
-existing `-m rdoc` PMF table and the `?pmf` frequencies are unmoved; and
-`docs/performance.md` records the cost, since item 28's equivalent was 26% of
-an evaluation.
+**What works came from the structure.** `b2` is the first `k+1` terms of a
+convergent series whose full sum is `b1`, so `b1 - b2` is the **tail** of that
+series — and a tail of positive terms has nothing to cancel. `_series_tail`
+sums it in log space with `logsumexp`, taking 26–92 terms in the regime that
+needs it.
 
-Note the oracle cannot see this: CLVTools arranges the arithmetic the same way
-and cancels in the same place, which is why the ground truth here is `mpmath`
-at 60 digits rather than a fixture. Same standing as items 23 and 28.
+**The larger finding, which this item did not know about.** The `NaN` from
+`k = 18` was only where the rot became *visible*. Against the 50-digit
+reference, the subtraction was already wrong by:
+
+| `k` | 10 | 12 | 14 | 16 | ≥ 18 |
+|---|---|---|---|---|---|
+| before | 2.4e-8 | 9.0e-7 | 6.5e-5 | **1.0e-3** | `NaN` |
+| after | **exact** | 3.9e-14 | 3.7e-14 | 7.7e-15 | 1e-12..1e-14 |
+
+Wrong in the third decimal at `k = 16`, finite, and silent. That is the
+README-findings class, and it now has an entry there.
+
+**No published number moves.** The subtraction is kept where little cancels:
+`_CANCELLATION_LIMIT = 1e-4` keeps about twelve of the sixteen digits, and at
+the paper's own parameters the surviving share stays above 2.5e-3 out to
+`k = 20`, so every published PMF table is answered exactly as before. All 47
+`-m paper` and `-m rdoc` tests pass unmoved, and the 400-term doctest still sums
+to 1 within 1e-6 with no warning.
+
+**Two corrections made on the way.** The `PrecisionWarning` fired on 72
+parameter sets whose answers were *right*: a difference of exactly zero is both
+terms underflowing, which is correct for sixty purchases in a window of 0.001,
+where only a **negative** difference is impossible. Narrowed to that, the sweep
+warns nowhere. And a non-raw heredoc wrote literal control characters
+(`\alpha` → `\a`) into the new docstring — the same defect the README already
+records against `dyncov.py`'s `PAlive`, caught by ruff and repaired.
+
+The guard that remains is unreachable by any of a 2,430-point sweep over `k`,
+the four model parameters and `T`, spanning 1e-8 to 1e8. It is extracted into
+`_warn_if_unresolved` and tested directly rather than pragma'd or deleted: an
+unreachable guard that quietly stops being unreachable is the shape of defect
+this function already has a finding about.
+
+The oracle cannot see any of this — CLVTools arranges the arithmetic the same
+way and cancels in the same place — so the reference is `mpmath` at 50 digits,
+the same standing as items 23 and 28.
 
 ---
 
