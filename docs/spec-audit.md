@@ -734,6 +734,16 @@ full fitting signature. The package has moved past the paper there, so M-13's
 "scope question: is the BG/BB model in or out?" is answered by the port's own
 rule — it follows the paper.
 
+> **Corrected 2026-09-03 — this paragraph is wrong, and the answer it reaches is
+> right by luck.** `args(bgbb)` returns a signature because three S4 methods are
+> registered; every one of their bodies is a `stop()`. The man page is titled
+> "BG/BB models - Work In Progress" and says "Not yet implemented… No value is
+> returned", and `bgbb(clvdata(apparelTrans, …))` raises `This model has not yet
+> been implemented!`. CLVTools has *not* moved past the paper here — the paper
+> is simply accurate. M-13 is not a scope question at all; there is nothing to
+> port. Left in place rather than rewritten, because reading a signature as
+> behaviour is the mistake worth keeping visible. `docs/backlog.md` item 16.
+
 #### D-17 and NC-13, the two items the audit never reached
 
 Both were marked `—` rather than given a verdict. Both are reachable.

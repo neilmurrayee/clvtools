@@ -10,9 +10,11 @@ speculation.
 stop. Do not add items without evidence, and do not work an item marked
 `[needs-decision]` — those need the maintainer.
 
-**Rounds 3 and 4 are open**, from two reviews on 2026-09-02. Open: 27, 29, 30,
-the two `[~]` remainders of 23 and 25, and 16 `[needs-decision]`. Everything
-else is closed.
+**Rounds 3 and 4 are open**, from two reviews on 2026-09-02. Open: 27, 29, 30
+and the two `[~]` remainders of 23 and 25. Everything else is closed, and item
+16 was the last one carrying `[needs-decision]` — no item does now. The phrase
+survives on two settled sub-bullets inside closed items 13 and 22, which say so
+where they stand.
 
 **Both gates are green, which they had never been when this paragraph was first
 written.** Read on 2026-09-03 with `gh run list`: `ci.yml` has 29 runs, 5 of
@@ -867,7 +869,7 @@ section leads with it.
 If this is ever revisited, the name was free on both indexes as of today and
 Trusted Publishing from Actions is the shape to use; nothing here blocks it.
 
-## 16. `[needs-decision]` `bgbb`
+## 16. `[x]` `bgbb` — decided: nothing to port, the gap does not exist
 
 The one model-level gap against CLVTools, recorded in `docs/audit.md`'s "Not
 gaps" and unchanged since: `bgbb` is exported by the R package and absent from
@@ -876,6 +878,49 @@ that was correct for a port *of the paper*, and it is the only thing left that
 would change the answer to "does this cover CLVTools?".
 
 Not an item to work. A scope question, listed so it stops being invisible.
+
+**Closed 2026-09-03, and it was never a scope question.** Asked of CLVTools
+0.12.1 itself rather than of its `NAMESPACE`:
+
+```
+> bgbb(clvdata(apparelTrans, date.format="ymd", time.unit="w",
++               estimation.split=104))
+Error: This model has not yet been implemented!
+```
+
+`man/bgbb.Rd` agrees, and says so three times over: the title is "BG/BB models
+- **Work In Progress**", the description is "Fits BG/BB models on transactional
+data with static and without covariates. **Not yet implemented.**", and the
+value is "**No value is returned.**" Three S4 methods are registered — for
+`clv.data`, `clv.data.static.covariates` and `clv.data.dynamic.covariates` —
+and all three raise. `NEWS.md` has never mentioned BG/BB.
+
+So the paper's "not currently included in CLVTools" is **accurate, not
+outdated**, this port is not behind the reference implementation, and there is
+no feature to port. The question this item existed to ask — "does this cover
+CLVTools?" — is answered yes, with nothing outstanding.
+
+**How the wrong premise got in is the part worth keeping.** The session that
+raised it checked `args(bgbb)`, saw a full fitting signature carrying
+`start.params.model`, `reg.lambdas` and the covariate arguments, and read that
+as an implementation. The signature is real; the body is a `stop()`. That is the
+same shape as two defects already in the README's findings — the wheel that
+passed every test in a checkout because a checkout always has the files, and
+`tools/benchmark.py` documented in the README while raising on every
+invocation — where what was checked was not what mattered. It reached the right
+answer by the wrong route, which is the kind of correctness that stops being
+correct when the circumstances move.
+
+Corrected in three places rather than one, since the claim had spread:
+`README.md`'s *Deliberately not ported* (whose premise it was), `docs/audit.md`'s
+*Not gaps*, and `docs/spec-audit.md`'s Appendix 4 on M-13 — that last as a note
+in place rather than a rewrite, on the same principle as
+`docs/performance.md`'s corrected prediction.
+
+**One condition on this closure.** It is a statement about CLVTools **0.12.1**
+(dated 2025-11-06), the version this port targets and the one in `.Rlib/`. If
+the oracle is ever re-baselined against a later release, re-run the call above
+rather than assuming this still holds.
 
 
 ## 17. `[x]` Make the suite pass off macOS/ARM

@@ -244,7 +244,10 @@ without the correlation, against a fixture that pins CLVTools doing the same.
 ## Not gaps
 
 - `bgbb` is exported by CLVTools but is absent from the paper (Table 4 lists
-  three families). Out of scope unless the scope changes.
+  three families). Out of scope — and, checked on 2026-09-03, not a gap at all:
+  the export is a stub whose man page says "Not yet implemented" and which
+  raises `This model has not yet been implemented!` when called. See
+  `docs/backlog.md` item 16.
 - `optimx.args` — covered by `method=` plus the `overrides` escape hatch in
   `clvtools._optimize.options_for`.
 - `remove.first.transaction=FALSE` — `ClvData.spending_summary` takes it.

@@ -40,14 +40,21 @@ Time-varying covariates and process correlation are Pareto/NBD only, likewise.
 
 ### Deliberately not ported
 
-Six things CLVTools has that this does not, each a decision rather than a gap —
-recorded here because an audit cannot otherwise tell the two apart.
+Six things an audit comparing this against CLVTools' `NAMESPACE` would flag,
+each a decision or a non-gap rather than an omission — recorded here because an
+audit cannot otherwise tell the three apart.
 
-* **The BG/BB model** (`bgbb()`). The paper this port follows states that
-  BG/BB "is not currently included in CLVTools, which currently focuses on
-  continuous-time probabilistic models with closed-form marginal likelihoods";
-  CLVTools 0.12.1 exports it anyway, so the package has moved past the paper
-  here. The port follows the paper.
+* **The BG/BB model** (`bgbb()`) — **not a gap: CLVTools has not implemented it
+  either.** The paper states that BG/BB "is not currently included in CLVTools,
+  which currently focuses on continuous-time probabilistic models with
+  closed-form marginal likelihoods", and 0.12.1 bears that out. It exports
+  `bgbb` and registers three method signatures — plain, static-covariate,
+  dynamic-covariate — whose man page is titled "BG/BB models - Work In
+  Progress" and reads "Not yet implemented… No value is returned"; calling it
+  raises `This model has not yet been implemented!`. This README said the
+  opposite until 2026-09-03, on the evidence that `args(bgbb)` returns a full
+  fitting signature. It does; the body is a `stop()`. Reading a signature as
+  behaviour is the same mistake as the two in the findings below.
 * **`as.clv.data()`**, R's coercion generic. `ClvData(...)` is the only
   constructor, and Python has no dispatch-on-coercion idiom that would make a
   second spelling of it worth having.
