@@ -149,6 +149,21 @@ class Fitted:
         """How many estimates the fit reports, which is how many it names."""
         return len(self.names)
 
+    def nobs(self) -> int:
+        """The number of customers the fit was estimated on. Cf. ``nobs()``.
+
+        Spec `I-08` asks that ``nobs()`` work on a ``clv.data`` *and* on a
+        ``clv.fitted``. :meth:`ClvData.nobs` existed; this did not, so the same
+        question had two spellings depending on which object you held --
+        ``data.nobs()`` on one and ``fit.n_customers`` on the other.
+
+        A method rather than a property, matching :meth:`ClvData.nobs` and R's
+        generic. Weighted where the fit was weighted, since that is the sample
+        size its own :attr:`bic` is computed against -- see backlog item 27,
+        where the time-varying fit reported the two inconsistently.
+        """
+        return self.n_customers
+
     @property
     def aic(self) -> float:
         """Akaike's criterion. Cf. ``AIC()``."""

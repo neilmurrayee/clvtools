@@ -1893,6 +1893,43 @@ same floats), at :math:`\gamma \ne 0` — with :math:`\gamma = 0` every
 multiplier is 1 and the reconstruction holds for reasons having nothing to do
 with the walks, which is how DY-15's `d_omega` oracle came to be degenerate.
 
+### Batch 5 — the `I` section, and one missing method
+
+`I-01`, `I-02` and `I-04` hold and were narrowly tested: the agreement between
+`coef()`, `vcov()` and `summary()` was asserted for the plain Pareto/NBD alone,
+and *order* is the whole claim — a covariate fit's vector runs model parameters,
+then attrition, then transaction coefficients, and a constrained one reports a
+tied covariate once as `constr.<name>`. A `vcov` indexed differently would hand
+every standard error to the wrong coefficient while looking well formed. Now
+checked across all three covariate families and a constrained fit. `I-04` gained
+the half nobody had run: that the summary frame **prints**.
+
+**`I-08` was a real gap.** `ClvData.nobs()` existed; fitted objects had no
+`nobs()`, so the same question had two spellings depending on which object you
+held — `data.nobs()` on one and `fit.n_customers` on the other. An
+inconsistency rather than a decision, since the count was right there. Added to
+the `Fitted` mixin, weighted where the fit was weighted, and asserted to equal
+both the data's count *and* the number `bic` scores against — which is the
+inconsistency item 27 found in the time-varying fit, guarded here from the
+other side.
+
+**`I-10` is answered by construction rather than by fits.** R's `lrtest()` is a
+generic dispatching per model class, so "runs for all models" is a real question
+there; here it is a plain function reading exactly two things from each
+argument, `log_likelihood` and `n_parameters`. Six covariate fits to show that a
+function which never looks at the family works for every family is minutes of
+optimiser time for no information, so it is asserted over one constructed result
+per family. The test also records what that construction *costs*: nothing stops
+a caller comparing a BG/NBD against a Pareto/NBD, because the function cannot
+tell — the models are not nested, the answer is meaningless, and the guard R
+gets free from dispatch is absent here.
+
+Two mistakes of mine in the writing, both arithmetic rather than design: the
+oracle cbs fixture keeps R's column names (`t.x`, `T.cal`), and one extra
+*covariate* is **two** extra parameters, since it enters both processes — so
+the ratio test's `df` is 2 where I first asserted 1. The test now asserts the
+parameter difference and says why.
+
 ### Batch 4 — the `FI` section: three defects in the formula interface
 
 The richest batch. `FI-04`, `FI-13`, `FI-14` and half of `FI-15` were real, and

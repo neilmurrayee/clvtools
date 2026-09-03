@@ -587,16 +587,16 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 
 | | | evidence / note |
 |---|---|---|
-| I-01 | w | `test_inference.py:174,184`; coef↔vcov for plain pnbd only (**D**) |
-| I-02 | w | no covariate fit has its `vcov()` index checked; under constraints only `names` is compared |
+| I-01 | c | re-verdicted 2026-09-03: **round 5**: `coef`/`vcov`/`summary` name the same parameters in the same order, across all three covariate families and a constrained fit |
+| I-02 | c | re-verdicted 2026-09-03: **round 5**: the `vcov` index and columns checked for covariate and constrained fits, not the plain Pareto/NBD alone |
 | I-03 | a | `confint` takes only `level`; no `parm` argument exists |
-| I-04 | w | columns and the NaN/z pattern pinned; no structural check against R, printing never exercised |
+| I-04 | c | re-verdicted 2026-09-03: **round 5**: R's four columns in order, one row per estimated parameter, and that the frame prints |
 | I-05 | w ! | still weak, re-checked 2026-09-03: `fit_pnbd_dyncov` takes no constraint, regularization or correlation argument, so 12 of the 29 configurations remain unreachable. A capability gap, not a test gap — `docs/backlog.md` item 35 |
 | I-06 | c | warns rather than raising — recorded in README Findings |
 | I-07 | o | no named-parameter accessor exists; all likelihood functions take positional parameters |
-| I-08 | w | `ClvData.nobs()` pinned; fitted objects have no `nobs()` |
+| I-08 | c | re-verdicted 2026-09-03: **round 5**: `nobs()` added to `Fitted` — the count was reachable as `n_customers` while the data spelled it `nobs()`, so one question had two spellings. Asserted equal to the data's and to the count `bic` scores against |
 | I-09 | c | re-verdicted 2026-09-03: closed by **B3** — `fitted_pnbd` read at `test_diagnostics.py:217`, rtol 1e-10 |
-| I-10 | w | one model only; "runs for all models" untested |
+| I-10 | c | re-verdicted 2026-09-03: **round 5**: family-agnostic *by construction* — `likelihood_ratio_test` reads only `log_likelihood` and `n_parameters`, asserted over one constructed result per family rather than six covariate fits |
 | I-11 | c | |
 
 ## S14 Formula interface

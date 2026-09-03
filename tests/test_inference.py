@@ -415,3 +415,211 @@ class TestAHessianThatCannotBeTrusted:
         with pytest.warns(ConvergenceWarning, match="non-finite entries"):
             errors = Toy().standard_errors()
         assert all(np.isnan(v) for v in errors.values())
+
+
+class TestTheThreeViewsOfAFitAgreeOnItsNames:
+    """Spec I-01 and I-02, `weak`: "coef<->vcov for plain pnbd only".
+
+    Five claims in I-01 and four in I-02, and between them they say one thing:
+    ``coef()``, ``vcov()`` and ``coef(summary())`` name the same parameters **in
+    the same order**, with no ``NaN``. The audit found that asserted for the
+    plain Pareto/NBD alone -- "no covariate fit has its ``vcov()`` index
+    checked; under constraints only ``names`` is compared".
+
+    Order is the whole claim. A covariate fit's vector runs model parameters
+    then attrition then transaction coefficients, and a constrained one reports
+    a tied covariate **once**, as ``constr.<name>``; a `vcov` indexed in a
+    different order would give every standard error to the wrong coefficient
+    while looking perfectly well formed. Backlog item 34, round 5.
+    """
+
+    @pytest.fixture(scope="class")
+    def fits(self, static_data):
+        from clvtools import bgnbd, ggomnbd, pnbd
+
+        return {
+            "pnbd-cov": pnbd.fit_pnbd_staticcov(static_data),
+            "bgnbd-cov": bgnbd.fit_bgnbd_staticcov(static_data),
+            "ggomnbd-cov": ggomnbd.fit_ggomnbd_staticcov(static_data),
+            "pnbd-constrained": pnbd.fit_pnbd_staticcov(
+                static_data, names_cov_constr=["Gender"]
+            ),
+        }
+
+    @pytest.mark.slow
+    @pytest.mark.parametrize("which", [
+        "pnbd-cov", "bgnbd-cov", "ggomnbd-cov", "pnbd-constrained",
+    ])
+    def test_coef_vcov_and_summary_name_the_same_things_in_order(
+        self, fits, which
+    ):
+        fit = fits[which]
+        assert list(fit.coefficients) == list(fit.vcov().index)
+        assert list(fit.vcov().index) == list(fit.vcov().columns)
+        assert list(fit.summary().index) == list(fit.coefficients)
+
+    @pytest.mark.slow
+    @pytest.mark.parametrize("which", ["pnbd-cov", "pnbd-constrained"])
+    def test_and_carry_no_nan(self, fits, which):
+        fit = fits[which]
+        assert not np.isnan(fit.vcov().to_numpy()).any()
+        assert not np.isnan(list(fit.coefficients.values())).any()
+
+    @pytest.mark.slow
+    def test_a_constrained_fit_reports_the_tied_covariate_once(self, fits):
+        """Which is what makes the ordering worth asserting separately."""
+        constrained = fits["pnbd-constrained"]
+        free = fits["pnbd-cov"]
+        assert "constr.Gender" in constrained.names
+        assert len(constrained.names) == len(free.names) - 1
+        assert list(constrained.vcov().index) == constrained.names
+
+
+class TestSummaryHasTheDocumentedStructure:
+    """Spec I-04, `weak`: "no structural check against R, printing never
+    exercised".
+
+    ``?summary.clv.fitted`` documents a coefficient table of Estimate, Std.
+    Error, z-val and Pr(>|z|). The columns were pinned; that the frame *prints*
+    was not, and a table that raises on `str()` is no use in a session.
+    """
+
+    @pytest.fixture(scope="class")
+    def fitted(self, cbs_estimation):
+        from clvtools.pnbd import fit_pnbd
+
+        return fit_pnbd(
+            cbs_estimation["x"], cbs_estimation["t.x"], cbs_estimation["T.cal"]
+        )
+
+    def test_the_coefficient_table_has_rs_four_columns_in_order(self, fitted):
+        assert list(fitted.summary().columns) == [
+            "Estimate", "Std. Error", "z-val", "Pr(>|z|)"
+        ]
+
+    def test_one_row_per_estimated_parameter(self, fitted):
+        assert list(fitted.summary().index) == fitted.names
+        assert len(fitted.summary()) == fitted.n_parameters
+
+    def test_and_it_prints(self, fitted):
+        """Exercised rather than assumed: `str()` on a frame can raise."""
+        printed = str(fitted.summary())
+        assert "Estimate" in printed
+        for name in fitted.names:
+            assert name in printed
+
+
+class TestNobsAnswersOnAFitAsWellAsOnTheData:
+    """Spec I-08, `weak`: "`ClvData.nobs()` pinned; fitted objects have no
+    `nobs()`".
+
+    Correct, and an inconsistency rather than a decision: the count was
+    reachable as ``fit.n_customers`` while the data spelled the same question
+    ``data.nobs()``. Both now answer. Backlog item 34, round 5.
+    """
+
+    def test_a_fit_and_its_data_agree(self, cbs_estimation, apparel_trans):
+        from clvtools import ClvData
+        from clvtools.pnbd import fit_pnbd
+
+        data = ClvData(apparel_trans, time_unit="week", estimation_split=104)
+        fit = fit_pnbd(
+            cbs_estimation["x"], cbs_estimation["t.x"], cbs_estimation["T.cal"],
+            hessian=False,
+        )
+        assert fit.nobs() == data.nobs() == 600
+
+    def test_it_is_the_count_bic_is_computed_against(self, cbs_estimation):
+        """So a weighted fit cannot report one number and score against another.
+
+        Backlog item 27 found the time-varying fit doing exactly that.
+        """
+        from clvtools.pnbd import fit_pnbd
+
+        fit = fit_pnbd(
+            cbs_estimation["x"], cbs_estimation["t.x"], cbs_estimation["T.cal"],
+            hessian=False,
+        )
+        expected = fit.n_parameters * np.log(fit.nobs()) - 2 * fit.log_likelihood
+        assert fit.bic == pytest.approx(expected, rel=1e-12)
+
+
+class TestTheRatioTestIsFamilyAgnostic:
+    """Spec I-10, `weak`: "one model only; 'runs for all models' untested".
+
+    R's ``lrtest()`` is a generic dispatching per model class, so "runs for all
+    models" is a real question there. Here it is a plain function over two
+    :class:`~clvtools.inference.Fitted` objects, reading exactly two things from
+    each -- ``log_likelihood`` and ``n_parameters`` -- so it is family-agnostic
+    **by construction**, which is a stronger statement than any number of fits
+    could make and the same class of claim as ``tests/test_invariants.py``.
+
+    Asserted over constructed results rather than fits: six covariate fits to
+    show that a function which never looks at the family works for every family
+    is minutes of optimiser time for no information. Backlog item 34, round 5.
+    """
+
+    @staticmethod
+    def _result(family: str, n_covariates: int, log_likelihood: float):
+        """One fitted object per family, carrying only what lrtest reads.
+
+        Parameterised by how many *covariates* it names rather than by a target
+        total: the families have different model-parameter counts -- four for
+        the Pareto/NBD and BG/NBD, five for the GGom/NBD -- so a fixed total
+        would mean a different covariate count per family, which is what the
+        first draft of this got wrong.
+        """
+        import numpy as np
+
+        from clvtools import bgnbd, ggomnbd
+        from clvtools._staticcov import StaticCovResult
+        from clvtools.pnbd.staticcov import PnbdStaticCovParams
+
+        names = ["Gender", "Channel"][:n_covariates]
+        shared = {
+            "gamma_life": np.zeros(len(names)),
+            "gamma_trans": np.zeros(len(names)),
+            "names_cov_life": names, "names_cov_trans": names,
+            "names_cov_constr": [], "reg_lambdas": None,
+            "log_likelihood": log_likelihood,
+            "unpenalised_log_likelihood": log_likelihood,
+            "converged": True, "n_customers": 600,
+        }
+        if family == "pnbd":
+            return PnbdStaticCovParams(r=1.0, alpha=2.0, s=3.0, beta=4.0, **shared)
+        covariates = StaticCovResult(model=np.ones(4), **shared)
+        if family == "bgnbd":
+            return bgnbd.BgnbdStaticCovParams(
+                r=1.0, alpha=2.0, a=3.0, b=4.0, covariates=covariates
+            )
+        return ggomnbd.GgomnbdStaticCovParams(
+            r=1.0, alpha=2.0, b=3.0, s=4.0, beta=5.0, covariates=covariates
+        )
+
+    @pytest.mark.parametrize("family", ["pnbd", "bgnbd", "ggomnbd"])
+    def test_it_runs_for_every_family(self, family):
+        restricted = self._result(family, 1, -5826.0)
+        unrestricted = self._result(family, 2, -5821.0)
+        got = likelihood_ratio_test(restricted, unrestricted)
+        assert got.statistic == pytest.approx(2 * (-5821.0 - -5826.0))
+        # The degrees of freedom are the parameter difference, whatever the
+        # family's own model-parameter count is. One extra *covariate* is two
+        # extra parameters, since it enters both the attrition and transaction
+        # processes -- which is why this asserts the difference rather than a
+        # hard-coded 1, as the first draft did.
+        assert got.df == unrestricted.n_parameters - restricted.n_parameters
+        assert got.df == 2
+        assert 0.0 < got.p_value < 1.0
+
+    def test_and_across_families_too_since_it_never_looks_at_one(self):
+        """The construction argument, made explicit.
+
+        Nothing stops a caller comparing a BG/NBD against a Pareto/NBD -- the
+        function has no way to tell. That is worth *knowing* rather than
+        guarding: the models are not nested, so the answer is meaningless, and
+        the guard R gets for free from dispatch is absent here.
+        """
+        got = likelihood_ratio_test(
+            self._result("bgnbd", 1, -5826.0), self._result("pnbd", 2, -5821.0)
+        )
+        assert np.isfinite(got.statistic)
