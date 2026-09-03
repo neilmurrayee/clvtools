@@ -83,8 +83,8 @@ For development, `uv sync` and then `uv run pytest`; there is no separate
 install step and the suite needs no R.
 
 Then [`examples/quickstart.ipynb`](examples/quickstart.ipynb) walks the whole
-thing in twenty cells — data, descriptive plots, both fits, prediction,
-diagnostics, covariates and bootstrap intervals — in about four seconds. It is
+thing in seventeen code cells — data, descriptive plots, both fits, prediction,
+diagnostics, covariates and bootstrap intervals — in about five seconds. It is
 committed with its outputs stripped and **executed by the test suite**, so it
 cannot drift from what the code does; run it with `uv run jupyter lab
 examples/quickstart.ipynb`, which needs the `plot` extra for the figures.
@@ -164,8 +164,15 @@ R_LIBS=.Rlib Rscript tools/extract_data.R                 # datasets  -> data/
 R_LIBS=.Rlib Rscript tools/oracle/generate_fixtures.R     # -> tests/fixtures/
 R_LIBS=.Rlib Rscript tools/oracle/generate_family_fixtures.R
 R_LIBS=.Rlib Rscript tools/oracle/generate_interface_fixtures.R  # summary, plots, generics
+R_LIBS=.Rlib Rscript tools/oracle/generate_cdnow_fixtures.R      # the CDNOW fit, pmf, frequencies
 R_LIBS=.Rlib Rscript tools/oracle/generate_dyncov_fixtures.R     # slow: fits dyncov twice
 ```
+
+Those five generators produce every fixture but two. `time_elapsed.csv` and
+`time_add_periods.csv` — the 840 spans and 280 additions the table below counts
+under "Time arithmetic, §5" — came from CLVTools' `clv.time` classes by a script
+that was never committed, so they are the one thing here that cannot currently
+be re-baselined. Writing that generator is backlog item 25.
 
 `setup_oracle.sh` never touches your system R library. CRAN's macOS binaries lag
 the newest R release, so it falls back through recent series; the 4.5 build
@@ -265,6 +272,18 @@ name customers — `"1219"`, and `"1000"` — that are not in `apparelTrans`, wh
 ids run 1..600; CLVTools answers with a table of `Inf`, `-Inf` and `NaN` and a
 warning. `ClvData.summary(ids=...)` raises instead. None of these printed
 values are used as oracles here, and `docs/audit.md` records why.
+
+**The built wheel carried no datasets, and no test in a checkout could see
+it.** `DATA_DIR` resolved `__file__/../../../data`, which is the repository root
+in a source tree and a directory that does not exist under `site-packages`, so
+`load_apparel_trans()` — the README's own first usage line — raised
+`FileNotFoundError` on any installed copy. Every test here passed throughout,
+because a checkout always has the files whether or not they are packaged. The
+data now lives inside the package, and
+`tests/test_data.py::TestTheDatasetsShipWithThePackage` asserts both halves of
+what that costs to prevent: `DATA_DIR` is inside the package directory, and
+every CSV is reachable through `importlib.resources` the way an installed
+package reaches it.
 
 **Three defects that static analysis found, once it was turned on.** A
 non-raw edit had written literal control characters into `pnbd/dyncov.py`'s
@@ -510,12 +529,12 @@ which it reported successful convergence on the Gamma-Gamma at a local optimum
 ## Testing
 
 ```bash
-uv run pytest                  # 1,146 tests, including doctests in src/ and docs/
+uv run pytest                  # 1,153 tests, including doctests in src/ and docs/
 uv run pytest -m paper         # 25 numbers printed in the paper
 uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
-uv run pytest -m literature    # 13 numbers published in the CLV literature
-uv run pytest -m oracle        # 242 checks against R CLVTools fixtures
-uv run pytest -m slow          # 152 full-dataset MLE fits
+uv run pytest -m literature    # 14 numbers published in the CLV literature
+uv run pytest -m oracle        # 245 checks against R CLVTools fixtures
+uv run pytest -m slow          # 153 full-dataset MLE fits
 uv run pytest -m dyncov_fit    # the time-varying covariate MLE; ~10 minutes
 uv run pytest --cov=clvtools --cov-report=term-missing
 uv run pytest -m quality       # lint, complexity and size gates (run by default)

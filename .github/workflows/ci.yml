@@ -18,8 +18,8 @@
 #     repo's `.python-version`.
 #
 # Not run here: the `dyncov_fit` marker, the ~10-minute time-varying covariate
-# MLE. `addopts` deselects it by default and this job keeps that default; giving
-# it a schedule of its own is backlog item 6.
+# MLE. `tests/conftest.py` deselects it by default and this job keeps that
+# default; giving it a schedule of its own is backlog item 6.
 name: CI
 
 # Every push, not just pushes to `main`: work here happens on long-lived
@@ -91,10 +91,10 @@ jobs:
       - name: Lint
         run: uv run ruff check src tests tools docs
 
-      # 1,152 tests including the doctests in `src/` and `docs/paper.md`, plus
+      # 1,153 tests including the doctests in `src/` and `docs/paper.md`, plus
       # the standing bar: 100% line coverage of `src/`, which `--cov-fail-under`
       # turns from a habit into a gate. Both figures are what a run prints --
-      # `1152 passed, 1 deselected` and `TOTAL 2751 0 100%` on 2026-09-03 -- and
+      # `1153 passed, 1 deselected` and `TOTAL 2752 0 100%` on 2026-09-03 -- and
       # a comment that drifts from them is worth correcting, since this file is
       # where a reader comes to find out what green means.
       - name: Test

@@ -6,7 +6,7 @@ for each spec item, what the suite actually pins.
 
 **Status: every finding worked**, 2026-09-02. A1–A7, B1–B7, C, D1–D6, the six
 `out-of-scope` items that needed a recorded decision, and D-17 and NC-13, the
-two the audit never reached. `TASK.md` records what each one turned out to be —
+two the audit never reached. Appendix 4 records what each one turned out to be —
 fourteen confirmed on the first pass, one overturned, two kept as deliberate
 divergences, and four defects that no test here could see: standard errors 24.5×
 too large at a zero penalty, a dyncov bootstrap refitting without covariates, a
@@ -238,6 +238,10 @@ and they cover the mechanisms most likely to break silently.
 ---
 
 # Section verdicts
+
+These counts are tallied from the section audits, not independently recounted.
+Where they disagree with Appendix 3, **trust the appendix**: it carries the
+per-item evidence and these do not.
 
 | Spec section | covered | weak | absent | out-of-scope |
 |---|---|---|---|---|
@@ -617,3 +621,144 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | V-06 | w ! | ~10 of 42; `NA` in `Id`/`Date` silently drops the row; empty frame accepted; non-DataFrame gives `AttributeError` (**A4**) |
 | V-07 | w | a few defaults pinned; `time_unit` has a default where R has none |
 | V-08 | w | `sample`/`ids`/bins/Price pinned; `label`, `other.models`, `annotate.ids` have no counterpart |
+
+# Appendix 4 — Outcomes: what each finding turned out to be
+
+The three rounds below were written as each was worked, and lived in a
+root-level `TASK.md` until 2026-09-03, when they were folded in here: they are
+the other half of this document, and a finding's verdict belongs beside the
+finding. The briefing that surrounded them -- a reading order, a suggested work
+order, a note about splitting a commit -- was spent, and is not carried.
+
+### Outcome, 2026-09-02
+
+Worked in the order suggested above. Every claim was reproduced before it was
+acted on -- the standing rule for this audit -- which changed the answer twice.
+
+| | Claim | Verdict |
+|---|---|---|
+| A2 | dyncov bootstrap drops covariates | **confirmed** — `apply` received a plain `ClvData`; now raises |
+| A4 | five silent acceptances | **confirmed** — NA ids and dates, empty frame, non-frame; all now named |
+| C | the literature tier reproduces | **confirmed exactly** — five oracles, three papers, `tests/test_literature.py` |
+| B1 | never calls `predict` | **confirmed** — it read the fixture; now predicts |
+| B2 | asserts something else | **confirmed**, and the honest replacement found customer 129 |
+| B4 | rename only exercised as identity | **confirmed** — now renames all three columns |
+| B6 | one scalar at `abs=1e-4` | **confirmed, and it was hiding a defect**: `λ=0` gave standard errors 24.5× too large |
+| D1 | DY-07 absent | **written** — and the first draft ran on an empty table |
+| D2 | permuted covariates unchecked | **written** — both hold |
+| D3 | `α = β` arm never taken | **written** — the arms agree to 1e-12 |
+| A1 | zero-length windows refused | **confirmed** — R answers both; so do we now |
+| A3 | discount factor range | **confirmed** — and its test asserted our divergence |
+| A5 | time-unit spellings | **confirmed** — R's `match.arg` forms now resolve |
+| A6 | timezone half-broken | **confirmed** — refused, with the route out named |
+| A7 / S-13 | remaining bin emitted empty | **not a divergence** — R does the same; pinned as agreement |
+| A7 / C-05 | covariate names not coerced | **divergence, ours kept** — R mangles `my var!` to `my.var.` |
+
+Two things the audit did not mention turned up while checking it: **CLVTools has
+no month unit at all** (it rejects `"month"` and `"months"`; this package
+implements calendar months, which S5 describes), and the discount-factor test
+was asserting this package's divergence rather than the claim, so the suite was
+defending the defect.
+
+Still open from the audit, and deliberately not started here: the `weak` verdicts
+beyond those listed, B5 (two degenerate oracles), B7 (restricted samples
+presented as general), and DY-22's seven weekday splits. `docs/backlog.md` items
+27 and 28 are also open, and item 28's cheap route was tried and reverted — the
+finding is recorded there.
+
+---
+
+### Outcome, round 2 — findings D5 and D6
+
+The audit's suggested order stopped at D3. The rest of section D, and section
+C's leftovers, were worked next; `tests/test_invariants.py` is what came of
+D5 and D6.
+
+| | Claim | Verdict |
+|---|---|---|
+| X-01 | all-zero covariate data fits the plain estimates | **holds** — to 3e-5, well inside R's 0.001; the two coefficients are then unidentified and are not compared |
+| X-04 | γ = 0 predicts the plain table, three ways | **holds exactly** — `exp(0) = 1`, so `check_exact=True` rather than a tolerance |
+| X-05 | γ = 0 gives the plain PMF and tracking plots | **holds** — the PMF exactly; the tracking series to 1e-13, because `600 × E[X(t)]` and a sum of 600 copies of it part company in the last two bits |
+| PR-08 | `predict()`'s spending column is the Gamma-Gamma's own | **holds bit for bit** |
+| FI-12 | the spending cbs `x` equals the Pareto/NBD's | **holds**, with and without a holdout — two different methods on `ClvData`, separately oracle-pinned, agreement stated nowhere until now |
+| B-02 / B-11 | drawing every customer once returns the original | **holds bit for bit** — cbs, spending summary, periods, both design matrices, and the estimate |
+
+The nesting tests discriminate: perturbing `alpha_i` by 0.01 fails five of
+them, and by 1e-9 fails none, which is why the three that can be exact are.
+
+#### B3, B5 and B7, same round
+
+| | Claim | Verdict |
+|---|---|---|
+| B3 | `fitted_data`'s doctest is self-referential and reachable from no test file | **confirmed** — and `fitted_pnbd.csv`, R's own `fitted()` over all 313 periods, was committed and orphaned; wired in at rtol 1e-10 |
+| B5 / `d_omega` | the oracle is degenerate | **confirmed, and the cause is the data**: all 600 apparel customers were born on a **Sunday**, and the covariate grid starts on one, so `d_omega ≡ 1` and the distance branch of `_distance_to_interval_end` was never reached through it. Four synthetic births fix 7/7, 4/7, 2/7 and 1/7 |
+| B5 / `d1` | `d1 ≡ 1` throughout the ABCD table | **confirmed** — the apparel split lands on a covariate boundary. A Wednesday split gives `d1 = 4/7`, and the window is unmoved: the grid is the covariates', not the split's |
+| B7 / DY-03 | zero coefficients checked over `customers[:20]`, auxiliary walks only | **confirmed** — now all 600, all four walks, and the 1,866 walk integrals reach all three branches of `walk_integral` |
+| B7 / DY-06 | `i` and the window start compared only over the fixture's sample ids | **confirmed** — now over all 600, which needs no oracle |
+| B7 / B-02, B-08 | four hand-picked ids, and a `(600, 2)` shape assertion | **superseded** by the bootstrap identity above, which compares both design matrices row for row |
+
+#### D4, and the audit is worked through
+
+DY-22, "all walks are basically correct for an `estimation.split` on every day
+of the week". Every dyncov test in this repository ran at
+`estimation_split=104`, which lands exactly on the weekly covariate grid, so
+all 600-customer oracle comparisons had been made at one alignment out of
+seven. No oracle is needed for the other six: S3.3's nesting holds at any
+split, so the plain Pareto/NBD's closed form gives each alignment an
+independent answer. All seven agree to 1e-12, the cbs the walks carry is the
+split's own, one real transaction walk stands per repeat purchase, `d_omega` is
+unmoved (it is fixed by the customer's birth) and `T_cal` moves by a day at a
+time. The seven likelihoods fall monotonically from −5848.1 to −5879.7, which
+is asserted so that a split that never reached the walks would show as one
+number repeated.
+
+Splitting the module was part of it: `test_pnbd_dyncov.py` reached 748 code
+lines against the 700 limit, and CLAUDE.md's rule is to split rather than
+raise. `tests/test_pnbd_dyncov_walks.py` now holds walk *construction* — the
+oracle tables, the calendar, the validation — and the shared parameter grid
+moved to `conftest.py`.
+
+#### The six `out-of-scope` items, decided
+
+The audit's closing note: "Items marked `out-of-scope` in `docs/spec.md` need a
+recorded decision rather than a test — the audit could not otherwise tell a gap
+from a choice." Nothing recorded them. The README's *What it implements* now
+carries a **Deliberately not ported** list: `bgbb`, `as.clv.data()`, `newdata`
+as a keyword, `predict.spending = TRUE`, a specification-carrying bootstrap,
+and a named-parameter likelihood accessor.
+
+One of the six turned out to be a discrepancy rather than a decision, and it
+runs the other way. The paper states that BG/BB "is not currently included in
+CLVTools"; `.Rlib/CLVTools/NAMESPACE` exports `bgbb` and `args(bgbb)` returns a
+full fitting signature. The package has moved past the paper there, so M-13's
+"scope question: is the BG/BB model in or out?" is answered by the port's own
+rule — it follows the paper.
+
+#### D-17 and NC-13, the two items the audit never reached
+
+Both were marked `—` rather than given a verdict. Both are reachable.
+
+**D-17** holds, and the reason is worth stating: dropping first transactions
+and cutting at the split commute *because* the estimation period contains every
+customer's first transaction — the estimation start is the earliest of them.
+The 1,266 repeat transactions are now reached three ways in
+`tests/test_invariants.py`: by construction, by `customer_summary()`'s `x`, and
+by the descriptive tracking series restricted to the estimation period.
+
+**NC-13** found two silent acceptances, both settled by asking CLVTools rather
+than by argument.
+
+| Input | Was | CLVTools 0.12.1 | Now |
+|---|---|---|---|
+| `newcustomer("52")` | `TypeError: '<' not supported between instances of 'str' and 'int'` | `num.periods has to be numeric!` | named `TypeError` |
+| `newcustomer(nan)` | **accepted** — `nan < 0` is `False` — and became a `NaN` prediction frames later | same error as a string | named `ValueError` |
+| a covariate the fit does not carry | **silently dropped**, so a typo returned a plausible number from the covariates that *were* recognised | "has to contain **exactly** the following columns" | named `ValueError` |
+
+The third is the same shape as A4's: a scenario built on `{"Gender", "Channel",
+"Gendre"}` answered 2.234 with nothing said. R's word is *exactly*, so both
+directions are errors there; only the missing one was an error here.
+
+**Every finding in `docs/spec-audit.md` has now been worked**: A1–A7, B1–B7,
+C, D1–D6, the six `out-of-scope` decisions, and D-17 and NC-13. What remains of that document
+is the `weak` verdicts it did not individually list, which its own caveat calls
+its least certain class — a judgement call rather than a task list.

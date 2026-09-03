@@ -16,6 +16,14 @@ Modules mirror the paper:
     constraints and L2 regularization of S6.5.
 ``correlation``
     S3.4 and S6.5.2 - Sarmanov-correlated transaction and attrition processes.
+``dyncov_walks``
+    S3.3 - the *walks* a customer's covariate path is cut into, which is the
+    bookkeeping every time-varying expression is written in terms of.
+``dyncov``
+    S3.3 and S6.4.2 - the likelihood over those walks, and PAlive from it.
+``dyncov_predict``
+    S6.4.2 - CET and DECT, which need the covariate path ahead of the
+    estimation period as well as the one already observed.
 """
 
 from __future__ import annotations

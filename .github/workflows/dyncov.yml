@@ -1,6 +1,7 @@
 # The one fit the ordinary gate never runs.
 #
-# `addopts` in `pyproject.toml` carries `-m 'not dyncov_fit'`, so
+# `tests/conftest.py` deselects the `dyncov_fit` marker unless it is asked
+# for, so
 # `tests/test_pnbd_dyncov.py::TestFit::test_reaches_at_least_the_oracles_optimum`
 # -- the time-varying covariate MLE, some 1,900 likelihood evaluations over 600
 # customers, the most intricate estimator in the package -- is deselected from
@@ -12,12 +13,12 @@
 #
 # This job is that gate, moved off the push path and onto a clock.
 #
-# This file is on `main` as of 2026-09-02, which means the cron below is live:
-# GitHub fires `schedule:` from the workflow file on the default branch, and
-# this is now that branch. The job has still never run -- nothing has dispatched
-# it and no night has passed since it landed -- so the first run will be the
-# nightly one unless somebody presses the button first, which `docs/backlog.md`
-# item 13 asks for so that the first run is watched rather than nocturnal.
+# This file has been on `main` since 2026-09-02, which is what makes the cron
+# below live: GitHub fires `schedule:` from the workflow file on the default
+# branch. It has run twice and passed both times -- 33614866210 on `225f6a3`
+# and 33731273502 on `a8f35e1`, read from `gh run list` on 2026-09-03. The
+# first was dispatched by hand rather than left to the night, which is what
+# `docs/backlog.md` item 13 asked for.
 name: Time-varying covariate MLE
 
 on:
@@ -89,12 +90,13 @@ jobs:
       - name: Sync the environment
         run: uv sync --locked
 
-      # The second `-m` wins over the `-m 'not dyncov_fit'` in `addopts`, which
-      # is the whole trick: the marker is selected rather than merely
-      # un-deselected, so this run is the single `TestFit` case and nothing
-      # else. Verified by collection -- `1/907 tests collected (906
-      # deselected)`. No `--cov` here: coverage of one test cannot clear the
-      # 100% bar `ci.yml` enforces, and asking it to would only teach us to
-      # loosen the bar.
+      # Naming the marker is the whole trick. `tests/conftest.py` drops every
+      # `dyncov_fit` item *unless* it was asked for, and asking for it by name
+      # is one of the two ways in -- `--run-dyncov-fit` is the other -- so this
+      # run is the single `TestFit` case and nothing else. Verified by
+      # collection -- `1/1154 tests collected (1153 deselected)` on 2026-09-03.
+      # No `--cov` here: coverage of one test cannot clear the 100% bar
+      # `ci.yml` enforces, and asking it to would only teach us to loosen the
+      # bar.
       - name: Fit
         run: uv run pytest -m dyncov_fit

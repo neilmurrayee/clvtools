@@ -10,12 +10,20 @@ speculation.
 stop. Do not add items without evidence, and do not work an item marked
 `[needs-decision]` — those need the maintainer.
 
-**Rounds 3 and 4 are open**, from two reviews on 2026-09-02. Items 1-12 and 17
-are closed; 13 is open on its last step. The code is public at
-<https://github.com/neilmurrayee/clvtools> on `main`, and CI has run four times
-and **has never been green** — the last, run
-[33602019629](https://github.com/neilmurrayee/clvtools/actions/runs/33602019629),
-failed one doctest on both interpreters.
+**Rounds 3 and 4 are open**, from two reviews on 2026-09-02. Open: 14, 27, 29,
+the two `[~]` remainders of 23 and 25, and 16 `[needs-decision]`. Everything
+else is closed.
+
+**Both gates are green, which they had never been when this paragraph was first
+written.** Read on 2026-09-03 with `gh run list`: `ci.yml` has 29 runs, 5 of
+them successes, and the latest —
+[33735879159](https://github.com/neilmurrayee/clvtools/actions/runs/33735879159)
+— succeeded on `2506c67`, which is `main`'s tip. `dyncov.yml`, the nightly
+time-varying MLE, has run twice and succeeded both times, most recently
+[33731273502](https://github.com/neilmurrayee/clvtools/actions/runs/33731273502)
+on `a8f35e1`. The earlier text here said CI "has run four times and **has never
+been green**", citing run 33602019629; that was true when written and is the
+reason the rule below exists.
 
 **A rule this file did not have, and should have.** A claim about an external
 system — CI, PyPI, GitHub — carries the run id, URL or command output that
@@ -24,10 +32,11 @@ while that run was still in progress and then failed; the tick was written from
 a local suite and an expectation. Ticking on an expectation is how a record
 becomes wrong, and correcting it is cheaper than trusting it afterwards.
 
-Definition of done for every item: `uv run pytest` green (906 tests at the time
-of writing), `uv run ruff check src tests tools docs` clean, and 100% line
-coverage of `src/`. Anything that changes behaviour also needs a test and, if it
-deviates from CLVTools, a README findings entry — the house rule.
+Definition of done for every item: `uv run pytest` green (1,153 passed and 1
+deselected as of 2026-09-03; `TOTAL 2752 0 100%`), `uv run ruff check src tests
+tools docs` clean, and 100% line coverage of `src/`. Anything that changes
+behaviour also needs a test and, if it deviates from CLVTools, a README findings
+entry — the house rule.
 
 ---
 
@@ -1138,11 +1147,82 @@ CDNOW generator's `check("coef r", cf[["r"]], coef(fit)[["r"]])`, which
 compares a value with itself; and finding 17's marker taxonomy. All cleanup
 with no behavioural consequence.
 
-## 26. `[ ]` Onboarding — finding 18
+## 26. `[x]` Onboarding — finding 18
 
 No install instruction anywhere, no API index for 24 exports, a `Changelog` URL
 pointing at `docs/audit.md`, and an empty code block in `docs/paper.md` where
 the `newcustomer_static` example belongs.
+
+**Done, and three of the four had already been done in passing** by items 4, 18
+and the spec-audit work; this pass is what checked them rather than assuming
+them, which is item 11's method and the rule at the top of this file.
+
+All four verified on 2026-09-03 at `2506c67`:
+
+- **Installation.** `README.md` has a section, between the not-ported list and
+  Usage: `pip install git+...` and the `[plot]` extra, the Python floor, the
+  statement that the five datasets ship inside the package, and `uv sync` for
+  development.
+- **The API index.** `README.md`'s "The public API" table names all 24 exports
+  — checked by joining the table against `__all__` rather than by reading, and
+  the answer is *none missing*. Each row says which section of the paper the
+  name comes from.
+- **The `Changelog` URL.** `pyproject.toml:45` points at `CHANGELOG.md`, which
+  exists and carries an `Unreleased` section in Keep a Changelog form.
+- **The empty code block.** Gone; `docs/paper.md:475-478` has the
+  `newcustomer_static` example, and a scan for fences less than two lines apart
+  finds no empty block anywhere in the file.
+
+**What this pass did change**, all of it documentation that had drifted from
+what a run prints, and all of it measured rather than inherited:
+
+| Claim | Said | Is |
+|---|---|---|
+| default run, `CLAUDE.md` | 1,152 | **1,153** passed, 1 deselected, `TOTAL 2752 0 100%`, 3:44 |
+| default run, `README.md` | 1,146 | 1,153 |
+| `-m literature`, both files | 13 | **14** |
+| `-m oracle`, `README.md` | 242 | **245** |
+| `-m slow`, both files | 152 | **153** |
+| `ci.yml`'s comment | 1,152 / `TOTAL 2751` | 1,153 / `TOTAL 2752` |
+| `dyncov.yml`'s collection | `1/907 (906 deselected)` | `1/1154 (1153 deselected)` |
+| `docs/performance.md`'s opening | 906 tests | 1,153 |
+| the quickstart, `README.md` | twenty cells, ~4 s | seventeen code cells, ~5 s |
+
+Three files still said the `dyncov_fit` deselection lives in `addopts` —
+`CLAUDE.md`, `ci.yml` and `dyncov.yml`, the last twice. Item 25 moved it to
+`tests/conftest.py` precisely so a caller's `-m` composes with it, and
+`dyncov.yml`'s comment called the old behaviour "the whole trick" while running
+a command that now works for a different reason. `conftest.py` and
+`test_code_quality.py` had it right in the past tense all along; the three that
+were wrong now name the hook and both ways back in.
+
+Two smaller repairs on the way past, both cross-references that did not resolve:
+
+- `README.md`'s Installation says the wheel "for a while" could not load its own
+  data "and that is recorded in the findings below" — and it was not. The
+  defect has a test (`TestTheDatasetsShipWithThePackage`) and a comment on
+  `DATA_DIR`, so it had the test half of the house rule and not the README
+  half. It is now a finding.
+- `CLAUDE.md`'s Layout named ten paths and omitted `docs/spec.md`,
+  `docs/spec-audit.md`, `docs/review-2026-09-02.md`, `CHANGELOG.md` and
+  `.github/workflows/` — between them the specification, its audit, the review
+  that produced items 18-29, and the two gates. A root-level `TASK.md` was
+  named there too, as a *finished handoff* rather than a queue; it has since
+  been folded into `docs/spec-audit.md` as Appendix 4 and deleted, which is the
+  better fix for a filename that reads as a live queue to a new session.
+
+And one thing this pass found that it did not fix, recorded because the claim it
+falsifies is in three places. `tests/fixtures/time_elapsed.csv` and
+`time_add_periods.csv` — the 840 spans and 280 additions `tests/test_timeunit.py`
+reads, and the "Time arithmetic, §5" row of the README's table — are produced by
+no generator in `tools/oracle/`. They came from CLVTools' `clv.time` classes in
+commit `e385a16`, by a script that was never committed, so they are the one
+thing here that cannot be re-baselined. Item 25 already carries writing it;
+`CLAUDE.md`, `README.md` and `tests/conftest.py` now say so where each of them
+claims the fixtures come from `tools/oracle/*.R`.
+
+*Definition of done met:* `uv run pytest` 1,153 passed, 1 deselected,
+`TOTAL 2752 0 100%` in 3:44; `uv run ruff check src tests tools docs` clean.
 
 ## 27. `[ ]` Reconcile the families — findings 19 and 20
 

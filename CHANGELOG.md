@@ -48,6 +48,21 @@ rather than a task.
   0.016 s.
 - `tools/benchmark.py`, which the README documents and which had been raising
   `TypeError` on every invocation.
+- **A heavy buyer's time-varying likelihood silently became the alive-only
+  one.** Every term of `F2` underflows past about `x = 160`, which selected the
+  branch for a customer who is certainly dead with no signal: at `x = 200` the
+  answer was wrong by 225 log-units and `PAlive` came back as exactly 1.0 where
+  the truth is 1.6e-98. `F2` is now carried as a log magnitude and a sign
+  throughout. No oracle fixture could see this — CLVTools underflows in the same
+  place, and the apparel cohort's largest `x` is 21 — so the check is the
+  nesting §3.3 asserts against the closed-form Pareto/NBD.
+- **Four defects the spec-derived audit found that no test here could see**
+  (`docs/spec-audit.md`): standard errors `sqrt(600) = 24.5` times too large at
+  a zero penalty; a dyncov bootstrap that resampled but refitted *without* the
+  covariates, because `ClvDataDynCov` subclasses `ClvData` and the branch never
+  fired; a `NaN` prediction horizon accepted and returned as a `NaN`
+  prediction; and a mistyped covariate name silently dropped, so a scenario
+  built on a typo answered from the covariates that were recognised.
 
 ### Changed
 

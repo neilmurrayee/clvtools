@@ -34,6 +34,12 @@ Modules mirror the paper's structure:
 ``inference``
     Table 2's model details - ``vcov()``, ``confint()``, ``summary()`` and the
     likelihood ratio test of S6.5.3.
+
+Three modules answer to no section, because they are machinery the families
+share rather than anything the paper names: ``_optimize`` (the optimiser setup
+every fit goes through), ``_staticcov`` (the design matrices, constraints and
+penalties common to all three covariate models) and ``_validate`` (the input
+checks). They are private and may move.
 """
 
 from __future__ import annotations
