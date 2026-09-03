@@ -10,7 +10,7 @@ speculation.
 stop. Do not add items without evidence, and do not work an item marked
 `[needs-decision]` — those need the maintainer.
 
-**Rounds 3 and 4 are open**, from two reviews on 2026-09-02. Open: 14, 27, 29,
+**Rounds 3 and 4 are open**, from two reviews on 2026-09-02. Open: 27, 29, 30,
 the two `[~]` remainders of 23 and 25, and 16 `[needs-decision]`. Everything
 else is closed.
 
@@ -770,7 +770,7 @@ fixing the one the log happens to show.
 promise finally being tested rather than asserted — and `dyncov.yml` has been
 dispatched by hand once, so its first run is watched rather than nocturnal.
 
-## 14. `[ ]` Spike: the cost of `hyp2f1` where the dyncov search dwells
+## 14. `[x]` Spike: the cost of `hyp2f1` where the dyncov search dwells
 
 Item 9 ended by naming its own successor and this is it, with the measurement
 already taken. After vectorising, the fit fell only 1.33x — 13:27 to 10:07 —
@@ -793,6 +793,49 @@ the dispatches, so an attempt cannot quietly change the arithmetic.
 *Done when:* either an approach is measured and adopted with the fixtures still
 green expression by expression and the gain recorded, or the attempt is
 abandoned and `docs/performance.md` records what was learned about why.
+
+**Done, 2026-09-03 — the first lever is closed and the second turned out not to
+be the choice.** `docs/performance.md` carries the measurements; the short
+version:
+
+The claim reproduces. One evaluation is 0.480 s at `life.High.Season = -8.12`
+against 0.120 s at CLVTools' fit, **85.2% of it inside `hyp2f1`** (the item said
+83.8%). Capturing every argument at both vectors shows why, and it is narrower
+than "SciPy does real work": the *same* 79,508 hypergeometrics in the same 4,770
+calls, `a` and `b` with identical ranges, and only `z` moving — 27.6% of the
+calls cross `z > 0.999`, max 0.9999, where the fast vector's max is 0.9844.
+
+**Both exact rewrites fail, and the pair is the finding.** `c = a + 1` in both
+arms, so two classical routes open up. The `1-z` connection formula collapses
+beautifully — `2F1(a,b;b;x) = (1-x)^-a` kills one of its hypergeometrics — and
+is **4.8x faster and wrong by 5.7e35 relative**: `(1-z)^(1-b)` reaches 1e88
+against an O(1) answer, which is genuine cancellation and so is not reachable
+by the log-space treatment that saved item 28. Euler's transformation has one
+term, cannot cancel, is accurate to 5e-15, and is **not faster** — SciPy is
+already doing it. So the fast transformation and the accurate one are the same
+transformation, and it cannot be both.
+
+**What does work is structural, and it contradicts this repo's own written
+prediction.** The covariates are categorical, so `z` takes few values: of 79,508
+hypergeometrics per evaluation there are **5,303 distinct `(a,b,z)` — 93.3%
+duplicates**, from 1,570 distinct `z` and 31 distinct `(a,b)`. Collapsing them
+is *bit-exact* — `np.array_equal`, since it is the same function on the same
+arguments — and, with `np.unique`'s own cost charged to it, takes the
+hypergeometric from 0.409 s to 0.067 s at the dwell vector. It costs 0.045 s →
+0.059 s at the fast one, where there is nothing to save.
+
+It is **not a local change**: within one customer's call 0% is removable, the
+93.3% is entirely across customers, and the median call is one element wide. So
+it needs the likelihood batched over the cohort — item 9 one level up. That is
+item 30, and `docs/performance.md`'s closing bullet argued *against* exactly
+that refactor on the grounds that it "would not touch" the hypergeometric cost.
+The reasoning was sound and the conclusion wrong: batching does not merely
+remove Python dispatch, it puts the duplicate arguments in one array where they
+can be collapsed before SciPy sees them. That bullet is now corrected in place
+rather than deleted.
+
+Nothing in `src/` changed, so the fixtures are untouched by construction; the
+suite is green and this item's whole output is measurement and two documents.
 
 ## 15. `[x]` Publish to PyPI — decided: no
 
@@ -1310,6 +1353,33 @@ likelihood:
   `aggregate.py` raises near `s = 1`.
 - `aggregate.py`'s `pmf` calls `hyp2f1` with no fallback and returns `NaN` for
   `k >= 23` at `alpha = 500, beta = 1`.
+
+## 30. `[ ]` Batch the dyncov likelihood over the cohort — item 14's successor
+
+Item 14 measured the prize and named this. `log_likelihood_customer` runs once
+per customer, and the 79,508 hypergeometrics one evaluation asks for are 93.3%
+duplicates — but the duplication is *across* customers, so nothing local can
+reach it. Batched over the cohort, the distinct 5,303 can be evaluated once and
+scattered back, **bit-exact**: it is the same function on the same arguments,
+not an approximation.
+
+Projected 2.6x on the fit (0.360 s → 0.137 s per evaluation at the decile
+table's 1:2 weighting; ~10:07 → ~4 minutes), and the projection is conservative
+— it gives no credit for removing 4,770 NumPy dispatches per evaluation, whose
+median width is one element.
+
+**The hard part is not the batching, it is the shape.** `log_likelihood_customer`
+is what the 30-column oracle fixtures compare against, per customer, at two
+parameter vectors; whatever replaces it has to keep producing that table.
+Item 9's precedent is the one to follow — it batched over covariate intervals
+*inside* a customer and kept 27 of 30 intermediates bit-identical, with the
+three that moved traced to one line.
+
+*Done when:* the fixtures are green expression by expression at both grid
+vectors, `TestDyncovStaysVectorised` is extended to count cohort-level
+dispatches rather than per-customer ones, `-m dyncov_fit` still reaches the
+oracle's optimum, and the measured gain is recorded in `docs/performance.md`
+beside item 14's projection — including if it comes in under it.
 
 ---
 

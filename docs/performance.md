@@ -1,6 +1,6 @@
 # Performance
 
-Everything in this repo is gated on being *correct* — 906 tests, the paper's
+Everything in this repo is gated on being *correct* — 1,153 tests, the paper's
 numbers, the R package's numbers, oracle fixtures expression by expression —
 and on being *tidy*: ruff, complexity, module size, 100% line coverage. Nothing
 has ever asked whether it is *fast*. This document is the first pass at that
@@ -355,6 +355,82 @@ something.
 
 ---
 
+### Backlog item 14: why `hyp2f1` is slow there, and what actually fixes it
+
+Measured 2026-09-03, same machine. The claim above reproduces: at
+`life.High.Season = -8.12` one evaluation is 0.480 s against 0.120 s at
+CLVTools' fitted parameters, and **85.2% of it is inside `scipy.special.hyp2f1`**
+(the section above said 83.8%).
+
+**The mechanism is `z`, and nothing else.** Capturing every argument at both
+vectors: the *same* 79,508 hypergeometrics in the same 4,770 array calls, and
+`a` and `b` with identical ranges (`a` 3.99–24.99, `b` 1.98–22.98). Only the
+argument moves:
+
+| | max `z` | `z > 0.9` | `z > 0.99` | `z > 0.999` | `hyp2f1` alone |
+|---|---|---|---|---|---|
+| CLVTools' fit | 0.9844 | 27.6% | 0.0% | 0.0% | 0.045 s |
+| the dwell vector | 0.9999 | 27.6% | 27.6% | 27.6% | 0.409 s |
+
+The same 27.6% of calls — one arm's worth — is pushed from `z ≈ 0.98` to
+`z ≈ 0.9999` as the attrition coefficient runs out, and SciPy's `hyp2f1` costs
+9x more there. Nothing else about the problem changes.
+
+**Both exact rewrites fail, and they fail as a pair.** `c = a + 1` in both arms,
+which is a strong special case, so two classical routes are available:
+
+* **The `1-z` connection formula** (DLMF 15.8.4) collapses neatly here, because
+  `2F1(a,b;b;x) = (1-x)^-a` kills one of its two hypergeometrics outright:
+  `2F1(a,b;a+1;z) = Γ(a+1)Γ(1-b)/Γ(a+1-b) · z^-a + (1-z)^(1-b) · a/(b-1) ·
+  2F1(1,a+1-b;2-b;1-z)`. The residual argument is `1-z ≈ 1e-4`, so it converges
+  in a few terms: **4.8x faster, 0.403 s → 0.083 s.** It is also useless — the
+  maximum relative error is **5.7e35**. With `b` up to 23 and `1-z ≈ 1e-4`, the
+  factor `(1-z)^(1-b)` reaches 1e88 while the answer is O(1). That is real
+  cancellation between the two terms, not a representation problem, so carrying
+  it in log space with signs — the fix that worked for item 28 — cannot help.
+* **Euler's transformation** has one term and therefore cannot cancel, and it
+  collapses just as neatly: `a+1-b = s+1` in the `β > α` arm, so
+  `2F1(a,b;a+1;z) = (1-z)^(1-b) · 2F1(1, s+1; a+1; z)`. It is accurate to
+  5e-15 — and **not faster**: 0.407 s against 0.403 s. SciPy is evidently
+  already doing this.
+
+Read together those two are the finding: *the fast transformation and the
+accurate one are the same transformation, and it cannot be both.* SciPy is slow
+at `z → 1` here for a reason, and a cheaper hypergeometric is not sitting
+unclaimed in the algebra.
+
+**The lever that does work is not analytic.** The covariates are categorical, so
+`exp(γ'x)` takes very few values, and so does `z`. Of the 79,508 hypergeometrics
+one evaluation asks for, there are **5,303 distinct `(a, b, z)` triples — 93.3%
+are duplicates**, from only 1,570 distinct `z` and 31 distinct `(a, b)`.
+Deduplicating is *bit-exact* (`np.array_equal`, not a tolerance: it is the same
+function on the same arguments) and, with the cost of `np.unique` included:
+
+| | evaluation | `hyp2f1` | share | deduplicated | projected evaluation |
+|---|---|---|---|---|---|
+| CLVTools' fit | 0.120 s | 0.045 s | 37.5% | 0.059 s | 0.135 s |
+| the dwell vector | 0.480 s | 0.409 s | 85.2% | 0.067 s | 0.138 s |
+
+**It is not a local change.** Within a single customer's call, *zero* percent is
+removable — every `z` a customer sees is distinct. The 93.3% is entirely
+*across* customers, and the median call is one element wide. So the win needs
+the likelihood batched over the cohort, exactly as item 9 batched it over
+covariate intervals inside a customer, one level up.
+
+**Which overturns the prediction this document closes with.** "Vectorising
+`log_likelihood_customer` across customers as well — the obvious next refactor —
+would not touch it, and the numbers above are the reason not to start it." That
+was reasoned from the profile: cross-customer batching removes Python dispatch,
+and Python dispatch is not what is expensive there. The reasoning is sound and
+the conclusion is wrong, because batching does something the profile could not
+show — it puts the duplicate arguments *in the same array*, where they can be
+collapsed before SciPy sees them. Weighting the two vectors 1:2 as the decile
+table does, 0.360 s → 0.137 s is **2.6x on the fit**, ~10:07 → ~4 minutes.
+
+That figure is a projection and is labelled as one: the restructure has not been
+done, and it would additionally remove 4,770 NumPy dispatches per evaluation
+that the projection gives it no credit for. Carried as backlog item 30.
+
 ## What a performance gate should look like
 
 Not `assert elapsed < 2.0`. Every gate in this repo is deterministic — tests,
@@ -400,10 +476,14 @@ Wall-clock still belongs in `tools/benchmark.py`, and *where* the time goes in
   paid, though not where it was expected to. 3.3-5.1x per evaluation, 1.33x on
   the fit, 27 of 30 oracle intermediates bit-identical. Written up above, gated
   by `TestDyncovStaysVectorised`.
-- **The lever on the dyncov fit is `hyp2f1`, not Python.** Two thirds of a fit
-  is spent at parameters where 84% of self-time is inside SciPy, and where this
-  rewrite bought 1.5x rather than 5x. Anything further has to attack that: a
-  cheaper evaluation of the hypergeometric in that region, or a search that does
-  not go there. Vectorising `log_likelihood_customer` across customers as well —
-  the obvious next refactor — would not touch it, and the numbers above are the
-  reason not to start it.
+- ~~`docs/backlog.md` item 14~~ — done: the `hyp2f1` spike, written up above.
+  Two thirds of a fit is spent where 85% of self-time is inside SciPy, and
+  neither exact rewrite of the hypergeometric helps — the fast one cancels to
+  35 digits of error, the accurate one is what SciPy already does. What does
+  help is that 93.3% of the hypergeometrics are duplicate arguments.
+- **This bullet used to say the opposite, and it was wrong.** It read:
+  "Vectorising `log_likelihood_customer` across customers as well — the obvious
+  next refactor — would not touch it, and the numbers above are the reason not
+  to start it." Cross-customer batching does not merely remove Python dispatch;
+  it is what puts the duplicate arguments in one array where they can be
+  collapsed. Item 30, projected 2.6x on the fit.
