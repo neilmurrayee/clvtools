@@ -14,13 +14,21 @@ stop. Do not add items without evidence, and do not work an item marked
 2026-09-02, the spec-derived audit and the two audit rounds before them have no
 open work left.
 
-**Round 5 is open**, and it is the one class `docs/spec-audit.md` left behind:
-the **76 `weak` verdicts** in its Appendix 3 — spec claims the suite touches but
-does not pin. That document's own caveat calls them its least certain class, and
-it never worked them individually. Item 34. Everything else is closed, and item
-16 was the last one carrying `[needs-decision]` — no item does now. The phrase
-survives on two settled sub-bullets inside closed items 13 and 22, which say so
-where they stand.
+**Round 5 is closed**, and with it the last class `docs/spec-audit.md` left
+behind: the **76 `weak` verdicts** in its Appendix 3 — spec claims the suite
+touched but did not pin, which that document's own caveat calls its least
+certain class and which it never worked individually.
+
+All 76 are re-verdicted. **14** had been closed by items 21-33 without anyone
+updating the record; **20 hid real defects**; the rest were untested claims that
+hold, or divergences that needed recording rather than fixing. Appendix 3 now
+carries **no `weak` row at all** — 119 covered, 69 absent, 12 out-of-scope.
+Items 34 and 35.
+
+**Nothing is open.** Every item, 1 to 35, is done, and no item carries
+`[needs-decision]` — item 16 was the last. That phrase survives on two settled
+sub-bullets inside closed items 13 and 22, which say so where they stand. A new
+round starts a new list, with the evidence that raised it.
 
 **Both gates are green, which they had never been when this paragraph was first
 written.** Read on 2026-09-03 with `gh run list`: `ci.yml` has 29 runs, 5 of
@@ -2272,7 +2280,7 @@ again at `t_x = 0.43` weeks and never leaves the interval they were born in.
 That is the same customer finding B2 turned up, reached from the other
 direction. The test states that correspondence rather than the naive bound.
 
-## 35. `[ ]` The dyncov fit takes no constraint, regularization or correlation
+## 35. `[x]` The dyncov fit takes no constraint, regularization or correlation
 
 Spec `I-05` asks that `hessian()` match the optimiser's own for **29
 configurations**: the four families without covariates and with correlation;
@@ -2300,6 +2308,39 @@ through the same `_staticcov` machinery the other families use, with the
 configurations `I-05` names pinned; or each absence is a recorded decision with
 CLVTools' own behaviour checked rather than assumed, and `I-05` is re-verdicted
 `o` rather than `w`.
+
+**Done, 2026-09-03 — two added, one recorded.**
+
+**CLVTools was asked first**, which is what item 16 records the cost of skipping.
+`pnbd.Rd`'s `clv.data.dynamic.covariates` method carries `names.cov.constr`,
+`start.params.constr`, `reg.lambdas`, `use.cor` and `start.param.cor`. So the
+gap was real and not a difference of design — worth establishing, since the
+opposite turned out to be true for `bgbb`.
+
+**Constraints and regularization cost almost nothing, because they are
+operations on the parameter vector rather than on a design matrix.** A tied
+covariate occupies one coordinate written into both processes; the penalty is a
+function of the coefficients. Neither cares that the covariates vary over time,
+so both reuse `_staticcov`'s `_Layout` and `_penalised` rather than a second
+copy — and `_validated_reg_lambdas` and `_validated_constraints` come with
+them, so the messages batch 7 fixed apply here without being written twice.
+
+**The naming had to move with them, and that is the part that would have
+bitten.** The search reduces to nine coordinates under a constraint, but
+`PnbdDynCovParams.names` listed `life.Gender` and `trans.Gender` separately, so
+the first version reported **ten** parameters for a nine-parameter fit —
+straight into `n_parameters`, and through it into AIC and BIC. A tied covariate
+now appears once as `constr.<name>`, matching `StaticCovResult`, and `__iter__`
+yields to match.
+
+**Correlation is recorded, not deferred.** Sarmanov correlation is a *different
+likelihood* rather than a reparameterisation of this one, and the README
+already states time-varying covariates and process correlation as separate
+Pareto/NBD-only features rather than a combinable pair. `I-05` is re-verdicted
+`c !`, the `!` being that last quarter.
+
+Three of `I-05`'s four dyncov configurations are now constructible and pinned:
+default, constrained, regularized, and both together.
 
 Note the cost before starting: a dyncov fit is ~2:53 since item 30, so a test
 matrix over four configurations is not something to put on the default path —

@@ -71,6 +71,7 @@ import pandas as pd
 from numpy.typing import ArrayLike, NDArray
 from scipy import special
 
+from clvtools._staticcov import _Layout, _penalised, _validated_reg_lambdas
 from clvtools._validate import finished, start_values
 from clvtools.inference import Fitted, numerical_hessian
 
@@ -970,19 +971,42 @@ class PnbdDynCovParams(Fitted):
     converged: bool
     n_customers: int
     n_evaluations: int = 0
+    names_cov_constr: list[str] = field(default_factory=list)
+    reg_lambdas: tuple[float, float] | None = None
     hessian: NDArray[np.float64] | None = field(default=None, repr=False)
 
     def __iter__(self):
         yield from (self.r, self.alpha, self.s, self.beta)
-        yield from self.gamma_life
-        yield from self.gamma_trans
+        constrained = set(self.names_cov_constr)
+        yield from (
+            float(v) for n, v in zip(self.names_cov_life, self.gamma_life, strict=True)
+            if n not in constrained
+        )
+        yield from (
+            float(v)
+            for n, v in zip(self.names_cov_trans, self.gamma_trans, strict=True)
+            if n not in constrained
+        )
+        yield from (
+            float(self.gamma_life[self.names_cov_life.index(n)])
+            for n in self.names_cov_constr
+        )
 
     @property
     def names(self) -> list[str]:
+        """CLVTools' convention, and the same one :class:`StaticCovResult` uses.
+
+        A constrained covariate appears **once**, as ``constr.<name>``. It has
+        to: the search estimates one coordinate for it, so reporting two would
+        make :attr:`n_parameters` -- and through it AIC and BIC -- describe a
+        model with a free parameter the fit never had. Backlog item 35.
+        """
+        constrained = set(self.names_cov_constr)
         return (
             ["r", "alpha", "s", "beta"]
-            + [f"life.{n}" for n in self.names_cov_life]
-            + [f"trans.{n}" for n in self.names_cov_trans]
+            + [f"life.{n}" for n in self.names_cov_life if n not in constrained]
+            + [f"trans.{n}" for n in self.names_cov_trans if n not in constrained]
+            + [f"constr.{n}" for n in self.names_cov_constr]
         )
 
     @property
@@ -996,6 +1020,8 @@ def fit_pnbd_dyncov(
     names_cov_trans: list[str] | None = None,
     start: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0),
     start_cov: float = 0.1,
+    names_cov_constr: list[str] | None = None,
+    reg_lambdas: tuple[float, float] | None = None,
     method: str = "L-BFGS-B",
     maxiter: int = 10_000,
     hessian: bool = False,
@@ -1027,22 +1053,34 @@ def fit_pnbd_dyncov(
 
     start_arr = start_values(start, count=4, parameters="values (r, alpha, s, beta)")
 
-    x0 = np.concatenate(
-        [np.log(start_arr), np.full(n_life + n_trans, float(start_cov))]
+    # S6.5.3's equality constraints and S6.5.1's penalty are operations on the
+    # *parameter vector*, not on a design matrix: a tied covariate occupies one
+    # coordinate written into both processes, and the penalty is a function of
+    # the coefficients. Neither cares that the covariates here vary over time,
+    # so both reuse the static-covariate machinery rather than a second copy of
+    # it. Backlog item 35, spec `I-05`.
+    layout = _Layout.build(
+        names_cov_life=names_cov_life,
+        names_cov_trans=names_cov_trans,
+        names_cov_constr=names_cov_constr,
+        n_model_params=4,
     )
+    lambdas = _validated_reg_lambdas(reg_lambdas)
+    x0 = layout.starting_point(start_arr, float(start_cov))
     evaluations = 0
 
     def negative_ll(v: np.ndarray) -> float:
         nonlocal evaluations
         evaluations += 1
-        r, alpha, s, beta = np.exp(v[:4])
+        model, g_life, g_trans = layout.unpack(v)
+        r, alpha, s, beta = model
         with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
             value = log_likelihood(
-                walks, r, alpha, s, beta,
-                v[4 : 4 + n_life], v[4 + n_life :],
-                weights=weights,
+                walks, r, alpha, s, beta, g_life, g_trans, weights=weights,
             )
-        return np.inf if not np.isfinite(value) else -value
+        if not np.isfinite(value):
+            return np.inf
+        return _penalised(-value, g_life, g_trans, lambdas, walks.n_customers)
 
     from scipy import optimize
 
@@ -1052,7 +1090,8 @@ def fit_pnbd_dyncov(
     )
     result = finished(result, "time-varying covariate Pareto/NBD")
 
-    r, alpha, s, beta = (float(v) for v in np.exp(result.x[:4]))
+    model, gamma_life, gamma_trans = layout.unpack(result.x)
+    r, alpha, s, beta = (float(v) for v in model)
 
     hess = None
     if hessian:
@@ -1076,10 +1115,12 @@ def fit_pnbd_dyncov(
             hess = numerical_hessian(natural_ll, natural)
     return PnbdDynCovParams(
         r=r, alpha=alpha, s=s, beta=beta,
-        gamma_life=np.asarray(result.x[4 : 4 + n_life], dtype=float),
-        gamma_trans=np.asarray(result.x[4 + n_life :], dtype=float),
+        gamma_life=gamma_life,
+        gamma_trans=gamma_trans,
         names_cov_life=names_cov_life,
         names_cov_trans=names_cov_trans,
+        names_cov_constr=list(names_cov_constr or []),
+        reg_lambdas=lambdas,
         log_likelihood=float(-result.fun),
         converged=bool(result.success),
         # Weighted, matching `fit_pnbd`. `weights` multiplies the per-customer

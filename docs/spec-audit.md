@@ -5,11 +5,11 @@ demand, derived without reading `src/` or `tests/`. This file is the join:
 for each spec item, what the suite actually pins.
 
 **Status: every finding worked**, 2026-09-02, **and every `weak` verdict
-re-checked**, 2026-09-03 — round 5 of `docs/backlog.md`, item 34. Of the 76
-`weak` rows, 14 had been closed by items 21-33 without the verdict being
-updated, 19 hid real defects, and the rest were either genuinely untested
-claims that hold or divergences that needed recording rather than fixing. One
-remains, `I-05`, as item 35. A1–A7, B1–B7, C, D1–D6, the six
+re-checked**, 2026-09-03 — round 5 of `docs/backlog.md`, items 34 and 35. Of the
+76 `weak` rows, 14 had been closed by items 21-33 without the verdict being
+updated, 20 hid real defects, and the rest were either genuinely untested claims
+that hold or divergences that needed recording rather than fixing. **None
+remains.** A1–A7, B1–B7, C, D1–D6, the six
 `out-of-scope` items that needed a recorded decision, and D-17 and NC-13, the
 two the audit never reached. Appendix 4 records what each one turned out to be —
 fourteen confirmed on the first pass, one overturned, two kept as deliberate
@@ -255,15 +255,15 @@ closed:
 
 | | Count |
 |---|---|
-| `covered` | **118** |
+| `covered` | **119** |
 | `absent` | 69 |
 | `out-of-scope` | 12 |
-| `weak` | **1** |
+| `weak` | **0** |
 
-The one remaining is `I-05`, which is a capability gap rather than a testing one
-— `fit_pnbd_dyncov` takes no constraint, regularization or correlation argument,
-so 12 of the 29 configurations it names cannot be constructed. It is
-`docs/backlog.md` item 35.
+`I-05` was the last, and a capability gap rather than a testing one:
+`fit_pnbd_dyncov` took no constraint, regularization or correlation argument, so
+12 of the 29 configurations it names could not be constructed. Item 35 added the
+first two; the third is a recorded divergence.
 
 The section table below is the original tally and is left as the snapshot it
 is; Appendix 3 is the record, as the paragraph above says.
@@ -608,7 +608,7 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | I-02 | c | re-verdicted 2026-09-03: **round 5**: the `vcov` index and columns checked for covariate and constrained fits, not the plain Pareto/NBD alone |
 | I-03 | a | `confint` takes only `level`; no `parm` argument exists |
 | I-04 | c | re-verdicted 2026-09-03: **round 5**: R's four columns in order, one row per estimated parameter, and that the frame prints |
-| I-05 | w ! | still weak, re-checked 2026-09-03: `fit_pnbd_dyncov` takes no constraint, regularization or correlation argument, so 12 of the 29 configurations remain unreachable. A capability gap, not a test gap — `docs/backlog.md` item 35 |
+| I-05 | c ! | **round 5, closed by item 35**: `fit_pnbd_dyncov` now takes `names_cov_constr` and `reg_lambdas`, reusing `_staticcov`'s `_Layout` and `_penalised` — both act on the parameter vector, so neither cares that the covariates vary over time. Three of the four dyncov configurations are constructible and pinned. `use_cor` is not: Sarmanov correlation is a different likelihood rather than a reparameterisation, and the README states the two as separate Pareto/NBD-only features. That last quarter is the `!` |
 | I-06 | c | warns rather than raising — recorded in README Findings |
 | I-07 | o | no named-parameter accessor exists; all likelihood functions take positional parameters |
 | I-08 | c | re-verdicted 2026-09-03: **round 5**: `nobs()` added to `Fitted` — the count was reachable as `n_customers` while the data spelled it `nobs()`, so one question had two spellings. Asserted equal to the data's and to the count `bic` scores against |

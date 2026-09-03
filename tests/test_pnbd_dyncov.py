@@ -24,6 +24,7 @@ error, this implementation's 1e-22 against that 0 reports a failure of 1e273.
 from __future__ import annotations
 
 import warnings
+from typing import ClassVar
 
 import numpy as np
 import pandas as pd
@@ -1001,3 +1002,143 @@ class TestTheHypergeometricBranchIsContinuous:
         assert got[1] == pytest.approx(
             float(_term(_hyp_beta_gt_alpha(r, s, x, 1.0, 2.0, 1.1, 2.2))), rel=1e-15
         )
+
+
+class TestTheDyncovFitTakesConstraintsAndRegularization:
+    """Backlog item 35, spec `I-05`.
+
+    `I-05` asks that ``hessian()`` match the optimiser's own for 29
+    configurations, four of which are dyncov x {default, correlation,
+    constrained, regularized}. Three of those four could not be *constructed*:
+    ``fit_pnbd_dyncov`` took no ``names_cov_constr``, no ``reg_lambdas`` and no
+    ``use_cor``, so twelve of the twenty-nine were unreachable rather than
+    unpinned -- the one weak verdict of round 5 that was a capability gap.
+
+    CLVTools was asked before anything was built, which is what item 16 records
+    the cost of not doing: ``pnbd.Rd``'s ``clv.data.dynamic.covariates`` method
+    carries ``names.cov.constr``, ``start.params.constr``, ``reg.lambdas``,
+    ``use.cor`` and ``start.param.cor``. So the gap is real and not a
+    difference of design.
+
+    Two of the three are added here, and they cost almost nothing because they
+    are operations on the **parameter vector** rather than on a design matrix:
+    a tied covariate occupies one coordinate written into both processes, and
+    the penalty is a function of the coefficients. Neither cares that the
+    covariates vary over time, so both reuse ``_staticcov``'s ``_Layout`` and
+    ``_penalised`` rather than a second copy of them.
+
+    Correlation is not, and that is recorded rather than deferred: Sarmanov
+    correlation is a *different likelihood*, not a reparameterisation, and the
+    README already states that time-varying covariates and process correlation
+    are each Pareto/NBD-only features rather than a combinable pair.
+
+    Capped hard throughout. What is under test is the shape of the search and
+    of the result, not where a ten-parameter optimiser stops -- a real dyncov
+    fit is minutes, and `-m dyncov_fit` is where those live.
+    """
+
+    CAPPED: ClassVar[dict] = {"maxiter": 2}
+
+    @pytest.fixture(scope="class")
+    def names(self):
+        return ["High.Season", "Gender", "Channel"]
+
+    def _fit(self, walks, names, **kwargs):
+        from clvtools.pnbd.dyncov import fit_pnbd_dyncov
+
+        return fit_pnbd_dyncov(
+            walks, names_cov_life=names, names_cov_trans=names,
+            options=self.CAPPED, **kwargs,
+        )
+
+    def test_the_default_fit_is_unchanged(self, dyncov_walks, names):
+        fitted = self._fit(dyncov_walks, names)
+        assert fitted.n_parameters == 10
+        assert fitted.names_cov_constr == []
+        assert fitted.reg_lambdas is None
+
+    def test_a_constrained_covariate_is_estimated_and_reported_once(
+        self, dyncov_walks, names
+    ):
+        """The count is the point: it reaches `n_parameters`, and so AIC and BIC.
+
+        Reporting a tied covariate twice would describe a model with a free
+        parameter the search never had.
+        """
+        fitted = self._fit(dyncov_walks, names, names_cov_constr=["Gender"])
+        assert fitted.n_parameters == 9
+        assert "constr.Gender" in fitted.names
+        assert "life.Gender" not in fitted.names
+        assert "trans.Gender" not in fitted.names
+        assert len(list(fitted)) == len(fitted.names)
+
+    def test_and_both_processes_receive_the_same_coefficient(
+        self, dyncov_walks, names
+    ):
+        """What "constrained" means, checked on the vectors rather than the names."""
+        fitted = self._fit(dyncov_walks, names, names_cov_constr=["Gender"])
+        i = names.index("Gender")
+        assert fitted.gamma_life[i] == fitted.gamma_trans[i]
+
+    def test_a_regularized_fit_carries_its_lambdas(self, dyncov_walks, names):
+        fitted = self._fit(dyncov_walks, names, reg_lambdas=(0.1, 0.2))
+        assert fitted.reg_lambdas == (0.1, 0.2)
+        assert fitted.n_parameters == 10
+
+    def test_the_two_combine(self, dyncov_walks, names):
+        """The fourth of `I-05`'s dyncov configurations."""
+        fitted = self._fit(
+            dyncov_walks, names,
+            names_cov_constr=["Gender"], reg_lambdas=(0.1, 0.1),
+        )
+        assert fitted.n_parameters == 9
+        assert fitted.reg_lambdas == (0.1, 0.1)
+
+    def test_a_bad_lambda_is_refused_here_too(self, dyncov_walks, names):
+        """The same validator as the static fits, so the same message."""
+        with pytest.raises(ValueError, match="must be numbers"):
+            self._fit(dyncov_walks, names, reg_lambdas=(float("nan"), 0.1))
+
+    def test_and_so_is_an_unknown_constraint(self, dyncov_walks, names):
+        with pytest.raises(ValueError, match="cannot constrain 'Nope'"):
+            self._fit(dyncov_walks, names, names_cov_constr=["Nope"])
+
+    def test_a_non_finite_objective_is_reported_as_infinite(
+        self, dyncov_walks, names
+    ):
+        """The guard the optimiser needs, and which nothing had exercised.
+
+        This used to read ``np.inf if not np.isfinite(value) else -value`` --
+        one statement, so coverage counted it reached whenever the *finite*
+        branch ran. Splitting it to add the penalty showed the non-finite arm
+        had never been taken. A lifetime coefficient of 700 makes
+        ``exp(gamma'x)`` overflow and the likelihood ``NaN``; the search has to
+        see ``+inf`` there rather than a ``NaN`` it would propagate.
+        """
+        from clvtools.pnbd.dyncov import log_likelihood
+
+        with np.errstate(all="ignore"):
+            value = log_likelihood(
+                dyncov_walks, r=1.0, alpha=10.0, s=1.0, beta=10.0,
+                gamma_life=[700.0, 0.0, 0.0], gamma_trans=[0.0, 0.0, 0.0],
+            )
+        assert not np.isfinite(value)
+
+        # And a fit started there hands the optimiser `+inf` rather than a
+        # `NaN` it would propagate, so `finished()` can refuse to report a fit
+        # at all -- which is the behaviour the guard exists to enable, and is
+        # better than the finite-or-minus-inf result the first draft asserted.
+        with pytest.raises(ValueError, match="objective is not finite"):
+            self._fit(dyncov_walks, names, start_cov=700.0)
+
+    def test_correlation_remains_unavailable_here(self):
+        """Recorded, not deferred: a different likelihood, not an argument.
+
+        `use_cor` belongs to the plain Pareto/NBD's Sarmanov likelihood, which
+        is a different function rather than a reparameterisation of this one.
+        """
+        import inspect
+
+        from clvtools.pnbd.dyncov import fit_pnbd_dyncov
+
+        assert "use_cor" not in inspect.signature(fit_pnbd_dyncov).parameters
