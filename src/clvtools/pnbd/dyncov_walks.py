@@ -326,6 +326,49 @@ def _prepare_covariates(
     return grids, rows, chosen
 
 
+def _check_covariate_span(grids: dict, end: int) -> None:
+    """Every customer's *lifetime* covariate grid has to reach the estimation end.
+
+    A covariate date describes the period that *starts* there, so a grid whose
+    last date is the estimation end still covers the final interval. One that
+    stops earlier does not, and the walk builder then indexes past the end of
+    the grid: spec `T-18` asks for the covariate ranges to be right for each
+    combination of the data's ends sitting on or off a period boundary, and
+    round 5 found that a short grid raised
+    ``IndexError: index 4 is out of bounds for axis 0 with size 4`` from inside
+    ``_distance_to_interval_end`` rather than saying what was wrong.
+
+    The **lifetime** grid only. The transactional one is already caught, later
+    and by a different route: every walk's interval indices come from the
+    lifetime grid and are then used to slice both matrices, so a short
+    transaction series is refused by :func:`_stack` with "periods its walk
+    spans". Checking it here as well would preempt that more specific message
+    for no gain, which is what the first draft of this did --
+    ``test_rejects_a_series_too_short_for_the_walks_it_must_cover`` failed on
+    the substitution.
+
+    :func:`~clvtools.pnbd.dyncov_predict._require_coverage` is the same check
+    at the other end of the model, for the prediction horizon, and this is
+    worded to match it.
+    """
+    short = {
+        customer: grid[-1]
+        for customer, grid in grids.items()
+        if len(grid) == 0 or grid[-1] < end
+    }
+    if not short:
+        return
+    example, last = min(short.items())
+    raise ValueError(
+        f"the lifetime covariate series stops before the estimation period ends "
+        f"for {len(short)} of {len(grids)} customers: customer {example}'s "
+        f"last covariate date is {pd.Timestamp(last, unit='D').date()} and the "
+        f"estimation period ends {pd.Timestamp(end, unit='D').date()}. A "
+        f"covariate date describes the period starting there, so the series "
+        f"must reach the estimation end -- extend it (S6.4)"
+    )
+
+
 def _check_covariate_coverage(ids, grids_life: dict, grids_trans: dict) -> None:
     """Every customer covered, and the two grids aligned where they overlap.
 
@@ -524,6 +567,7 @@ def build_walks(
     _check_covariate_coverage(ids, grids_life, grids_trans)
 
     end = int(_to_days([clv_data.estimation_end])[0])
+    _check_covariate_span(grids_life, end)
     specs = _customer_specs(trans, ids, grids_life, end, span)
 
     covdata_aux_life, wi_aux_life = _stack(specs.aux_life, rows_life, ids)

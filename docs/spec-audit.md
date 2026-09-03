@@ -384,7 +384,7 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 
 | | | evidence / note |
 |---|---|---|
-| T-01 | w | `test_cdnow.py:211`; datetime epsilon untested, and the hour unit uses 1 hour, not 1 second |
+| T-01 | c | re-verdicted 2026-09-03: **round 5**: the hour epsilon really is 1 hour, and it is unobservable — `_aggregate_to_day` floors every transaction to the unit first, so nothing can land in the gap. The partition it exists to guarantee is asserted for hour/day/week |
 | T-02 | c | `test_data.py:107` |
 | T-03 | c | `test_data.py:115`, `test_cdnow.py:206` |
 | T-04 | c ! | re-verdicted 2026-09-03: closed by **A6** — `test_timezone_aware_dates_are_refused_rather_than_half_supported` |
@@ -394,15 +394,15 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | T-08 | c | |
 | T-09 | a | no minimum-holdout check; a 1-day holdout is accepted |
 | T-10 | a | only `end <= estimation_start` rejected; `split=0.5` accepted |
-| T-11 | w | `test_data.py:268`, only without `data_end` |
+| T-11 | c | re-verdicted 2026-09-03: **round 5**: satisfied by a stricter rule than the spec states — any `data_end` before the last purchase is refused, which subsumes one before the split. Both halves pinned |
 | T-12 | a | nothing compares `data_end=<last transaction>` with omitting it |
 | T-13 | a | works, untested |
 | T-14 | c | |
-| T-15 | w | `test_predict.py:131` pins the +1 day rule via the paper; the `data_end` configuration is untested (the port does emit 1998-07-16/1998-07-30) |
+| T-15 | c | re-verdicted 2026-09-03: **round 5**: the spec's own two dates, 1998-07-16 and 1998-07-30, asserted to the day |
 | T-16 | a | suite only ever passes `datetime64[ns]`; none of the 8 conversions pinned |
-| T-17 | w | `test_timeunit.py:245-286`; boundary idempotence implied, never asserted |
-| T-18 | w | `test_pnbd_dyncov.py:456`; only the on/on combination |
-| T-19 | w | `test_predict.py:329,:112`; 1- and 2-period horizons untested |
+| T-17 | c | re-verdicted 2026-09-03: **round 5**: idempotence on a boundary for all five units, plus that `week` floors to the *day* on purpose |
+| T-18 | c | re-verdicted 2026-09-03: **round 5**: all four combinations build — and a grid stopping short of the estimation end raised a bare `IndexError` from numpy; now a named `ValueError` |
+| T-19 | c | re-verdicted 2026-09-03: **round 5**: 1- and 2-period horizons, numeric and as a date, and the two spellings agree |
 | T-20 | a ! | `prediction_end=0` raises; pinned opposite at `test_predict.py:349` (**A1**) |
 | T-21 | c | |
 | T-22 | c ! | re-verdicted 2026-09-03: **round 5**: the divergence had a README finding and no test; now pinned three ways |

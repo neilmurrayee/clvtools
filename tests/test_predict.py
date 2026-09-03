@@ -907,3 +907,74 @@ class TestAFractionalPredictionEndIsNotTruncated:
         fractional = predict(data, params, prediction_end=14.4)
         truncated = predict(data, params, prediction_end=14)
         assert (fractional["CET"] > truncated["CET"]).all()
+
+
+class TestDataEndAndShortHorizons:
+    """Spec T-15 and T-19, both `weak` and both merely untested.
+
+    `T-15` gives exact dates: with ``estimation.split = None`` and
+    ``data.end = "1998-07-15"``, ``predict(prediction.end = "1998-07-30")``
+    returns ``period.first == "1998-07-16"`` and ``period.last ==
+    "1998-07-30"``. The audit noted the port already emits both and pinned
+    neither -- so the +1 day rule was carried by a paper example alone, in a
+    configuration the paper never uses.
+
+    `T-19` asks that the period table hold for ``prediction.end`` as a number
+    *and* as a date, over a single period and over two. One-period horizons are
+    where an off-by-one in the grid shows up, and nothing reached them.
+
+    Neither turned up a defect. Backlog item 34, round 5.
+    """
+
+    @pytest.fixture(scope="class")
+    def cdnow_fit(self):
+        from clvtools import load_cdnow
+        from clvtools.pnbd import fit_pnbd
+
+        data = ClvData(load_cdnow(), time_unit="week", estimation_split=39)
+        cbs = data.customer_summary()
+        return data, fit_pnbd(cbs["x"], cbs["t_x"], cbs["T"], hessian=False)
+
+    def test_data_end_moves_the_prediction_window(self):
+        """T-15, to the day and against the spec's own two dates."""
+        from clvtools import load_cdnow
+        from clvtools.pnbd import fit_pnbd
+
+        data = ClvData(load_cdnow(), time_unit="week", data_end="1998-07-15")
+        assert not data.has_holdout
+        cbs = data.customer_summary()
+        params = fit_pnbd(cbs["x"], cbs["t_x"], cbs["T"], hessian=False)
+        table = predict(data, params, prediction_end="1998-07-30")
+        assert table["period.first"].iloc[0] == pd.Timestamp("1998-07-16")
+        assert table["period.last"].iloc[0] == pd.Timestamp("1998-07-30")
+
+    @pytest.mark.parametrize("periods", [1, 2])
+    def test_a_one_or_two_period_horizon_is_that_many_periods(
+        self, cdnow_fit, periods
+    ):
+        """T-19's numeric form, at the horizons an off-by-one would show in."""
+        data, params = cdnow_fit
+        table = predict(data, params, prediction_end=periods)
+        assert table["period.length"].iloc[0] == pytest.approx(float(periods))
+        span = table["period.last"].iloc[0] - table["period.first"].iloc[0]
+        # Inclusive of both ends, so `n` periods span `7n - 1` days weekly.
+        assert span == pd.Timedelta(days=7 * periods - 1)
+
+    def test_and_a_date_gives_the_same_window_as_the_count_it_equals(
+        self, cdnow_fit
+    ):
+        """T-19's other half: the two spellings agree where they should.
+
+        A date two whole periods past the estimation end has to produce the
+        same window as ``prediction_end=2``, or one of the two forms is
+        counting from somewhere else.
+        """
+        data, params = cdnow_fit
+        by_count = predict(data, params, prediction_end=2)
+        two_weeks_on = data.estimation_end + pd.Timedelta(days=14)
+        by_date = predict(data, params, prediction_end=two_weeks_on)
+        assert by_date["period.first"].iloc[0] == by_count["period.first"].iloc[0]
+        assert by_date["period.last"].iloc[0] == by_count["period.last"].iloc[0]
+        assert by_date["period.length"].iloc[0] == pytest.approx(
+            by_count["period.length"].iloc[0]
+        )

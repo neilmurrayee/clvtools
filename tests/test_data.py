@@ -626,3 +626,103 @@ class TestTheFutureCovariatesMatchWhatRExported:
         dates = load_apparel_dyn_cov_future()["Cov.Date"]
         assert str(dates.min().date()) == want["first.future.date"]
         assert str(dates.max().date()) == want["last.future.date"]
+
+
+class TestTheTwoSamplesPartitionTheLogExactly:
+    """Spec T-01, `weak`: "the hour unit uses 1 hour, not 1 second".
+
+    True, and it turns out not to matter -- which is the finding rather than a
+    fix. `T-01` asks for an epsilon of one day on date-based units and one
+    *second* on datetime-based ones. :attr:`ClvData.holdout_start` steps by one
+    hour on hourly data and one day otherwise, so the constant genuinely
+    differs from the spec's.
+
+    It cannot be observed. ``_aggregate_to_day`` floors every transaction to
+    the time unit before anything else looks at it -- ``"h"`` on hourly data,
+    ``"D"`` otherwise, which is S6.1's own rule -- so no transaction can land
+    strictly between the estimation end and one whole unit later. A finer
+    epsilon would select the same rows.
+
+    What is asserted here is the property the epsilon exists to guarantee: the
+    two samples **partition** the log, with nothing dropped between them and
+    nothing counted twice. That holds whatever the constant is, and would fail
+    for a coarser one. Backlog item 34, round 5.
+    """
+
+    @staticmethod
+    def _log(unit: str) -> pd.DataFrame:
+        """Six purchases one *unit* apart, plus one half a unit off the grid.
+
+        Stepped by the unit itself rather than by a day: with ``estimation_split
+        = 3`` a day-stepped weekly log ends before its own split, which is what
+        the first draft of this did.
+        """
+        from clvtools import timeunit
+
+        period = timeunit.get(unit)
+        start = pd.Timestamp("2005-01-02")
+        rows = [
+            {"Id": customer, "Date": period.add(start, n)}
+            for customer in ("a", "b")
+            for n in range(6)
+        ]
+        # Half a unit past the estimation end: the gap a coarse epsilon opens.
+        rows.append({"Id": "a", "Date": period.add(start, 3.5)})
+        return pd.DataFrame(rows)
+
+    @pytest.mark.parametrize("unit", ["hour", "day", "week"])
+    def test_nothing_falls_between_the_samples(self, unit):
+        data = ClvData(self._log(unit), time_unit=unit, estimation_split=3)
+        full = data.as_data_frame(sample="full")
+        estimation = data.as_data_frame(sample="estimation")
+        holdout = data.as_data_frame(sample="holdout")
+        assert len(estimation) + len(holdout) == len(full)
+
+    @pytest.mark.parametrize("unit", ["hour", "day", "week"])
+    def test_and_nothing_is_counted_twice(self, unit):
+        data = ClvData(self._log(unit), time_unit=unit, estimation_split=3)
+        estimation = data.as_data_frame(sample="estimation")
+        holdout = data.as_data_frame(sample="holdout")
+        assert estimation["Date"].max() < holdout["Date"].min()
+
+    def test_a_sub_unit_transaction_is_floored_rather_than_lost(self):
+        """Which is why the epsilon's size is unobservable.
+
+        The extra purchase 30 minutes past an hour boundary merges into that
+        hour rather than sitting between the samples.
+        """
+        data = ClvData(self._log("hour"), time_unit="hour", estimation_split=3)
+        stamps = data.as_data_frame()["Date"]
+        assert (stamps.dt.minute == 0).all()
+        assert (stamps.dt.second == 0).all()
+
+
+class TestDataEndIsRefusedWhenItWouldDiscardTransactions:
+    """Spec T-11, `weak`: tested "only without ``data_end``".
+
+    `T-11` asks that ``data.end`` fail when it precedes ``estimation.split``.
+    It does, through a **stricter** rule than the spec states: any ``data_end``
+    before the last purchase is refused, and since the split always sits at or
+    before the last purchase, a ``data_end`` before the split is refused too.
+
+    Worth pinning as the stricter rule rather than the spec's, because that is
+    what the code promises and the two are not the same statement. Backlog item
+    34, round 5.
+    """
+
+    def test_before_the_estimation_split_is_refused(self, apparel_trans):
+        with pytest.raises(ValueError, match="precedes the last purchase"):
+            ClvData(
+                apparel_trans, time_unit="week", estimation_split=104,
+                data_end="2005-06-01",
+            )
+
+    def test_and_so_is_any_data_end_that_would_discard_a_purchase(
+        self, apparel_trans
+    ):
+        """The stricter half: after the split, still before the last purchase."""
+        with pytest.raises(ValueError, match="precedes the last purchase"):
+            ClvData(
+                apparel_trans, time_unit="week", estimation_split=104,
+                data_end="2007-06-01",
+            )

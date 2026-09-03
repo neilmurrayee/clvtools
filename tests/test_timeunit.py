@@ -14,6 +14,7 @@ satisfy.
 from __future__ import annotations
 
 from itertools import pairwise
+from typing import ClassVar
 
 import numpy as np
 import pandas as pd
@@ -477,3 +478,42 @@ class TestTheSpellingsCLVToolsAccepts:
         plain = ClvData(load_apparel_trans(), time_unit="week", estimation_split=104)
         spelled = ClvData(load_apparel_trans(), time_unit="Weeks", estimation_split=104)
         assert spelled.estimation_end == plain.estimation_end
+
+
+class TestFloorRoundsDownAndSettlesOnABoundary:
+    """Spec T-17, `weak`: "boundary idempotence implied, never asserted".
+
+    Two claims. ``floor`` rounds *down*, and applying it to a timepoint already
+    on a boundary changes nothing -- which is what makes the covariate grid
+    stable: a boundary that moved under a second application would give a walk
+    a different number of intervals depending on how many times the grid was
+    built. Backlog item 34, round 5.
+    """
+
+    UNITS: ClassVar[tuple[str, ...]] = ("hour", "day", "week", "month", "year")
+
+    @pytest.mark.parametrize("name", UNITS)
+    def test_flooring_a_boundary_is_a_no_op(self, name):
+        unit = timeunit.get(name)
+        boundary = unit.floor(pd.Timestamp("2005-06-15 13:37:11"))
+        assert unit.floor(boundary) == boundary
+
+    @pytest.mark.parametrize("name", UNITS)
+    def test_and_it_rounds_down_rather_than_to_nearest(self, name):
+        """Late in a period must land on that period's start, not the next."""
+        unit = timeunit.get(name)
+        late = pd.Timestamp("2005-06-15 23:59:59")
+        assert unit.floor(late) <= late
+
+    def test_the_week_floors_to_the_day_on_purpose(self):
+        """Documented on :class:`~clvtools.timeunit.Weeks`, and worth pinning.
+
+        A week here is seven days from wherever the data starts rather than a
+        calendar week, so ``floor`` drops the intra-day time and nothing else.
+        Anchoring it to Monday would silently re-cut every dynamic-covariate
+        walk.
+        """
+        week = timeunit.get("week")
+        wednesday = pd.Timestamp("2005-06-15 13:37:00")   # a Wednesday
+        assert week.floor(wednesday) == pd.Timestamp("2005-06-15")
+        assert week.ceiling(wednesday) == pd.Timestamp("2005-06-22")

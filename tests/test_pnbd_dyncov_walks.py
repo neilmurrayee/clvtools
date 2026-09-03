@@ -497,3 +497,107 @@ class TestTheLifeWalksReconstructTheCovariateSeries:
         assert not empty_aux
         assert len(empty_real) == 214
         assert "129" in empty_real
+
+
+class TestTheCovariateGridMustReachTheEstimationEnd:
+    """Spec T-18, `weak`: "only the on/on combination".
+
+    T-18 asks that covariate date ranges be right for all four combinations of
+    {start on, start off} x {end on, end off} a period boundary. All four build
+    correctly -- but chasing the fourth found that a grid which stops *short*
+    of the estimation end raised ``IndexError: index 4 is out of bounds for
+    axis 0 with size 4`` from inside ``_distance_to_interval_end``, rather than
+    saying the covariates do not cover the data.
+
+    That is the shape items 21, 27 and 29 spent their time on, and the model
+    already had the right words for it at the other end:
+    ``dyncov_predict._require_coverage`` refuses a *prediction horizon* the
+    covariates cannot reach. Construction had no equivalent. Backlog item 34,
+    round 5.
+    """
+
+    START: ClassVar[pd.Timestamp] = pd.Timestamp("2005-01-03")
+
+    def _data(self):
+        from clvtools import ClvData
+
+        trans = pd.DataFrame([
+            {"Id": customer, "Date": self.START + pd.Timedelta(weeks=week)}
+            for customer in ("a", "b")
+            for week in range(6)
+        ])
+        return ClvData(trans, time_unit="week", estimation_split=4)
+
+    def _grid(self, weeks: int, offset_days: int = 0):
+        first = self.START - pd.Timedelta(days=offset_days)
+        return pd.DataFrame([
+            {"Id": customer, "Cov.Date": first + pd.Timedelta(weeks=week),
+             "S": week % 2}
+            for customer in ("a", "b")
+            for week in range(weeks)
+        ])
+
+    def _build(self, weeks: int, offset_days: int = 0):
+        from clvtools import ClvDataDynCov
+
+        return ClvDataDynCov(
+            self._data(), self._grid(weeks, offset_days),
+            names_cov_life=["S"], names_cov_trans=["S"],
+        ).walks()
+
+    @pytest.mark.parametrize("start_offset", [0, 3], ids=["start-on", "start-off"])
+    @pytest.mark.parametrize("weeks", [9, 10], ids=["end-on", "end-off"])
+    def test_all_four_boundary_combinations_build(self, start_offset, weeks):
+        """The claim as written: four combinations, all correct."""
+        walks = self._build(weeks, start_offset)
+        assert walks.n_customers == 2
+        assert walks.n_cov_life == 1
+
+    def test_a_grid_ending_exactly_at_the_estimation_end_is_enough(self):
+        """A covariate date describes the period *starting* there.
+
+        So the final interval is covered by a grid whose last date is the
+        estimation end, and refusing it would be one period too strict.
+        """
+        assert self._build(5).n_customers == 2
+
+    @pytest.mark.parametrize("weeks", [4, 3, 1])
+    def test_but_a_shorter_one_says_so_rather_than_indexing_past_it(self, weeks):
+        with pytest.raises(ValueError, match="stops before the estimation period"):
+            self._build(weeks)
+
+    def test_the_message_names_a_customer_and_both_dates(self):
+        """What the `IndexError` could not: which grid, whose, and how short."""
+        with pytest.raises(ValueError, match="covariate series") as excinfo:
+            self._build(4)
+        message = str(excinfo.value)
+        assert "lifetime" in message
+        assert "customer a" in message
+        assert "2005-01-24" in message   # the grid's last date
+        assert "2005-01-31" in message   # the estimation end
+
+    def test_the_apparel_data_is_unaffected(self, dyncov_walks):
+        """The regime every other dyncov test runs in, still built."""
+        assert dyncov_walks.n_customers == 600
+
+    def test_a_short_transaction_grid_keeps_its_own_more_specific_error(self):
+        """The two checks divide the work, and the division is deliberate.
+
+        Every walk's interval indices come from the *lifetime* grid and then
+        slice both matrices, so a short transaction series is refused later, by
+        `_stack`, with "periods its walk spans". The first draft of
+        `_check_covariate_span` checked both grids and preempted that message --
+        `test_rejects_a_series_too_short_for_the_walks_it_must_cover` above
+        caught the substitution. This pins the boundary from the other side.
+        """
+        from clvtools import ClvData, load_apparel_dyn_cov, load_apparel_trans
+        from clvtools.pnbd.dyncov import build_walks
+
+        data = ClvData(load_apparel_trans(), time_unit="week", estimation_split=104)
+        full = load_apparel_dyn_cov()
+        short = full[full["Cov.Date"] <= pd.Timestamp("2006-06-01")]
+        with pytest.raises(ValueError, match="periods its walk spans"):
+            build_walks(
+                data, full, short,
+                names_cov_life=["High.Season"], names_cov_trans=["High.Season"],
+            )

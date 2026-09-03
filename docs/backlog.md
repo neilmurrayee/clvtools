@@ -1893,7 +1893,51 @@ same floats), at :math:`\gamma \ne 0` — with :math:`\gamma = 0` every
 multiplier is 1 and the reconstruction holds for reasons having nothing to do
 with the walks, which is how DY-15's `d_omega` oracle came to be degenerate.
 
-**And writing it turned up the structure the verdict had not.** The first draft
+### Batch 2 — the `T` section, and a bare `IndexError` behind it
+
+All six remaining `T` rows were genuinely untested, and **five turned up no
+defect** — they are now pinned and re-verdicted `c`:
+
+* `T-17` floor idempotence, for all five units, plus that `week` floors to the
+  *day* rather than a calendar week, which `Weeks.ceiling` documents and
+  nothing asserted.
+* `T-15` the `data_end` prediction window, against the spec's own two dates
+  (1998-07-16 / 1998-07-30) to the day. The +1 day rule was carried by a paper
+  example in a configuration the paper never uses.
+* `T-19` one- and two-period horizons, numeric and as a date, and that the two
+  spellings agree — one-period horizons are where a grid off-by-one shows.
+* `T-11` is satisfied by a **stricter** rule than the spec states: any
+  `data_end` before the last purchase is refused, which subsumes one before the
+  split. Pinned as the stricter rule, since that is what the code promises.
+* `T-01` is a real observation with no consequence. The spec wants a 1-second
+  epsilon on datetime units and `holdout_start` steps a whole hour — but
+  `_aggregate_to_day` floors every transaction to the unit before anything
+  reads it, so **nothing can land in the gap** and a finer epsilon would select
+  the same rows. What is asserted instead is the property the epsilon exists
+  for: the two samples partition the log exactly.
+
+**`T-18` found a defect.** All four boundary combinations build correctly, as
+the claim asks. But a covariate grid that stops *short* of the estimation end
+raised `IndexError: index 4 is out of bounds for axis 0 with size 4` from inside
+`_distance_to_interval_end` — a numpy index error for "your covariate data does
+not cover your transaction data". The model already had the right words at the
+other end: `dyncov_predict._require_coverage` refuses a prediction horizon the
+covariates cannot reach. Construction had no equivalent, and now does, worded to
+match: it names which grid, which customer, that customer's last covariate date
+and the estimation end. A grid ending *exactly* at the estimation end is still
+accepted, because a covariate date describes the period starting there.
+
+**The first draft of that check was too broad, and an existing test said so.**
+It checked both grids, and
+`test_rejects_a_series_too_short_for_the_walks_it_must_cover` failed: a short
+*transaction* series was already refused, later and more specifically, by
+`_stack` with "periods its walk spans". The two checks divide the work because
+every walk's interval indices come from the **lifetime** grid and then slice
+both matrices — so only that one can index past its end, and only that one
+needed the earlier guard. Narrowed to it, and the boundary is now pinned from
+both sides rather than left to whichever check happens to fire first.
+
+**And writing batch 1 turned up the structure that verdict had not.** The first draft
 asserted `real > 0`, which is false for **214 of the 600**: the real life walk
 spans birth to the last repeat purchase *in a later covariate interval*, so it
 is empty for the 213 customers with `x = 0` — and for customer **129**, who buys
