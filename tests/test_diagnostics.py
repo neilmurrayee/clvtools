@@ -928,3 +928,55 @@ class TestBootstrapArgumentsAndCovariateAlignment:
             bootstrap.confidence_intervals(
                 draws, columns=["value"], by="Id", level=level
             )
+
+
+class TestBootstrapDrawsKeepTheOriginalWindow:
+    """Spec B-12 and B-14.
+
+    `B-12`: a resampled draw contains a *different* set of transactions, so its
+    own first and last purchase differ from the cohort's -- and the estimation
+    end must not follow them, or every draw would predict over a slightly
+    different window and the interval would be built from answers to different
+    questions. It holds; nothing said so.
+
+    `B-14` asks that ``predict(uncertainty = "boots")`` work across the model
+    families. **There is no such argument here**, and that is the deliberate
+    shape the README already records for the bootstrap: `apply` receives the
+    resampled data and does its own fitting, so intervals are composed by the
+    caller from `bootstrap_apply` and `confidence_intervals` rather than
+    requested inside `predict`. Pinned as a divergence, not a gap.
+    """
+
+    def test_every_draw_keeps_the_cohorts_estimation_end(self, apparel_trans):
+        from clvtools import ClvData, bootstrap
+
+        data = ClvData(apparel_trans, time_unit="week", estimation_split=104)
+        seen = []
+
+        def note(resampled):
+            seen.append((resampled.estimation_end, resampled.data_end))
+            return 1.0
+
+        bootstrap.bootstrap_apply(data, apply=note, num_boots=4, seed=3)
+        assert len(seen) == 4
+        assert all(end == data.estimation_end for end, _ in seen)
+        assert all(end == data.data_end for _, end in seen)
+
+    def test_predict_takes_no_uncertainty_argument(self):
+        """B-14's divergence, pinned so it reads as a decision.
+
+        R asks `predict` for bootstrap intervals; here the caller composes them,
+        which is the same choice the README records under *Deliberately not
+        ported* for `clv.bootstrapped.apply`.
+        """
+        import inspect
+
+        from clvtools import predict
+
+        assert "uncertainty" not in inspect.signature(predict).parameters
+
+    def test_and_the_pieces_that_replace_it_are_both_present(self):
+        from clvtools import bootstrap
+
+        assert callable(bootstrap.bootstrap_apply)
+        assert callable(bootstrap.confidence_intervals)

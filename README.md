@@ -314,6 +314,16 @@ uncorrelated fit — impossible at a true optimum, since `m = 0` nests it — be
 agree about the *likelihood function* to nine or more significant figures at
 fixed parameters; only the optimisation differs.
 
+**The GGom/NBD's `CET` is the post-erratum one, not the original MATLAB's.**
+CLVTools' own suite records in a comment that this expression changed after
+Adler's erratum (issue #206) and no longer agrees with the code the model was
+first published with. This package follows the erratum, as CLVTools does, so a
+reader comparing against the original paper will find a disagreement that is
+neither implementation's mistake. The value was pinned to 1e-6 and the *reason*
+was written down nowhere — the fourth case round 5 found of a deliberate choice
+recorded in a test but not in these findings, which is half of this repository's
+own rule. Spec M-09.
+
 **The GGom/NBD is the Pareto/NBD in disguise on this data.** Its fitted `b` is
 8.1e-07. That is *not* simply the `b → 0` limit, which describes an immortal
 customer; since $\beta - 1 + e^{bT} \approx \beta + bT$, the Pareto/NBD is

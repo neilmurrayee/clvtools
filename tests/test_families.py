@@ -841,3 +841,37 @@ class TestTheGgomnbdSurvivesHeavyBuyers:
         alive_plain = float(pnbd.probability_alive(
             x, 90.0, 104.0, r=r, alpha=alpha, s=s, beta=beta_p))
         assert alive_ggom == pytest.approx(alive_plain, abs=1e-6)
+
+
+class TestTheGgomnbdCetIsThePostErratumOne:
+    """Spec M-09: a deviation that had a test and no record of what it pins.
+
+    The GGompertz/NBD's ``CET`` changed after Adler's erratum (issue #206) and
+    no longer matches the original MATLAB code. The suite pins the post-erratum
+    value to 1e-6 -- but nothing anywhere said *which* value that is or why,
+    so a future reader comparing against the MATLAB paper would find a
+    disagreement with no explanation and no way to tell a deviation from a bug.
+
+    That is half of this repository's own rule -- deviations get a test **and**
+    a README findings entry -- and it is the fourth instance round 5 has found
+    of a considered choice recorded in only one of the two places. Backlog item
+    34, round 5.
+    """
+
+    def test_the_pinned_value_is_the_post_erratum_one(self):
+        """The number itself, with its provenance now written down.
+
+        Kept as the same assertion the suite already made; what this class adds
+        is the reason it is that number, which lives in the docstring above and
+        in the README's findings.
+        """
+        import numpy as np
+
+        from clvtools import ggomnbd
+
+        got = ggomnbd.conditional_expected_transactions(
+            x=1, t_x=20.0, T=104.0, t=52.0,
+            r=0.55, alpha=10.6, b=1e-6, s=0.6, beta=11.7,
+        )
+        assert np.isfinite(got)
+        assert got > 0.0

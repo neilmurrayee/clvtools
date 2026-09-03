@@ -340,3 +340,56 @@ class TestNonFiniteStartValuesAreRefusedByName:
 
         assert _validated_cov_start(None) == DEFAULT_COV_START
         assert _validated_cov_start(0.5) == 0.5
+
+
+class TestFitsRunUnderOptimiserMethodsBeyondTheTwoInUse:
+    """Spec F-11 and F-09, both `weak`.
+
+    `F-11` asks that fits work "across all optimx methods"; only Nelder-Mead and
+    L-BFGS-B were ever run here. Other SciPy methods are accepted -- item 31's
+    `options_for` validates nothing for a method it does not recognise, rather
+    than refusing one SciPy might well take -- so "accepted" and "works" were
+    two different claims and only the first was covered.
+
+    `F-09`'s "flawless results out of the box" is the finiteness sweep: no
+    non-finite value in the estimates, the standard errors, or anywhere in the
+    prediction table. Backlog item 34, round 5.
+    """
+
+    @pytest.mark.slow
+    @pytest.mark.parametrize("method", ["Nelder-Mead", "L-BFGS-B", "Powell"])
+    def test_a_third_method_reaches_a_comparable_optimum(
+        self, cbs_estimation, method
+    ):
+        """Powell is the one nothing had ever run.
+
+        Bounded loosely: what is under test is that the method *works*, not
+        that three optimisers agree to the last digit on a flat ridge.
+        """
+        from clvtools.pnbd import fit_pnbd
+
+        fitted = fit_pnbd(
+            cbs_estimation["x"], cbs_estimation["t.x"], cbs_estimation["T.cal"],
+            method=method, hessian=False,
+        )
+        assert np.isfinite(fitted.log_likelihood)
+        assert fitted.log_likelihood == pytest.approx(-5848.1, abs=2.0)
+        assert all(v > 0 for v in fitted.coefficients.values())
+
+    @pytest.mark.slow
+    def test_nothing_in_a_fit_or_its_predictions_is_non_finite(
+        self, apparel_trans, cbs_estimation
+    ):
+        """F-09, on the apparel cohort without covariates."""
+        from clvtools import ClvData, predict
+        from clvtools.pnbd import fit_pnbd
+
+        data = ClvData(apparel_trans, time_unit="week", estimation_split=104)
+        fitted = fit_pnbd(
+            cbs_estimation["x"], cbs_estimation["t.x"], cbs_estimation["T.cal"],
+        )
+        assert np.isfinite(list(fitted.coefficients.values())).all()
+        assert np.isfinite(list(fitted.standard_errors().values())).all()
+        table = predict(data, fitted).select_dtypes("number")
+        offending = [c for c in table.columns if not np.isfinite(table[c]).all()]
+        assert not offending

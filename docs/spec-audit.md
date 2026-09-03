@@ -4,7 +4,12 @@ Date: 2026-09-02, at commit `61cd5ba`. `docs/spec.md` states what the sources
 demand, derived without reading `src/` or `tests/`. This file is the join:
 for each spec item, what the suite actually pins.
 
-**Status: every finding worked**, 2026-09-02. A1–A7, B1–B7, C, D1–D6, the six
+**Status: every finding worked**, 2026-09-02, **and every `weak` verdict
+re-checked**, 2026-09-03 — round 5 of `docs/backlog.md`, item 34. Of the 76
+`weak` rows, 14 had been closed by items 21-33 without the verdict being
+updated, 19 hid real defects, and the rest were either genuinely untested
+claims that hold or divergences that needed recording rather than fixing. One
+remains, `I-05`, as item 35. A1–A7, B1–B7, C, D1–D6, the six
 `out-of-scope` items that needed a recorded decision, and D-17 and NC-13, the
 two the audit never reached. Appendix 4 records what each one turned out to be —
 fourteen confirmed on the first pass, one overturned, two kept as deliberate
@@ -243,13 +248,25 @@ These counts are tallied from the section audits, not independently recounted.
 Where they disagree with Appendix 3, **trust the appendix**: it carries the
 per-item evidence and these do not.
 
-They are also a **snapshot of 2026-09-02** and no longer describe the suite.
-Round 5 (`docs/backlog.md` item 34) is re-verdicting the `weak` rows against the
-suite as it stands, and has moved **16** of them to `c` so far — fourteen that
-items 21-33 had closed without the verdict being updated, and two worked in the
-round itself. The table below is not being edited row by row as that happens:
-a half-recounted summary is worse than an openly stale one. It will be
-recomputed from Appendix 3 when the round closes.
+They were also a **snapshot of 2026-09-02**, and round 5
+(`docs/backlog.md` item 34) has since re-verdicted every `weak` row against the
+suite as it stands. Recounted from Appendix 3 on 2026-09-03, that round having
+closed:
+
+| | Count |
+|---|---|
+| `covered` | **118** |
+| `absent` | 69 |
+| `out-of-scope` | 12 |
+| `weak` | **1** |
+
+The one remaining is `I-05`, which is a capability gap rather than a testing one
+— `fit_pnbd_dyncov` takes no constraint, regularization or correlation argument,
+so 12 of the 29 configurations it names cannot be constructed. It is
+`docs/backlog.md` item 35.
+
+The section table below is the original tally and is left as the snapshot it
+is; Appendix 3 is the record, as the paragraph above says.
 
 | Spec section | covered | weak | absent | out-of-scope |
 |---|---|---|---|---|
@@ -454,7 +471,7 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | M-01..M-03 | c | per-customer oracles |
 | M-04 | a | the `PAlive` NaN regression case exists nowhere; verified finite `[0.99960, 0.99956, 0.74949, 0.99426]` (**C**) |
 | M-05..M-08 | c | |
-| M-09 | w | `test_families.py:296` pins the post-erratum CET at 1e-6, but no `erratum`/`#206` note anywhere |
+| M-09 | c ! | re-verdicted 2026-09-03: **round 5**: the post-erratum `CET` was pinned to 1e-6 with no record of *which* value or why — a deviation with a test and no findings entry. Both halves now exist |
 | M-10..M-12 | c | |
 | M-13 | o | BG/BB not ported |
 | PMF-01 | c | re-verdicted 2026-09-03: **round 5**: partial sums over k = 0..20, strictly increasing and never exceeding 1 |
@@ -467,9 +484,9 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | F-02..F-06 | a | no literature value pinned; BG/NBD and GGomNBD never fitted on cdnow at all (**C**) |
 | F-07 | a ! | Bemmaor/Glady comparison absent, and the port's own `b`/`β` divergence unrecorded |
 | F-08 | a | `test_gg.py:183` pins the paper's *apparel* fit, not cdnow (**C**) |
-| F-09 | w | no family × dataset finiteness sweep; the kkt2 half is `o` — no KKT flag exists, only `converged` |
+| F-09 | c | re-verdicted 2026-09-03: **round 5**: the finiteness sweep — estimates, standard errors and every numeric column of `predict()` |
 | F-10 | c | |
-| F-11 | w | only 2 optimiser methods ever run |
+| F-11 | c | re-verdicted 2026-09-03: **round 5**: Powell run alongside Nelder-Mead and L-BFGS-B, since 'accepted' and 'works' were two claims and only the first was covered |
 | F-12 | a | hourly tested at the timeunit layer; no fit runs on hourly data |
 | F-13 | a | nothing fits without spending then predicts on spending-bearing data |
 | F-14, F-15 | c | |
@@ -531,7 +548,7 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | PR-01 | c | `test_predict.py:78-126`; CLVTools emits `actual.period.spending` — the Rdoc name in the spec is stale |
 | PR-02 | c | re-verdicted 2026-09-03: **round 5**: the `level=0.9` and `num_boots=100` defaults pinned beside the `log(1.1)` one |
 | PR-03 | o | no `newdata` parameter — the data object is the first positional argument |
-| PR-04 | w | `test_predict.py:372`; `PAlive` only, 3 hand-picked ids, no static-cov arm |
+| PR-04 | c | re-verdicted 2026-09-03: **round 5**: one row per customer in the data given, and the sampled customers' `PAlive`, `CET` and `DERT` bit-identical either way |
 | PR-05 | a ! | raises where R gives `CET = 0`; refusal pinned at `test_predict.py:349` (**A1**) |
 | PR-06 | c | `test_predict.py:100` — genuinely pinned, but incidentally: apparel id 262 has a transaction on the estimation end, and `>=` would give 21 not 20 |
 | PR-07 | c | `test_predict.py:267`, strict `<` for every customer |
@@ -578,9 +595,9 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | B-09 | a ! | **`ClvDataDynCov` subclasses `ClvData`, so the resample branch never fires — the dyncov bootstrap silently refits without covariates** (**A2**) |
 | B-10 | o | the library never holds a specification: `apply` does its own fitting, so nothing can drop `use_cor` or lambdas. Architectural, not tested — and B-09 breaks the dyncov arm regardless |
 | B-11 | a | no all-customers refit compared to the original coefficients (**D6**) |
-| B-12 | w | pinned at data level for one id |
+| B-12 | c | re-verdicted 2026-09-03: **round 5**: every resampled draw keeps the cohort's estimation and data ends, so the interval is built from answers to one question |
 | B-13 | c | |
-| B-14 | w | one combination end to end; static-cov shape-tested; dyncov broken per B-09 |
+| B-14 | o | re-verdicted 2026-09-03: **round 5**: `predict` takes no `uncertainty=` argument — intervals are composed by the caller from `bootstrap_apply` and `confidence_intervals`, the same choice the README records for `clv.bootstrapped.apply`. Pinned as a divergence |
 | B-15 | c | re-verdicted 2026-09-03: **round 5**: a non-callable `apply` ran all 100 draws and reported all 100 failures; now refused before any runs. The draw-count and level bounds pinned |
 
 ## S13 Inference

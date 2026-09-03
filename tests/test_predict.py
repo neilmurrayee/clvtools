@@ -894,3 +894,50 @@ class TestPredictArgumentsAndCovariateNames:
         assert inspect.signature(
             bootstrap.bootstrap_apply
         ).parameters["num_boots"].default == 100
+
+
+class TestAFitAppliedToOtherData:
+    """Spec PR-04, `weak`: "`PAlive` only, 3 hand-picked ids, no static-cov arm".
+
+    R spells this `newdata`; here the data is `predict()`'s first positional
+    argument, so applying a fit to another set of customers is
+    `predict(other_data, params)` -- a difference the README records under
+    *Deliberately not ported*. The claim itself is the same either way: one row
+    per customer in the data given, and the rows for customers who were in the
+    fitting sample identical to predicting that sample alone.
+
+    Bit-identical, not close: nothing about the fit depends on which customers
+    are being predicted for, so any difference would mean the prediction is
+    reading something it should not. Backlog item 34, round 5.
+    """
+
+    @pytest.fixture(scope="class")
+    def sampled_fit(self, apparel_trans):
+        from clvtools.pnbd import fit_pnbd
+
+        ids = sorted(apparel_trans["Id"].unique())[:100]
+        sample = apparel_trans[apparel_trans["Id"].isin(ids)]
+        part = ClvData(sample, time_unit="week", estimation_split=104)
+        cbs = part.customer_summary()
+        return part, fit_pnbd(cbs["x"], cbs["t_x"], cbs["T"], hessian=False)
+
+    def test_one_row_per_customer_in_the_data_given(
+        self, apparel_trans, sampled_fit
+    ):
+        part, params = sampled_fit
+        full = ClvData(apparel_trans, time_unit="week", estimation_split=104)
+        assert len(predict(full, params, prediction_end=10)) == 600
+        assert len(predict(part, params, prediction_end=10)) == 100
+
+    @pytest.mark.parametrize("column", ["PAlive", "CET", "DERT"])
+    def test_the_sampled_customers_rows_are_identical_either_way(
+        self, apparel_trans, sampled_fit, column
+    ):
+        part, params = sampled_fit
+        full = ClvData(apparel_trans, time_unit="week", estimation_split=104)
+        on_full = predict(full, params, prediction_end=10)
+        on_part = predict(part, params, prediction_end=10)
+        np.testing.assert_array_equal(
+            on_full.loc[on_part.index, column].to_numpy(),
+            on_part[column].to_numpy(),
+        )
