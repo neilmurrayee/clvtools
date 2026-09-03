@@ -457,12 +457,12 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | M-09 | w | `test_families.py:296` pins the post-erratum CET at 1e-6, but no `erratum`/`#206` note anywhere |
 | M-10..M-12 | c | |
 | M-13 | o | BG/BB not ported |
-| PMF-01 | w | `test_cdnow.py:198`; pnbd only, column means not row sums |
-| PMF-02 | w | `test_pnbd_aggregate.py:254`; one scalar `T`, total only |
+| PMF-01 | c | re-verdicted 2026-09-03: **round 5**: partial sums over k = 0..20, strictly increasing and never exceeding 1 |
+| PMF-02 | c | re-verdicted 2026-09-03: **round 5**: every value in [0, 1], no NaN, over the whole range rather than one scalar T |
 | PMF-03 | c | holds structurally — `pmf(k,T,params)` cannot see `x`/`t_x` |
 | PMF-04 | a | `P(X=0)` monotone in `T` asserted for no family; verified to hold (**C**) |
 | PMF-05 | a | no fitted-object `pmf()` generic, no `pmf.x.<k>` frame |
-| PMF-06 | w | negative `k` rejected; non-integer silently truncated — `pmf(2.7,…) == pmf(2,…)` |
+| PMF-06 | c | re-verdicted 2026-09-03: **round 5**: a non-integer `k` was silently truncated — `pmf(2.7, ...)` returned `pmf(2, ...)`, a different question answered confidently. Now refused |
 | F-01 | a | the port's only cdnow fit uses `estimation_split=37`, not `"1997-09-30"` |
 | F-02..F-06 | a | no literature value pinned; BG/NBD and GGomNBD never fitted on cdnow at all (**C**) |
 | F-07 | a ! | Bemmaor/Glady comparison absent, and the port's own `b`/`β` divergence unrecorded |
@@ -529,7 +529,7 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | | | evidence / note |
 |---|---|---|
 | PR-01 | c | `test_predict.py:78-126`; CLVTools emits `actual.period.spending` — the Rdoc name in the spec is stale |
-| PR-02 | w | the `log(1.1)` default *is* pinned (`test_predict.py:304`); `num_boots`/`level` defaults are not |
+| PR-02 | c | re-verdicted 2026-09-03: **round 5**: the `level=0.9` and `num_boots=100` defaults pinned beside the `log(1.1)` one |
 | PR-03 | o | no `newdata` parameter — the data object is the first positional argument |
 | PR-04 | w | `test_predict.py:372`; `PAlive` only, 3 hand-picked ids, no static-cov arm |
 | PR-05 | a ! | raises where R gives `CET = 0`; refusal pinned at `test_predict.py:349` (**A1**) |
@@ -540,9 +540,9 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | PR-10 | c | `test_predict.py:335` |
 | PR-11 | c ! | re-verdicted 2026-09-03: closed by **A3** — `TestTheDiscountFactorRange` pins both ends |
 | PR-12 | c | `test_predict.py:354` |
-| PR-13 | w | 2 of 3; differently-named covariates surface as a bare pandas `KeyError` |
+| PR-13 | c | re-verdicted 2026-09-03: **round 5**: the scenario half was closed by item 27; the data half surfaced as `KeyError: "['Gender'] not in index"` and now names the covariate and lists what the data carries |
 | PR-14 | a | nothing checks for `NaN` parameters at predict time; returns an all-`NaN` table silently |
-| PR-15 | w | date/period agreement pinned; not-single, NA and disallowed types untested |
+| PR-15 | c | re-verdicted 2026-09-03: **round 5**: a `NaN` horizon came back as "cannot convert float NaN to integer" and a list as pandas' "Cannot convert input"; both now name the argument |
 | PR-16 | c | `test_predict.py:684-720` |
 
 ## S11 newcustomer

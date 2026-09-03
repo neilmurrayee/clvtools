@@ -616,6 +616,11 @@ def pmf(
     """
     if k < 0:
         raise ValueError("k must be non-negative")
+    if k != int(k):
+        # `int(k)` truncated in silence, so `pmf(2.7, ...)` returned `pmf(2,
+        # ...)` -- a different question, answered confidently. A transaction
+        # count between two integers is not a count. Spec `PMF-06`.
+        raise ValueError(f"k must be a whole number of transactions, got {k}")
     k = int(k)
     T = np.asarray(T, dtype=float)
     alpha_i, beta_i = _broadcast_rates(alpha, beta, T)

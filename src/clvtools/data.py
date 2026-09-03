@@ -961,11 +961,32 @@ class ClvDataStaticCov(ClvData):
 
     def design_life(self, names: list[str] | None = None) -> np.ndarray:
         r"""The attrition process's covariate matrix, customers in summary order."""
-        return self._cov_life[names or self.names_cov_life].to_numpy(dtype=float)
+        return self._selected(self._cov_life, names, self.names_cov_life, "lifetime")
 
     def design_trans(self, names: list[str] | None = None) -> np.ndarray:
         r"""The transaction process's covariate matrix."""
-        return self._cov_trans[names or self.names_cov_trans].to_numpy(dtype=float)
+        return self._selected(
+            self._cov_trans, names, self.names_cov_trans, "transaction"
+        )
+
+    @staticmethod
+    def _selected(frame, names, default: list[str], which: str) -> np.ndarray:
+        """The named covariate columns, saying so when one is not there.
+
+        ``predict`` asks the data for the columns the *fit* names, so applying a
+        fit to data whose covariates were named differently used to surface as
+        ``KeyError: "['Gender'] not in index"`` -- pandas' words for a question
+        about two objects it has never seen together. Spec `PR-13`.
+        """
+        wanted = list(names or default)
+        missing = [name for name in wanted if name not in frame.columns]
+        if missing:
+            raise ValueError(
+                f"the data has no {which} covariate {missing[0]!r}: it carries "
+                f"{', '.join(frame.columns)}. A fit can only be applied to data "
+                f"whose covariates are named as the fit's are"
+            )
+        return frame[wanted].to_numpy(dtype=float)
 
 
 class ClvDataDynCov(ClvData):

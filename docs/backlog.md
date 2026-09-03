@@ -1893,6 +1893,32 @@ same floats), at :math:`\gamma \ne 0` — with :math:`\gamma = 0` every
 multiplier is 1 and the reconstruction holds for reasons having nothing to do
 with the walks, which is how DY-15's `d_omega` oracle came to be degenerate.
 
+### Batch 10 — the `PMF` and `PR` sections, and the shape a fourth time
+
+**`PMF-06` is the batch's own defect and a different kind.** A non-integer `k`
+was **silently truncated**, so `pmf(2.7, ...)` returned `pmf(2, ...)` — not an
+error message about the wrong thing, but a confident answer to a question
+nobody asked. A transaction count between two integers is not a count.
+
+`PR-13`'s scenario half was closed by item 27; the **data** half was not.
+Applying a fit to covariate data whose columns are named differently surfaced
+as `KeyError: "['Gender'] not in index"` — pandas' words for a question about
+two objects it has never seen together. It now names the covariate and lists
+what the data does carry.
+
+`PR-15` is **the same shape a fourth time**: a `NaN` horizon reached `int()`
+and came back as "cannot convert float NaN to integer", a list reached
+`pd.Timestamp` and came back as "Cannot convert input [[1, 2]]". Both describe
+a *conversion* rather than the argument. With `V-01`, `V-02` and `X-14` that
+makes four separate arguments whose non-finite or wrong-typed value was
+diagnosed by whatever happened to consume it first.
+
+`PMF-01`, `PMF-02` and `PR-02` hold and were tested narrowly — "column means
+not row sums", "one scalar `T`, total only", and two defaults left unpinned
+beside one that was. The properties that make the PMF a distribution are now
+asserted as such: every value in [0, 1], partial sums strictly increasing in
+`k` and never exceeding 1, no `NaN`.
+
 ### Batch 9 — the `V` section: the same defect in three places
 
 `V-01` names it and `V-02` carries it one level down. **`nan <= 0` is `False`**,

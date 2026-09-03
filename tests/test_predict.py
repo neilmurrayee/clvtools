@@ -978,3 +978,103 @@ class TestDataEndAndShortHorizons:
         assert by_date["period.length"].iloc[0] == pytest.approx(
             by_count["period.length"].iloc[0]
         )
+
+
+class TestPredictArgumentsAndCovariateNames:
+    """Spec PR-02, PR-13 and PR-15.
+
+    `PR-13`'s scenario half was closed by item 27 -- a covariate the fit does
+    not carry now raises by name. The **data** half was not: applying a fit to
+    covariate data whose columns are named differently surfaced as
+    ``KeyError: "['Gender'] not in index"``, pandas' words for a question about
+    two objects it has never seen together.
+
+    `PR-15` asks that `prediction.end` be single, non-`NA` and of an allowed
+    type. A `NaN` reached `int()` and came back as "cannot convert float NaN to
+    integer"; a list reached `pd.Timestamp` and came back as "Cannot convert
+    input [[1, 2]]". Both describe a conversion rather than the argument -- the
+    same shape as `V-01`'s start value, which is the fourth instance this round.
+
+    Backlog item 34, round 5.
+    """
+
+    @pytest.fixture(scope="class")
+    def fitted(self, apparel_trans):
+        from clvtools.pnbd import fit_pnbd
+
+        data = ClvData(apparel_trans, time_unit="week", estimation_split=104)
+        cbs = data.customer_summary()
+        return data, fit_pnbd(cbs["x"], cbs["t_x"], cbs["T"], hessian=False)
+
+    def test_a_non_finite_horizon_names_itself(self, fitted):
+        data, params = fitted
+        with pytest.raises(ValueError, match="must be a finite number"):
+            predict(data, params, prediction_end=float("nan"))
+
+    @pytest.mark.parametrize("bad", [[1, 2], {"a": 1}, (1, 2)])
+    def test_and_so_does_one_that_is_not_a_single_value(self, fitted, bad):
+        data, params = fitted
+        with pytest.raises(TypeError, match="a single date"):
+            predict(data, params, prediction_end=bad)
+
+    def test_the_horizons_that_were_always_fine_still_are(self, fitted):
+        data, params = fitted
+        assert len(predict(data, params, prediction_end=10)) == 600
+        assert len(predict(data, params, prediction_end="2007-01-15")) == 600
+
+    def test_covariate_data_named_differently_from_the_fit_says_so(
+        self, apparel_trans
+    ):
+        """PR-13's data half: not `KeyError: "['Gender'] not in index"`."""
+        from clvtools import ClvDataStaticCov, load_apparel_static_cov
+
+        params = self._static_params()
+        renamed = load_apparel_static_cov().rename(columns={"Gender": "Sex"})
+        data = ClvDataStaticCov(
+            ClvData(apparel_trans, time_unit="week", estimation_split=104),
+            renamed, names_cov_life=["Sex", "Channel"],
+            names_cov_trans=["Sex", "Channel"],
+        )
+        with pytest.raises(ValueError, match="no lifetime covariate 'Gender'"):
+            predict(data, params, prediction_end=10)
+
+    def test_and_the_message_lists_what_the_data_does_carry(self, apparel_trans):
+        from clvtools import ClvDataStaticCov, load_apparel_static_cov
+
+        params = self._static_params()
+        renamed = load_apparel_static_cov().rename(columns={"Gender": "Sex"})
+        data = ClvDataStaticCov(
+            ClvData(apparel_trans, time_unit="week", estimation_split=104),
+            renamed, names_cov_life=["Sex", "Channel"],
+            names_cov_trans=["Sex", "Channel"],
+        )
+        with pytest.raises(ValueError, match="it carries Sex, Channel"):
+            predict(data, params, prediction_end=10)
+
+    @staticmethod
+    def _static_params():
+        from clvtools.pnbd.staticcov import PnbdStaticCovParams
+
+        want = fixture_json("newcustomer_static")["coefficients"]
+        return PnbdStaticCovParams(
+            r=want["r"], alpha=want["alpha"], s=want["s"], beta=want["beta"],
+            gamma_life=np.array([want["life.Gender"], want["life.Channel"]]),
+            gamma_trans=np.array([want["trans.Gender"], want["trans.Channel"]]),
+            names_cov_life=["Gender", "Channel"],
+            names_cov_trans=["Gender", "Channel"],
+            names_cov_constr=[], log_likelihood=float("nan"),
+            unpenalised_log_likelihood=None, converged=True, n_customers=600,
+        )
+
+    def test_the_discount_factor_and_bootstrap_defaults(self):
+        """PR-02. The `log(1.1)` default was pinned; the other two were not."""
+        import inspect
+
+        from clvtools import bootstrap
+
+        assert inspect.signature(
+            bootstrap.confidence_intervals
+        ).parameters["level"].default == 0.9
+        assert inspect.signature(
+            bootstrap.bootstrap_apply
+        ).parameters["num_boots"].default == 100

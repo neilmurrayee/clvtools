@@ -409,3 +409,47 @@ class TestPmfResolvesItsSecondTermByTheSeriesTail:
             _warn_if_unresolved(np.array([-1e-30]), 18, np.array([2.5e-7]))
 
 
+
+
+class TestThePmfIsADistributionOverWholeCounts:
+    """Spec PMF-01, PMF-02 and PMF-06.
+
+    The first two hold and were tested narrowly -- "pnbd only, column means not
+    row sums" and "one scalar `T`, total only". They are the properties that
+    make the thing a distribution: every value in [0, 1], the partial sums
+    increasing in `k` and never exceeding 1, and no `NaN`.
+
+    `PMF-06` was a defect. A non-integer `k` was **silently truncated**, so
+    ``pmf(2.7, ...)`` returned ``pmf(2, ...)`` -- a different question, answered
+    confidently. A transaction count between two integers is not a count.
+    Backlog item 34, round 5.
+    """
+
+    PARAMS: ClassVar[tuple] = (1.4490, 48.6361, 0.5613, 46.8844)
+
+    @pytest.fixture(scope="class")
+    def masses(self):
+        return np.array([
+            float(np.asarray(pmf(k, 104.0, *self.PARAMS))) for k in range(21)
+        ])
+
+    def test_every_value_is_a_probability(self, masses):
+        assert ((masses >= 0.0) & (masses <= 1.0)).all()
+        assert not np.isnan(masses).any()
+
+    def test_the_partial_sums_increase_and_never_exceed_one(self, masses):
+        """PMF-01 as stated: `0:6` sums strictly above `0:5`."""
+        partial = np.cumsum(masses)
+        assert (np.diff(partial) > 0).all()
+        assert partial[-1] <= 1.0
+        assert partial[6] > partial[5]
+
+    def test_a_non_integer_count_is_refused_rather_than_truncated(self):
+        with pytest.raises(ValueError, match="whole number of transactions"):
+            pmf(2.7, 104.0, *self.PARAMS)
+
+    @pytest.mark.parametrize("k", [2, 2.0, np.int64(2)])
+    def test_but_a_whole_number_is_accepted_however_it_is_spelled(self, k):
+        assert float(np.asarray(pmf(k, 104.0, *self.PARAMS))) == pytest.approx(
+            float(np.asarray(pmf(2, 104.0, *self.PARAMS)))
+        )

@@ -356,12 +356,31 @@ def _resolve_prediction_end(
             )
         return clv_data.data_end
     if isinstance(prediction_end, (int, float, np.integer, np.floating)):
+        if not np.isfinite(prediction_end):
+            # `pd.Timestamp` and `int()` each have their own words for this --
+            # "cannot convert float NaN to integer" -- which describe a
+            # conversion rather than the argument. Spec `PR-15`, and the same
+            # shape as `V-01`'s NaN start value.
+            raise ValueError(
+                f"prediction_end must be a finite number of periods or a date, "
+                f"got {prediction_end}"
+            )
         if prediction_end < 0:
             raise ValueError(
                 "prediction_end must not be a negative number of periods"
             )
         return clv_data.time.add(clv_data.estimation_end, float(prediction_end))
-    return pd.Timestamp(prediction_end)
+    try:
+        return pd.Timestamp(prediction_end)
+    except (TypeError, ValueError) as error:
+        # A list or a dict reached `pd.Timestamp` and came back as "Cannot
+        # convert input [[1, 2]] of type <class 'list'>", which names pandas'
+        # difficulty rather than the caller's. `PR-15` asks that it be single
+        # and of an allowed type.
+        raise TypeError(
+            f"prediction_end must be a number of periods or a single date, not "
+            f"{type(prediction_end).__name__}"
+        ) from error
 
 
 def _actuals(clv_data: ClvData, first: pd.Timestamp, last: pd.Timestamp,
