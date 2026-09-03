@@ -1893,6 +1893,42 @@ same floats), at :math:`\gamma \ne 0` — with :math:`\gamma = 0` every
 multiplier is 1 and the reconstruction holds for reasons having nothing to do
 with the walks, which is how DY-15's `d_omega` oracle came to be degenerate.
 
+### Batch 3 — the `DY` section, and a filter that under-selected
+
+**Two more were stale, and batch 1's filter had missed them.** `DY-03` and
+`DY-06` were closed by finding **B7** — all 600 customers and all four walks,
+`test_pnbd_dyncov.py:374` and `test_pnbd_dyncov_predict.py:125`. Batch 1
+selected rows whose *note cited a finding tag*, and these two cite `file:line`
+instead. So that filter was a useful first cut and not a sound one: the
+remaining rows have to be checked individually, which is what this round's
+*done when* already says and what the next batches will do.
+
+**`DY-17` needed building rather than finding.** Its second claim is that an
+auxiliary walk is exactly **2 periods** when `T` sits on a week start and the
+customer comes alive shortly before it with no real life walk. No apparel
+customer can show it — all 600 have an auxiliary life walk of 12 — so the case
+was constructed: birth at +21 days from the grid start, `T` on 2005-01-31, a
+Monday. Two periods is the length worth reaching, being the shortest walk with
+an interior: at one period the `d_omega` and `d1` corrections that scale the
+first and last intervals coincide. The surrounding lengths (5, 4, 3, 2, 2 as
+the customer arrives later) are asserted too, so the 2 is not a coincidence.
+
+**`DY-24`'s three uncovered claims** — 1- and 2-period horizons (CLVTools'
+issue #128), a 20-customer sample, and a horizon past where the covariates
+reach. All correct, including the last raising `_require_coverage`'s named
+error rather than stopping the walk short. Short horizons are where a covariate
+grid off-by-one shows, which is why they were worth reaching.
+
+**`DY-19` is decided, not covered**, and it is the one the audit itself left
+open: "the epsilon-apart claim is unreachable (day aggregation), undecided".
+Both halves of that are right. S6.1 collapses the log to one record per
+customer-day *before* walks are built, so two purchases an epsilon apart are
+**one** transaction and there is no second walk to lose. Asserting "the walk
+survives" would assert something the data layer has already made vacuous, so
+the aggregation step is asserted instead — the thing that could actually
+regress. Re-verdicted `o`, the same disposition `T-01` earned for the same
+reason.
+
 ### Batch 2 — the `T` section, and a bare `IndexError` behind it
 
 All six remaining `T` rows were genuinely untested, and **five turned up no

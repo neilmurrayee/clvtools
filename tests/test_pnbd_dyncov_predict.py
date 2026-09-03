@@ -633,3 +633,66 @@ class TestTheDyncovCetRefusesUnitS:
         from clvtools.pnbd.dyncov_predict import _reject_unit_s
 
         _reject_unit_s(s)
+
+
+@pytest.mark.oracle
+class TestDyncovPredictionOnNewData:
+    """Spec DY-24, `weak`: "2 of 5" of its runability claims reached.
+
+    Five claims: predicting the original data, a sample of it, further ahead
+    than the fitting data allows, plotting further ahead, and with two periods
+    or fewer -- CLVTools' issue #128. The first two were covered; the short
+    horizons and the over-long one were not, and short horizons are where an
+    off-by-one in the covariate grid shows itself.
+
+    None turned up a defect. Backlog item 34, round 5.
+    """
+
+    @pytest.fixture(scope="class")
+    def fitted(self, apparel_trans):
+        data = ClvDataDynCov(
+            ClvData(apparel_trans, time_unit="week", estimation_split=104),
+            load_apparel_dyn_cov(), names_cov_life=NAMES, names_cov_trans=NAMES,
+        )
+        return data, _params("dyncov_fit")
+
+    @pytest.mark.parametrize("periods", [1, 2])
+    def test_two_periods_or_fewer_predicts(self, fitted, periods):
+        """Issue #128's case, which the apparel tests never reached."""
+        data, params = fitted
+        table = predict(data, params, prediction_end=periods)
+        assert len(table) == 600
+        assert table["period.length"].iloc[0] == pytest.approx(float(periods))
+        assert np.isfinite(table["CET"]).all()
+        assert (table["CET"] > 0).all()
+
+    def test_a_longer_horizon_predicts_more(self, fitted):
+        """One period against two: the extra period has to show up in CET."""
+        data, params = fitted
+        one = predict(data, params, prediction_end=1)
+        two = predict(data, params, prediction_end=2)
+        assert (two["CET"] > one["CET"]).all()
+
+    def test_predicting_a_sample_of_the_customers_works(self, apparel_trans):
+        """DY-24's `newdata` claim, on a subset rather than the whole cohort."""
+        sample_ids = sorted(apparel_trans["Id"].unique())[:20]
+        sample = apparel_trans[apparel_trans["Id"].isin(sample_ids)]
+        data = ClvDataDynCov(
+            ClvData(sample, time_unit="week", estimation_split=104),
+            load_apparel_dyn_cov(), names_cov_life=NAMES, names_cov_trans=NAMES,
+        )
+        table = predict(data, _params("dyncov_fit"), prediction_end=4)
+        assert len(table) == 20
+        assert np.isfinite(table["PAlive"]).all()
+
+    def test_but_further_ahead_than_the_covariates_reach_is_refused(self, fitted):
+        """Not "predicting further ahead than the fitting data allows" silently.
+
+        The covariate series ends 2010-12-26; a horizon past one period beyond
+        that has nothing to integrate, and `_require_coverage` says so instead
+        of stopping the walk short and returning a confident answer to a
+        different question.
+        """
+        data, params = fitted
+        with pytest.raises(ValueError, match="does not reach the prediction"):
+            predict(data, params, prediction_end=400)

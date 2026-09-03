@@ -500,10 +500,10 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 |---|---|---|
 | DY-01 | a | `d_omega = d_1` never asserted, and `d_omega ≡ 1` makes the oracle degenerate (**B5**) |
 | DY-02 | a | nothing sets covariate *data* to zero |
-| DY-03 | w | `test_pnbd_dyncov.py:362`; aux walks only, `customers[:20]`, `Bbar=Dbar=0` half unchecked |
+| DY-03 | c | re-verdicted 2026-09-03: closed by **B7** — `test_pnbd_dyncov.py:374`, all 600 customers and all four walks |
 | DY-04 | a | nothing asserts at `i = 1` in the expectation table |
 | DY-05 | a | same γ never passed to both processes, so `Bbar_i = Dbar_i` never holds |
-| DY-06 | w | `test_pnbd_dyncov_predict.py:98,:107`; sample ids only |
+| DY-06 | c | re-verdicted 2026-09-03: closed by **B7** — `test_pnbd_dyncov_predict.py:125`, over all 600 |
 | DY-07 | a | the static-as-dynamic cross-check does not exist (**D1**) |
 | DY-08 | c | `test_pnbd_dyncov.py:194` — 30 columns × 2 parameter vectors × 600 customers, rtol 1e-8. The strongest item in the audit |
 | DY-09 | a | LL never evaluated on both a split and an unsplit build |
@@ -514,14 +514,14 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | DY-14 | c | `test_pnbd_dyncov.py:476,495,456`, atol 1e-12 |
 | DY-15 | c | re-verdicted 2026-09-03: closed by **B5** — four synthetic births reach `d_omega` of 7/7, 4/7, 2/7, 1/7 |
 | DY-16 | c | incidental — exactly one of 600 customers has `t_x == T_cal` with `x > 0` |
-| DY-17 | w | general splitting covered; the named 2-period edge case never constructed |
+| DY-17 | c | re-verdicted 2026-09-03: **round 5**: the 2-period auxiliary walk is constructed (birth +21d, `T` on a week start, no real life walk), with the surrounding 5/4/3/2 lengths so the 2 is not a coincidence |
 | DY-18 | a | the setup exists but asserts a predict-time error, not that aux walks survived |
-| DY-19 | w | claims 1–2 pinned; the epsilon-apart claim is unreachable (day aggregation), undecided |
+| DY-19 | o | **decided 2026-09-03**, was `w` and undecided: claims 1-2 are pinned, and the epsilon-apart claim is unreachable by construction — S6.1's day aggregation makes two purchases an epsilon apart *one* transaction, so there is no second walk to lose. The aggregation step is asserted instead, being the thing that could regress. Same shape as `T-01` |
 | DY-20 | c | re-verdicted 2026-09-03: **round 5**: the round-trip is asserted for all 600, bit for bit, at gamma != 0 |
 | DY-21 | c | `test_pnbd_dyncov.py:484,495` |
 | DY-22 | a | every dyncov test uses `estimation_split=104` — zero of seven weekdays (**D4**) |
 | DY-23 | a | no epsilon-interval construction; `_to_days` collapses to whole days |
-| DY-24 | w | 2 of 5 |
+| DY-24 | c | re-verdicted 2026-09-03: **round 5**: the three uncovered claims pinned — 1- and 2-period horizons (issue #128), a 20-customer sample, and a horizon past the covariates refused by name |
 | DY-25 | a | no partially-empty estimation/holdout, and no dyncov plotting test anywhere |
 
 ## S10 Prediction

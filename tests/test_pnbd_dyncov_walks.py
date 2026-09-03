@@ -601,3 +601,125 @@ class TestTheCovariateGridMustReachTheEstimationEnd:
                 data, full, short,
                 names_cov_life=["High.Season"], names_cov_trans=["High.Season"],
             )
+
+
+class TestTheTwoPeriodAuxiliaryWalk:
+    """Spec DY-17, `weak`: "the named 2-period edge case never constructed".
+
+    DY-17 has two claims. The general splitting is covered; the specific one is
+    that an auxiliary walk is **2 periods** when ``T`` sits on a week start and
+    the customer comes alive shortly before it with *no real life walk*. The
+    apparel cohort cannot show it -- every one of its 600 customers has an
+    auxiliary life walk of 12 -- so it needed building.
+
+    Two periods is the interesting length because it is the shortest walk with
+    an interior: a one-period walk has only its own ends, and the ``d_omega``
+    and ``d1`` corrections that scale the first and last intervals coincide.
+    Backlog item 34, round 5.
+    """
+
+    GRID: ClassVar[pd.Timestamp] = pd.Timestamp("2005-01-03")   # a Monday
+
+    def _walks(self, birth_offset_days: int, split_weeks: int = 4):
+        from clvtools import ClvData, ClvDataDynCov
+
+        rows = [
+            # The customer under test: one purchase, so no real life walk.
+            {"Id": "a", "Date": self.GRID + pd.Timedelta(days=birth_offset_days)},
+            # A second customer, so the estimation window spans the grid.
+            {"Id": "b", "Date": self.GRID},
+            {"Id": "b", "Date": self.GRID + pd.Timedelta(weeks=split_weeks)},
+        ]
+        data = ClvData(
+            pd.DataFrame(rows), time_unit="week", estimation_split=split_weeks
+        )
+        grid = pd.DataFrame([
+            {"Id": customer, "Cov.Date": self.GRID + pd.Timedelta(weeks=week),
+             "S": week % 2}
+            for customer in ("a", "b")
+            for week in range(12)
+        ])
+        built = ClvDataDynCov(
+            data, grid, names_cov_life=["S"], names_cov_trans=["S"]
+        ).walks()
+        lengths = {}
+        for customer_id, customer in zip(
+            built.ids, built.customers([0.3], [0.3]), strict=True
+        ):
+            lengths[customer_id] = (
+                len(customer.real_walk_life.values),
+                len(customer.aux_walk_life.values),
+            )
+        return data.estimation_end, lengths
+
+    def test_the_named_case_gives_exactly_two_periods(self):
+        """`T` on a week start, alive a week before it, no real life walk."""
+        end, lengths = self._walks(birth_offset_days=21)
+        assert end == pd.Timestamp("2005-01-31")          # a Monday, on the grid
+        assert lengths["a"] == (0, 2)
+
+    @pytest.mark.parametrize("offset,expected_aux", [
+        (0, 5), (13, 4), (20, 3), (21, 2), (27, 2),
+    ])
+    def test_the_auxiliary_walk_shortens_as_the_customer_arrives_later(
+        self, offset, expected_aux
+    ):
+        """The surrounding behaviour, so the 2 above is not a coincidence.
+
+        A customer born later has fewer covariate periods left before ``T``, and
+        the walk shortens one period at a time -- monotonically, and never below
+        the one period every customer alive at ``T`` must have.
+        """
+        _end, lengths = self._walks(birth_offset_days=offset)
+        assert lengths["a"] == (0, expected_aux)
+
+    def test_and_a_repeat_buyer_beside_them_keeps_a_real_walk(self):
+        """Customer `b` buys twice, so the real/auxiliary split is exercised."""
+        _end, lengths = self._walks(birth_offset_days=21)
+        real, aux = lengths["b"]
+        assert real == 4
+        assert aux == 1
+
+
+class TestTransactionsAnEpsilonApartCannotLoseAWalk:
+    """Spec DY-19's third claim, which the audit left **undecided**.
+
+    DY-19 asks that no walk be lost when transactions are "only one epsilon
+    apart". The audit's note reads "the epsilon-apart claim is unreachable (day
+    aggregation), undecided" -- and it is right on both counts, so this decides
+    it rather than testing the unreachable thing.
+
+    S6.1 collapses the log to at most one record per customer-day *before*
+    anything else looks at it: "For any customer-day combination, multiple
+    purchases are combined into a single record". Two purchases an epsilon apart
+    are therefore **one** transaction by the time walks are built, so there is
+    no second walk to lose. A test asserting "the walk survives" would be
+    asserting something the data layer has already made vacuous.
+
+    What is asserted instead is the step that makes it vacuous, which is the
+    thing that could actually regress. Same shape as `T-01`. Backlog item 34,
+    round 5.
+    """
+
+    def test_two_purchases_an_epsilon_apart_are_one_transaction(self):
+        from clvtools import ClvData
+
+        rows = [
+            {"Id": "a", "Date": pd.Timestamp("2005-01-03 00:00:00")},
+            {"Id": "a", "Date": pd.Timestamp("2005-01-03 00:00:01")},
+        ]
+        data = ClvData(pd.DataFrame(rows), time_unit="week")
+        assert len(data.as_data_frame()) == 1
+        assert int(data.customer_summary()["x"].iloc[0]) == 0
+
+    def test_so_a_repeat_needs_a_later_day_not_a_later_second(self):
+        """The contrast: a genuine repeat does produce one."""
+        from clvtools import ClvData
+
+        rows = [
+            {"Id": "a", "Date": pd.Timestamp("2005-01-03")},
+            {"Id": "a", "Date": pd.Timestamp("2005-01-04")},
+        ]
+        data = ClvData(pd.DataFrame(rows), time_unit="week")
+        assert len(data.as_data_frame()) == 2
+        assert int(data.customer_summary()["x"].iloc[0]) == 1
