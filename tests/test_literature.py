@@ -19,8 +19,8 @@ Three papers, five oracles:
   spending model.
 * CLVTools 0.12.1's own standard errors for the Pareto/NBD fit.
 
-The tolerance is half a unit in the last decimal each source printed, plus a
-fifth for this package's own optimiser -- :func:`published_tol`. A paper writing
+The tolerance is half a unit in the last decimal each source printed, plus one
+for this package's own optimiser -- :func:`published_tol`. A paper writing
 ``r = 0.243`` is claiming the estimate lies in [0.2425, 0.2435), and no tighter
 comparison against it is available; a fixed relative tolerance is simultaneously
 too tight for that and far too loose for ``-4055.9177``. The log-likelihoods are
@@ -37,6 +37,7 @@ from clvtools import ClvData, load_cdnow
 from clvtools.bgnbd import fit_bgnbd
 from clvtools.gg import fit_gg
 from clvtools.pnbd import fit_pnbd, probability_alive
+from clvtools.pnbd import log_likelihood as pnbd_log_likelihood
 
 pytestmark = [pytest.mark.slow, pytest.mark.literature]
 
@@ -61,24 +62,39 @@ CLVTOOLS_PNBD_SE = {
 
 
 def published_tol(value: float) -> float:
-    """Half a unit in the last decimal the source printed, plus a fifth.
+    """Half a unit in the last decimal the source printed, plus one for the ridge.
 
     A paper printing ``r = 0.243`` is saying the estimate lies in
     [0.2425, 0.2435), so agreement means landing inside that interval and no
     tighter comparison is available. A fixed relative tolerance gets this wrong
     in both directions: 1e-3 is too tight for ``0.243`` (three decimals) and far
-    too loose for ``-4055.9177`` (four). The extra fifth is for this package's
-    own optimiser, which stops at its own point on a flat ridge -- the precision
-    rule at the head of ``test_pnbd_fit.py``.
+    too loose for ``-4055.9177`` (four).
+
+    The rest is this package's own optimiser, which stops at its own point on a
+    flat ridge -- and *where* on the ridge depends on the platform's BLAS. The
+    allowance used to be a fifth of a unit in the last place, which held on
+    macOS and did not on GitHub's Linux runners: the CDNOW Pareto/NBD's
+    ``beta`` is 11.668668 here and 11.668360 there, 0.31 apart in the last
+    printed place, and the second sits 0.64 from the published 11.669 --
+    outside a 0.6 tolerance, and the reason CI was red. A whole unit covers
+    the observed spread with room to spare, and the assertion still says the
+    estimate agrees with the published one to about one in the last digit it
+    was printed to.
+
+    Loosening a tolerance is the wrong move if the fit is actually worse, so
+    that is asserted separately and directly by
+    :meth:`TestFaderHardieLee2005.test_the_pareto_nbd_fit_is_at_least_as_good`.
+    That claim is about likelihoods rather than coordinates and does not move
+    between platforms.
 
     >>> published_tol(0.243)
-    0.0006
+    0.0015
     >>> published_tol(15.44)
-    0.006
+    0.015
     """
     text = f"{value!r}"
     decimals = len(text.split(".")[1]) if "." in text else 0
-    return 0.6 * 10.0**-decimals
+    return 1.5 * 10.0**-decimals
 
 @pytest.fixture(scope="module")
 def cdnow():
@@ -107,6 +123,26 @@ class TestFaderHardieLee2005:
             assert getattr(pnbd, name) == pytest.approx(
                 want, abs=published_tol(want)
             ), name
+
+    def test_the_pareto_nbd_fit_is_at_least_as_good(self, pnbd, cbs):
+        """Our optimum explains the data no worse than the published one.
+
+        :func:`published_tol` allows the optimiser its own point on the ridge,
+        which is what makes the comparison above survive a change of platform.
+        This is the claim that allowance is standing in for, and the one that
+        would actually matter: a fit agreeing to three decimals while sitting
+        at a worse likelihood would be the real failure, and no tolerance on
+        the coordinates would catch it.
+
+        Measured here: -9594.976179 against -9594.976259 at the published
+        parameters, so ours is better by 8.0e-5 -- the ridge is flat enough
+        that 3e-4 of ``beta`` costs almost nothing.
+        """
+        x, t_x, T = cbs["x"], cbs["t_x"], cbs["T"]
+        ours = {name: getattr(pnbd, name) for name in FHL2005_PNBD}
+        assert pnbd_log_likelihood(x, t_x, T, **ours) >= pnbd_log_likelihood(
+            x, t_x, T, **FHL2005_PNBD
+        )
 
     def test_the_pareto_nbd_log_likelihood_matches(self, pnbd):
         """Printed to one decimal, so compared to one."""

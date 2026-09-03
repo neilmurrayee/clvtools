@@ -466,12 +466,24 @@ class TestRegularization:
             plain.log_likelihood, rel=1e-9
         )
         assert zero.names == plain.names
+
+        # The coordinates, to what two runs of the optimiser can promise. The
+        # likelihood above is the tight comparison and stays at 1e-9; these
+        # are on the ridge CLAUDE.md describes, which "shifts 3e-5 for 1e-10
+        # of log-likelihood", so a parameter may legitimately move by that
+        # much while the fit does not move at all. On this machine the two
+        # paths agree bit for bit and any tolerance would pass; on GitHub's
+        # Linux runners they came 1.8e-5 apart and 1e-5 was red. 1e-4 clears
+        # the observed spread and is still an order tighter than the point at
+        # which the two fits would be genuinely different.
         for name in plain.names:
             assert zero.coefficients[name] == pytest.approx(
-                plain.coefficients[name], rel=1e-6
+                plain.coefficients[name], rel=1e-4
             ), name
 
-        # And the table a caller reads, column by column.
+        # And the table a caller reads, column by column. Standard errors come
+        # from a differenced Hessian, so they inherit that spread and a little
+        # of their own.
         got, want = zero.summary(), plain.summary()
         assert list(got.index) == list(want.index)
         assert list(got.columns) == list(want.columns)
@@ -479,7 +491,7 @@ class TestRegularization:
             np.testing.assert_allclose(
                 got[column].to_numpy(dtype=float),
                 want[column].to_numpy(dtype=float),
-                rtol=1e-5,
+                rtol=1e-4,
             )
 
     def test_a_heavier_weight_shrinks_the_coefficients(self, static_data):
