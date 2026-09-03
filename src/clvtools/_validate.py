@@ -36,6 +36,7 @@ import numpy as np
 
 __all__ = [
     "ConvergenceWarning",
+    "PrecisionWarning",
     "customer_history",
     "finished",
     "spending_history",
@@ -49,6 +50,19 @@ class ConvergenceWarning(UserWarning):
     Its own category so that a caller can promote it to an error --
     ``warnings.simplefilter("error", ConvergenceWarning)`` -- or silence it,
     without touching every other warning NumPy and SciPy raise.
+    """
+
+
+class PrecisionWarning(UserWarning):
+    """A closed form ran out of double precision and the answer is not usable.
+
+    Distinct from :class:`ConvergenceWarning`, which is about where a search
+    stopped. This one is about arithmetic: an expression that is correct on
+    paper, evaluated at parameters where float64 cannot carry it, so what comes
+    back is ``NaN`` rather than a number. Its own category for the same reason
+    -- promote it to an error with
+    ``warnings.simplefilter("error", PrecisionWarning)``, or silence it, without
+    touching anything else.
     """
 
 

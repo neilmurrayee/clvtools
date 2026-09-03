@@ -586,3 +586,50 @@ class TestStaticCovariatesSuppliedAsDynamic:
             -T_cal.loc[got["Id"]].to_numpy() * got["Ai"].to_numpy(),
             rtol=1e-9,
         )
+
+
+class TestTheDyncovCetRefusesUnitS:
+    """Backlog item 29, from finding 10: only one of the two CETs guarded s = 1.
+
+    Every expression in the time-varying ``CET`` divides by ``s - 1``, and
+    :func:`clvtools.pnbd.aggregate.conditional_expected_transactions` has raised
+    at ``s = 1`` since it was written. This one divided anyway, so the same
+    model at the same parameters answered differently depending on which entry
+    point was asked -- ``inf``, or a very large finite number, according to
+    which side of 1 the optimiser had stopped on.
+    """
+
+    def test_the_two_entry_points_now_agree_that_it_is_undefined(self):
+        from clvtools.pnbd import aggregate
+        from clvtools.pnbd.dyncov_predict import _reject_unit_s
+
+        with pytest.raises(ValueError, match="s = 1"):
+            _reject_unit_s(1.0)
+        with pytest.raises(ValueError, match="s = 1"):
+            aggregate.conditional_expected_transactions(
+                1, 2.0, 52.0, 26.0, r=1.0, alpha=10.0, s=1.0, beta=10.0
+            )
+
+    def test_the_message_is_the_same_one(self):
+        """Two spellings of the same refusal would be its own small trap."""
+        from clvtools.pnbd import aggregate
+        from clvtools.pnbd.dyncov_predict import _reject_unit_s
+
+        errors = []
+        for call in (
+            lambda: _reject_unit_s(1.0),
+            lambda: aggregate.conditional_expected_transactions(
+                1, 2.0, 52.0, 26.0, r=1.0, alpha=10.0, s=1.0, beta=10.0
+            ),
+        ):
+            with pytest.raises(ValueError, match="s = 1") as excinfo:
+                call()
+            errors.append(str(excinfo.value))
+        assert errors[0] == errors[1]
+
+    @pytest.mark.parametrize("s", [0.5, 0.999, 1.001, 1.5, 2.0])
+    def test_and_it_does_not_fire_away_from_one(self, s):
+        """`np.isclose` decides `near`, so both shoulders are checked."""
+        from clvtools.pnbd.dyncov_predict import _reject_unit_s
+
+        _reject_unit_s(s)

@@ -10,7 +10,7 @@ speculation.
 stop. Do not add items without evidence, and do not work an item marked
 `[needs-decision]` — those need the maintainer.
 
-**Rounds 3 and 4 are open**, from two reviews on 2026-09-02. Open: 29, 30, 31
+**Rounds 3 and 4 are open**, from two reviews on 2026-09-02. Open: 30, 31, 32
 and the two `[~]` remainders of 23 and 25. Everything else is closed, and item
 16 was the last one carrying `[needs-decision]` — no item does now. The phrase
 survives on two settled sub-bullets inside closed items 13 and 22, which say so
@@ -1470,7 +1470,7 @@ by `s - 1` unguarded where `aggregate.py` raises near `s = 1`, and
 `aggregate.py`'s `pmf` calls `hyp2f1` with no fallback, returning `NaN` for
 `k >= 23` at `alpha = 500, beta = 1`. Carried to item 29.
 
-## 29. `[ ]` The two cheap halves of finding 10
+## 29. `[x]` The two cheap halves of finding 10 — one of which was not cheap
 
 Left behind by items 23 and 28, both small and neither touching the
 likelihood:
@@ -1479,6 +1479,44 @@ likelihood:
   `aggregate.py` raises near `s = 1`.
 - `aggregate.py`'s `pmf` calls `hyp2f1` with no fallback and returns `NaN` for
   `k >= 23` at `alpha = 500, beta = 1`.
+
+**Done, 2026-09-03. The first half was cheap; the second was misdiagnosed, and
+the misdiagnosis is the more useful half of this item.**
+
+**The guard.** Both places in `dyncov_predict.py` that divide by `s - 1` —
+`conditional_expected_transactions` and the prospective-customer expression —
+now call one `_reject_unit_s`, raising the *same message* as
+`aggregate.conditional_expected_transactions` has raised since it was written.
+Asserted as string equality between the two, since two spellings of one refusal
+would be its own small trap, and `np.isclose` decides "near", so both shoulders
+(0.999 and 1.001) are checked to pass.
+
+**The `pmf`, where the finding is wrong twice over.** `hyp2f1` does **not**
+fail: it returns a finite value at every one of those arguments. What fails is
+the subtraction `b1 - b2` in the closed form, where the two are each of order
+**1e-7** and their difference of order **1e-22** — fifteen digits of
+cancellation, after which the difference lands on zero or goes negative and
+`np.log` of that is a `NaN`. And it starts at **`k = 18`**, not 23.
+
+A fallback, which is what the item asked for, would have been *wrong*. Measured
+against a 60-digit evaluation of the same closed form at
+`alpha=500, beta=1, s=1.5, T=52`: the true pmf at `k = 18` is **8.805978e-22**
+and the surviving first term alone is **8.012608e-22**. The term that cannot be
+computed is **9% of the answer**, not a rounding correction, so dropping it
+trades a visible `NaN` for a quiet 9% error — the exact trade this repository
+keeps finding on the wrong side of.
+
+So the value is unchanged and the silence is not. `pmf` now raises a
+`PrecisionWarning` — a new category in `_validate.py`, distinct from
+`ConvergenceWarning` because that one is about where a *search* stopped and this
+is about arithmetic — naming the `k`, the magnitude that cancelled, and item 32.
+That matters because **a `NaN` is contagious**: one negligible term takes
+`sum(pmf(k) for k in range(...))` with it, so a caller summing over `k` needs to
+know where to stop trusting it. Four tests pin that it stays quiet at `k <= 17`,
+that the paper's own parameters are untouched (400 terms, still summing to 1 to
+1e-6, no warning), and that `part1` alone would have been 9% low.
+
+*Verified:* 15 new tests; `uv run pytest` green; ruff clean.
 
 ## 30. `[ ]` Batch the dyncov likelihood over the cohort — item 14's successor
 
@@ -1530,6 +1568,31 @@ the seven call sites are corrected to whatever they meant; and it is decided
 whether R's behaviour (error) or a warning is right here, recorded either way.
 Note that fixing the key will make those tests *slower*, since the cap will
 start applying — check what they cost before and after.
+
+## 32. `[ ]` Form the `pmf`'s difference without cancelling — the rest of item 29
+
+Item 29 found that `aggregate.pmf` loses its second term to fifteen digits of
+cancellation from `k = 18` at `alpha = 500, beta = 1`, and that the lost term is
+**9% of the answer** rather than a rounding correction, so no fallback fixes it.
+It warns; it is still `NaN`.
+
+The shape of the fix is known, because item 28 did it for the dyncov `F2`:
+carry the two sides as `(log magnitude, sign)` and difference them with
+`_log_diff_exp`/`expm1` rather than subtracting values. `b1` is a single
+hypergeometric over `hi**(r+s)`; `b2` is a `k`-term sum. Both are products and
+sums of quantities that already have log forms.
+
+*Done when:* `pmf` returns a finite, correct value where it now warns —
+checked against the 60-digit evaluation recorded in item 29 (8.805978e-22 at
+`k = 18`), and out to `k` where the true value underflows float64 honestly; the
+`PrecisionWarning` fires only where the answer really is unrepresentable; the
+existing `-m rdoc` PMF table and the `?pmf` frequencies are unmoved; and
+`docs/performance.md` records the cost, since item 28's equivalent was 26% of
+an evaluation.
+
+Note the oracle cannot see this: CLVTools arranges the arithmetic the same way
+and cancels in the same place, which is why the ground truth here is `mpmath`
+at 60 digits rather than a fixture. Same standing as items 23 and 28.
 
 ---
 

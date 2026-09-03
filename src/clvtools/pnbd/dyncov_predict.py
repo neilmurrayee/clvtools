@@ -231,6 +231,19 @@ def abcd(data, params, prediction_end: pd.Timestamp) -> pd.DataFrame:
     ].reset_index(drop=True)
 
 
+def _reject_unit_s(s: float) -> None:
+    """Refuse :math:`s = 1`, where every expression here divides by ``s - 1``.
+
+    The same guard, and the same message, as
+    :func:`clvtools.pnbd.aggregate.conditional_expected_transactions`. Finding
+    10 of ``docs/review-2026-09-02.md`` noticed that only one of the two had it.
+    """
+    if np.isclose(s, 1.0):
+        raise ValueError(
+            "CET is undefined at s = 1: the expression divides by (s - 1)"
+        )
+
+
 def _last_period(table: pd.DataFrame) -> NDArray[np.bool_]:
     """Whether each row is its customer's final prediction period."""
     return (table["i"] == table.groupby("Id")["i"].transform("max")).to_numpy()
@@ -253,8 +266,16 @@ def conditional_expected_transactions(
     with one :math:`S_i` per period of the horizon. Each is a difference of the
     same expression at the two ends of that period, so the sum telescopes down
     the covariate path.
+
+    Undefined at :math:`s = 1`, where the leading factor divides by
+    :math:`s - 1`. :func:`clvtools.pnbd.aggregate.conditional_expected_transactions`
+    has raised there since it was written; this divided anyway and returned an
+    ``inf`` or a very large finite number depending on which side of 1 the
+    optimiser had stopped, so the same model at the same parameters answered
+    differently depending on which entry point was asked.
     """
     r, alpha, s, beta = params.r, params.alpha, params.s, params.beta
+    _reject_unit_s(s)
     table = abcd(data, params, prediction_end)
     t = float(periods)
 
@@ -448,6 +469,7 @@ def new_customer_expectation(
     total = float(np.sum(S))
 
     t = float(num_periods)
+    _reject_unit_s(s)
     scale = (beta**s * r) / ((s - 1) * alpha)
     a, b, c, d = A[-1], B[-1], C[-1], D[-1]
     if len(table) == 1:

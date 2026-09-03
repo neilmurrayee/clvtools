@@ -16,6 +16,8 @@ customers are in it -- so it is exercised throughout rather than in isolation.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 import numpy as np
 import pytest
 from conftest import fixture_csv, fixture_json
@@ -284,3 +286,97 @@ class TestPmfProperties:
             observed = int((cbs["x"] == k).sum())
             # "the results illustrate that the model fits the data well"
             assert abs(expected - observed) < 0.15 * len(cbs)
+
+
+class TestPmfSaysWhenItRanOutOfPrecision:
+    """Backlog item 29, from finding 10 -- and the finding's diagnosis was wrong.
+
+    It read: "``pmf`` calls ``hyp2f1`` with no fallback and returns ``NaN`` for
+    ``k >= 23`` at ``alpha = 500, beta = 1``". Both halves are off.
+    ``hyp2f1`` returns a perfectly finite value at every one of those
+    arguments; what fails is the *subtraction* ``b1 - b2`` in the closed form,
+    where the two are each of order 1e-7 and their difference of order 1e-22.
+    Fifteen digits of cancellation, after which the difference lands on zero or
+    below and ``np.log`` of that is a silent ``NaN``. And it starts at
+    ``k = 18``, not 23.
+
+    A ``NaN`` is contagious, which is the damage: one negligible term takes
+    ``sum(pmf(k) for k in range(...))`` with it. Repairing the value needs the
+    difference formed without cancelling -- item 28's treatment of ``F2``,
+    applied here -- which is item 32. Until then it says so.
+    """
+
+    PARAMS: ClassVar[dict] = {"r": 1.0, "alpha": 500.0, "s": 1.5, "beta": 1.0}
+
+    def test_it_warns_rather_than_returning_a_bare_nan(self):
+        import warnings
+
+        from clvtools._validate import PrecisionWarning
+
+        with pytest.warns(PrecisionWarning, match="cancellation"):
+            got = pmf(18, 52.0, **self.PARAMS)
+        assert np.isnan(got), "the value is still NaN; only the silence changed"
+        # And the warning names the k it happened at, which is what a caller
+        # summing over k needs in order to know where to stop trusting it.
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            pmf(25, 52.0, **self.PARAMS)
+        assert "k=25" in str(caught[0].message)
+
+    def test_the_k_where_it_starts_is_18_not_23(self):
+        """Pinned, because the finding recorded 23 and the code says otherwise."""
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            values = {k: float(np.asarray(pmf(k, 52.0, **self.PARAMS)))
+                      for k in range(30)}
+        first_bad = next(k for k, v in values.items() if not np.isfinite(v))
+        assert first_bad == 18
+
+    @pytest.mark.parametrize("k", [0, 5, 10, 17])
+    def test_and_it_stays_quiet_where_the_arithmetic_still_works(self, k):
+        import warnings
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            got = pmf(k, 52.0, **self.PARAMS)
+        assert np.isfinite(got)
+        assert not caught, f"warned at k={k}, where the value is fine"
+
+    def test_the_papers_parameters_are_untouched(self):
+        """The regime the whole suite runs in must not have acquired a warning."""
+        import warnings
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            total = sum(
+                float(pmf(k, 104.0, 1.4490, 48.6361, 0.5613, 46.8844))
+                for k in range(400)
+            )
+        assert not caught
+        assert total == pytest.approx(1.0, abs=1e-6)
+
+    def test_a_fallback_to_part1_would_have_been_wrong(self):
+        """Why this warns instead of dropping the term that cannot be computed.
+
+        Against a 60-digit evaluation of the same closed form, the true pmf at
+        ``k = 18`` is 8.805978e-22 while the surviving first term alone is
+        8.012608e-22 -- the second term is **9% of the answer**, not a rounding
+        correction, so returning the first term would be quietly wrong rather
+        than quietly absent.
+        """
+        from scipy import special
+
+        r, s, alpha, beta, T, k = 1.0, 1.5, 500.0, 1.0, 52.0, 18
+        log_p1 = (
+            special.gammaln(r + k) - special.gammaln(r) - special.gammaln(k + 1.0)
+            + r * (np.log(alpha) - np.log(alpha + T))
+            + k * (np.log(T) - np.log(alpha + T))
+            + s * (np.log(beta) - np.log(beta + T))
+        )
+        part1_alone = float(np.exp(log_p1))
+        assert part1_alone == pytest.approx(8.012608e-22, rel=1e-5)
+        assert abs(part1_alone - 8.805978e-22) / 8.805978e-22 == pytest.approx(
+            0.09, abs=0.005
+        )

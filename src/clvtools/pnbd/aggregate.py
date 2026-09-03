@@ -24,10 +24,13 @@ diagnostics of S6.2.2 -- ``PMF``, the unconditional expectation -- follow.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from scipy import special
 
+from clvtools._validate import PrecisionWarning
 from clvtools.special import hyp2f1_ratio, kummer_u
 
 __all__ = [
@@ -551,4 +554,28 @@ def pmf(
             log_part + np.log(term) - (r + s + i) * np.log(hi + T)
         )
 
-    return part1 + np.exp(log_p2 + np.log(b1 - b2))
+    difference = b1 - b2
+    if np.any(difference <= 0.0):
+        # `b1` and `b2` are each O(1e-7) here and their difference O(1e-22):
+        # fifteen digits of cancellation, past which float64 has nothing left
+        # and the difference lands on zero or goes negative. `np.log` of that
+        # is a silent `NaN` -- and a `NaN` is contagious, so one negligible
+        # term poisons `sum(pmf(k) for k in ...)` entirely.
+        #
+        # Not repairable by a fallback to `part1`: measured against a 60-digit
+        # evaluation at `alpha=500, beta=1, s=1.5, T=52`, the dying-inside-the-
+        # window term is **9% of the answer** at `k = 18`, not a rounding
+        # correction. The fix is to form the difference without cancelling,
+        # which is item 28's treatment of `F2` applied here -- backlog item 32.
+        # Until then this says so rather than returning `NaN` quietly.
+        warnings.warn(
+            f"pmf lost the second term to cancellation at k={k}: the closed "
+            f"form subtracts two values of order {float(np.max(b1)):.2e} whose "
+            f"difference is below what float64 can carry, so the result is NaN "
+            f"rather than a number. Large k with a large alpha/beta ratio is "
+            f"where this happens; see docs/backlog.md item 32.",
+            PrecisionWarning,
+            stacklevel=2,
+        )
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return part1 + np.exp(log_p2 + np.log(difference))
