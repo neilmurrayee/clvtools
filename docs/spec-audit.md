@@ -243,6 +243,14 @@ These counts are tallied from the section audits, not independently recounted.
 Where they disagree with Appendix 3, **trust the appendix**: it carries the
 per-item evidence and these do not.
 
+They are also a **snapshot of 2026-09-02** and no longer describe the suite.
+Round 5 (`docs/backlog.md` item 34) is re-verdicting the `weak` rows against the
+suite as it stands, and has moved **16** of them to `c` so far — fourteen that
+items 21-33 had closed without the verdict being updated, and two worked in the
+round itself. The table below is not being edited row by row as that happens:
+a half-recounted summary is worse than an openly stale one. It will be
+recomputed from Appendix 3 when the round closes.
+
 | Spec section | covered | weak | absent | out-of-scope |
 |---|---|---|---|---|
 | S1 Transaction data (D) | 7 | 2 | 8 | 0 |
@@ -366,7 +374,7 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | D-11 | c | `test_data.py:338`, `test_descriptives.py:178` — flag *and* descriptives consequence |
 | D-12 | c | `test_descriptives.py:67`, rel 1e-12 |
 | D-13 | a | `.copy()` holds; nothing asserts it |
-| D-14 | w | `test_data.py:262` passes the *default* `name_id="Id"`; rename never exercised (**B4**) |
+| D-14 | c | re-verdicted 2026-09-03: closed by **B4** — `TestTheColumnRenameActuallyRenames` renames all three columns |
 | D-15 | a | strings and `datetime.date` work, untested |
 | D-16 | c | `test_cdnow.py:73,95` — incidental but genuine |
 | D-17 | — | not reached by the audit |
@@ -379,7 +387,7 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | T-01 | w | `test_cdnow.py:211`; datetime epsilon untested, and the hour unit uses 1 hour, not 1 second |
 | T-02 | c | `test_data.py:107` |
 | T-03 | c | `test_data.py:115`, `test_cdnow.py:206` |
-| T-04 | w ! | `test_data.py:280`; all timezone variants absent — tz-aware raises on a date split, silently builds on a numeric one (**A6**) |
+| T-04 | c ! | re-verdicted 2026-09-03: closed by **A6** — `test_timezone_aware_dates_are_refused_rather_than_half_supported` |
 | T-05 | a | no partial-period warning; `split=37.5` silently gives a mid-day end |
 | T-06 | c | |
 | T-07 | a ! | `"w"`/`"weeks"`/`"Weeks"` rejected; pinned at `test_timeunit.py:292` (**A5**) |
@@ -397,7 +405,7 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | T-19 | w | `test_predict.py:329,:112`; 1- and 2-period horizons untested |
 | T-20 | a ! | `prediction_end=0` raises; pinned opposite at `test_predict.py:349` (**A1**) |
 | T-21 | c | |
-| T-22 | w ! | `14.4` and `14` give different windows; nothing pins it (**A7**) |
+| T-22 | c ! | re-verdicted 2026-09-03: **round 5**: the divergence had a README finding and no test; now pinned three ways |
 
 ## S3 Descriptives
 
@@ -415,7 +423,7 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | S-10 | c | |
 | S-11 | c | |
 | S-12 | a ! | periods between last transaction and `data_end` report `0.0` where R gives `NA` (**A7**) |
-| S-13 | w ! | the `"10+"` row is emitted with 0 customers when bins already cover everyone (**A7**) |
+| S-13 | c ! | re-verdicted 2026-09-03: closed by **A7** — `test_descriptives.py:388`, pinned as agreement with R |
 | S-14 | c | |
 | S-15 | c | |
 | S-16 | w | `ids` honoured; `annotate.ids` has no counterpart |
@@ -433,7 +441,7 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | C-07 | a | nothing feeds dyncov data longer than needed |
 | C-08 | w | `test_pnbd_dyncov.py:574,593` approximate it; claim never stated |
 | C-09 | a ! | single-category covariate silently accepted → `(600, 0)` design (**A4**) |
-| C-10 | w ! | "covers every customer" covered; extra ids silently dropped by `.loc` (**A4**) |
+| C-10 | c ! | re-verdicted 2026-09-03: closed by **A4** — an unrecognised covariate name now raises; `test_predict.py:651` |
 | C-11 | a | dyncov has no duplicate, NA, or (Id, Date) completeness check |
 | C-12 | c | |
 | C-13 | a ! | re-setting covariates silently overwrites (**A4**) |
@@ -475,10 +483,10 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | X-03 | c | |
 | X-04 | a | no γ=0 `predict()` comparison in any of the three forms |
 | X-05 | a | no γ=0 plot/pmf/pmf-plot comparison |
-| X-06 | w | `test_pnbd_advanced.py:454`, one scalar at abs=1e-4 (**B6**) |
+| X-06 | c | re-verdicted 2026-09-03: closed by **B6** — the coefficient vector and the summary table, not one scalar |
 | X-07 | a | nothing shuffles covariate rows (**D2**) |
 | X-08 | a | nothing reverses covariate columns (**D2**) |
-| X-09 | w ! | 5 of 6; correlation + covariates raises (`estimate.py:193`) — README:39 is about families (**A7**) |
+| X-09 | c ! | re-verdicted 2026-09-03: closed by **A7** — `test_estimate.py:244` pins correlation + covariates raising |
 | X-10 | c | |
 | X-11 | a | no syntactically illegal covariate name |
 | X-12 | w | refusals covered; `start_m` never given a non-default value |
@@ -499,17 +507,17 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | DY-07 | a | the static-as-dynamic cross-check does not exist (**D1**) |
 | DY-08 | c | `test_pnbd_dyncov.py:194` — 30 columns × 2 parameter vectors × 600 customers, rtol 1e-8. The strongest item in the audit |
 | DY-09 | a | LL never evaluated on both a split and an unsplit build |
-| DY-10 | w | `test_pnbd_dyncov.py:411`; only the `α ≠ β` arm — `dyncov.py:355,374` branch on `alpha_1 >= beta_1` (**D3**) |
+| DY-10 | c | re-verdicted 2026-09-03: closed by **D3** — `test_pnbd_dyncov.py:935` takes the `alpha = beta` arm |
 | DY-11 | a | no γ=0 predict-vs-nocov comparison |
 | DY-12 | a ! | zero-length window refused where R gives `CET = 0` (**A1**) |
 | DY-13 | a | untested, and its oracle `dyncov_palive.csv` is committed and orphaned (`backlog.md:1101`) |
 | DY-14 | c | `test_pnbd_dyncov.py:476,495,456`, atol 1e-12 |
-| DY-15 | w | degenerate: `d_omega ≡ 1`, so the non-boundary branch is never reached (**B5**) |
+| DY-15 | c | re-verdicted 2026-09-03: closed by **B5** — four synthetic births reach `d_omega` of 7/7, 4/7, 2/7, 1/7 |
 | DY-16 | c | incidental — exactly one of 600 customers has `t_x == T_cal` with `x > 0` |
 | DY-17 | w | general splitting covered; the named 2-period edge case never constructed |
 | DY-18 | a | the setup exists but asserts a predict-time error, not that aux walks survived |
 | DY-19 | w | claims 1–2 pinned; the epsilon-apart claim is unreachable (day aggregation), undecided |
-| DY-20 | w | matrices match; the round-trip is never asserted, and the test named for it asserts `x > 0` (**B2**) |
+| DY-20 | c | re-verdicted 2026-09-03: **round 5**: the round-trip is asserted for all 600, bit for bit, at gamma != 0 |
 | DY-21 | c | `test_pnbd_dyncov.py:484,495` |
 | DY-22 | a | every dyncov test uses `estimation_split=104` — zero of seven weekdays (**D4**) |
 | DY-23 | a | no epsilon-interval construction; `_to_days` collapses to whole days |
@@ -530,7 +538,7 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | PR-08 | c | `test_predict.py:78`, rtol 1e-12 — though structurally unfalsifiable: one code path, not two |
 | PR-09 | o | `predict.spending=TRUE` and `verbose` forwarding not ported |
 | PR-10 | c | `test_predict.py:335` |
-| PR-11 | w ! | only the `<= 0` half; no upper bound (**A3**) |
+| PR-11 | c ! | re-verdicted 2026-09-03: closed by **A3** — `TestTheDiscountFactorRange` pins both ends |
 | PR-12 | c | `test_predict.py:354` |
 | PR-13 | w | 2 of 3; differently-named covariates surface as a bare pandas `KeyError` |
 | PR-14 | a | nothing checks for `NaN` parameters at predict time; returns an all-`NaN` table silently |
@@ -546,7 +554,7 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | NC-03 | a | γ=0 nesting pinned for the likelihood, never for the new-customer path — which is a second, independent rate builder (`predict.py:262`) |
 | NC-04 | a | same gap for zero covariate data |
 | NC-05 | a | holds by construction (`row()` looks up by name); no test perturbs column order |
-| NC-06 | w | `test_predict.py:537` never calls `predict` (**B1**) |
+| NC-06 | c | re-verdicted 2026-09-03: closed by **B1** — the test predicts four scenarios and asserts the spread |
 | NC-07 | a | no test varies `first_transaction` on an effectively static path |
 | NC-08 | c | `test_pnbd_dyncov_predict.py:277,334`, rel 1e-12, both branches |
 | NC-09 | w | the `< 1` case is dyncov only |
@@ -560,7 +568,7 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | | | evidence / note |
 |---|---|---|
 | B-01 | w | `num_boots=100` default never pinned |
-| B-02 | w | `test_diagnostics.py:425`; 4 hand-picked ids, `x`/`t_x`/`T` only, never the full id list (**D6**) |
+| B-02 | c | re-verdicted 2026-09-03: closed by **D6** — the bootstrap identity over the full id list, `test_invariants.py` |
 | B-03 | c | |
 | B-04 | a | holdout rows do survive; nothing asserts it |
 | B-05 | c | |
@@ -583,11 +591,11 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | I-02 | w | no covariate fit has its `vcov()` index checked; under constraints only `names` is compared |
 | I-03 | a | `confint` takes only `level`; no `parm` argument exists |
 | I-04 | w | columns and the NaN/z pattern pinned; no structural check against R, printing never exercised |
-| I-05 | w ! | ~6 of 29 configurations reach an oracle; `fit_pnbd_dyncov` takes no constraint/regularization/correlation argument, removing 12 (**A7**) |
+| I-05 | w ! | still weak, re-checked 2026-09-03: `fit_pnbd_dyncov` takes no constraint, regularization or correlation argument, so 12 of the 29 configurations remain unreachable. A capability gap, not a test gap — `docs/backlog.md` item 35 |
 | I-06 | c | warns rather than raising — recorded in README Findings |
 | I-07 | o | no named-parameter accessor exists; all likelihood functions take positional parameters |
 | I-08 | w | `ClvData.nobs()` pinned; fitted objects have no `nobs()` |
-| I-09 | w | `fitted_data` reachable from no test; only its own doctest, self-referential (**B3**) |
+| I-09 | c | re-verdicted 2026-09-03: closed by **B3** — `fitted_pnbd` read at `test_diagnostics.py:217`, rtol 1e-10 |
 | I-10 | w | one model only; "runs for all models" untested |
 | I-11 | c | |
 
@@ -604,7 +612,7 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | FI-09 | w | plain and `.` cases share storage via `copy.copy` |
 | FI-10 | c | |
 | FI-11 | w | only `not np.allclose(...)`, not "every coefficient"; nothing on cbs `x` or the id set |
-| FI-12 | w | both sides separately oracle-pinned; the invariant never stated, and the two come from different code paths (**D5**) |
+| FI-12 | c | re-verdicted 2026-09-03: closed by **D5** — the invariant is stated in `test_invariants.py` |
 | FI-13 | w | 4 of 11; `**kwargs` forwards anything; a LHS parses silently and fails with the wrong message |
 | FI-14 | w | 1 of 4 |
 | FI-15 | w | ~4 of 12; `constraint()` syntax does not exist here |
@@ -618,7 +626,7 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | V-03 | a | `options_for` merges overrides with zero validation; unknown keys reach SciPy as a *warning* where R errors |
 | V-04 | w | Python's `TypeError` covers it, but `**kwargs` forwarding lands it at the inner signature; never asserted |
 | V-05 | a | no single-logical validation exists anywhere |
-| V-06 | w ! | ~10 of 42; `NA` in `Id`/`Date` silently drops the row; empty frame accepted; non-DataFrame gives `AttributeError` (**A4**) |
+| V-06 | c ! | re-verdicted 2026-09-03: closed by **A4** — `TestBadInputIsLoud`, `TestATransactionMustSayWhoAndWhen` |
 | V-07 | w | a few defaults pinned; `time_unit` has a default where R has none |
 | V-08 | w | `sample`/`ids`/bins/Price pinned; `label`, `other.models`, `annotate.ids` have no counterpart |
 

@@ -398,3 +398,102 @@ class TestWalkConstructionValidation:
         walks = build_walks(data, load_apparel_dyn_cov())
         assert walks.n_cov_life == walks.n_cov_trans == 3
 
+
+
+class TestTheLifeWalksReconstructTheCovariateSeries:
+    r"""Spec DY-20, which `docs/spec-audit.md` called an exact round-trip
+    invariant and marked `weak`: "matrices match; the round-trip is never
+    asserted".
+
+    S3.3 cuts a customer's covariate path into a **real** life walk, from birth
+    to the end of the estimation period, and an **auxiliary** one covering what
+    follows. Laid end to end those are the path itself, so
+
+    .. math::
+        [\,\text{real} \mathbin\Vert \text{aux}\,]_i
+        = \exp(\boldsymbol{\gamma}'\mathbf{x}_i)
+
+    over the customer's own covariate intervals, taken from their birth.
+    Nothing said so. The two halves were each compared against oracle tables,
+    which pins their *values* and not the claim that they partition one series
+    with nothing lost or repeated at the join -- exactly the seam an off-by-one
+    would open.
+
+    Asserted **bit for bit** (``atol=0, rtol=0``): both sides are the same
+    products of the same floats, so anything looser would be hiding a real
+    difference rather than tolerating a rounding one. Backlog item 34, round 5.
+    """
+
+    #: Deliberately not zero. With :math:`\gamma = 0` every multiplier is 1 and
+    #: the reconstruction holds for a reason that has nothing to do with the
+    #: walks -- which is how DY-15's ``d_omega`` oracle came to be degenerate.
+    GAMMA: ClassVar[np.ndarray] = np.array([0.7, -0.3, 0.45])
+
+    #: The three covariates, in the order `dyncov_walks` was built with.
+    COVARIATES: ClassVar[list[str]] = ["High.Season", "Gender", "Channel"]
+
+    @pytest.fixture(scope="class")
+    def multipliers(self):
+        """``exp(gamma'x)`` per customer, straight from the covariate frame."""
+        from clvtools import load_apparel_dyn_cov
+
+        frame = load_apparel_dyn_cov().sort_values(["Id", "Cov.Date"])
+        return {
+            customer: np.exp(group[self.COVARIATES].to_numpy() @ self.GAMMA)
+            for customer, group in frame.groupby("Id", sort=False)
+        }
+
+    def test_every_customer_reconstructs_exactly(self, dyncov_walks, multipliers):
+        mismatched = []
+        for customer_id, customer in zip(
+            dyncov_walks.ids,
+            dyncov_walks.customers(self.GAMMA, self.GAMMA),
+            strict=True,
+        ):
+            joined = np.concatenate([
+                customer.real_walk_life.values,  # noqa: PD011 - a Walk field
+                customer.aux_walk_life.values,  # noqa: PD011 - not a DataFrame
+            ])
+            want = multipliers[customer_id][: len(joined)]
+            if not np.array_equal(joined, want):
+                mismatched.append(customer_id)
+        assert not mismatched, (
+            f"{len(mismatched)} customers whose life walks do not lay end to "
+            f"end into their covariate series: {mismatched[:5]}"
+        )
+
+    def test_the_auxiliary_walk_is_never_empty_and_the_real_one_can_be(
+        self, dyncov_walks, multipliers
+    ):
+        """The seam: no interval is dropped or counted twice at the join.
+
+        Writing this asserted ``real > 0`` first, which is false for **214 of
+        the 600** -- and the exception turns out to be exactly the structure
+        worth stating. The real life walk spans birth to the last repeat
+        purchase in *a later covariate interval*, so it is empty when there is
+        no such purchase: the 213 customers with ``x = 0``, plus customer 129,
+        who buys again at ``t_x = 0.43`` weeks and so never leaves the interval
+        they were born in. ``test_pnbd_dyncov.py`` already names 129 for the
+        same reason, from finding B2.
+        """
+        empty_real, empty_aux = [], []
+        for customer_id, customer in zip(
+            dyncov_walks.ids,
+            dyncov_walks.customers(self.GAMMA, self.GAMMA),
+            strict=True,
+        ):
+            real = len(customer.real_walk_life.values)
+            aux = len(customer.aux_walk_life.values)
+            # The two together cannot exceed the series they came from, which
+            # is what rules out an interval being counted twice at the join.
+            assert real + aux <= len(multipliers[customer_id])
+            if real == 0:
+                empty_real.append(customer_id)
+            if aux == 0:
+                empty_aux.append(customer_id)
+
+        # Every customer is alive for some part of the auxiliary window, so
+        # this half is never empty -- unlike the real one.
+        assert not empty_aux
+        assert len(empty_real) == 214
+        assert "129" in empty_real

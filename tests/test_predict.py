@@ -854,3 +854,56 @@ class TestTheDiscountFactorRange:
         data, (fit, spend) = fits
         got = predict(data, fit, spend, continuous_discount_factor=0.5)
         assert float(got["DERT"].sum()) == pytest.approx(18.2282, abs=5e-4)
+
+
+class TestAFractionalPredictionEndIsNotTruncated:
+    """Spec T-22, and a divergence the README recorded without a test.
+
+    ``prediction.end = 14.4`` gives CLVTools a **14**-period window and a
+    warning -- "may not indicate partial periods. Digits after the decimal
+    point are cut off" -- while this package predicts 14.4 periods, ending two
+    days later. Both are defensible and they are not the same, and the README's
+    findings say so.
+
+    What was missing is the other half of this repository's own rule: *"Where
+    the paper misprints an equation or CLVTools stops at a worse optimum, that
+    is pinned by a test and recorded in the README's Findings section. Add to
+    both."* It was in the README and nowhere else, so nothing would have
+    noticed the behaviour reverting to R's. Backlog item 34, round 5.
+    """
+
+    @pytest.fixture(scope="class")
+    def fitted(self, apparel_trans):
+        from clvtools.pnbd import fit_pnbd
+
+        data = ClvData(apparel_trans, time_unit="week", estimation_split=104)
+        cbs = data.customer_summary()
+        return data, fit_pnbd(cbs["x"], cbs["t_x"], cbs["T"], hessian=False)
+
+    def test_the_window_keeps_its_fraction(self, fitted):
+        data, params = fitted
+        table = predict(data, params, prediction_end=14.4)
+        assert table["period.length"].iloc[0] == pytest.approx(14.4)
+
+    def test_which_is_not_what_truncating_to_14_would_give(self, fitted):
+        """The divergence itself: R's answer is reachable, and different."""
+        data, params = fitted
+        fractional = predict(data, params, prediction_end=14.4)
+        truncated = predict(data, params, prediction_end=14)
+        assert truncated["period.length"].iloc[0] == pytest.approx(14.0)
+        assert (
+            fractional["period.last"].iloc[0] > truncated["period.last"].iloc[0]
+        )
+        # Two days and change, which is 0.4 of a week -- so the fraction is
+        # carried into the date rather than rounded anywhere along the way.
+        delta = fractional["period.last"].iloc[0] - truncated["period.last"].iloc[0]
+        assert delta.total_seconds() / 86400 == pytest.approx(0.4 * 7, abs=1e-6)
+
+    def test_and_the_prediction_moves_with_it(self, fitted):
+        """A longer window has to predict more transactions, or the extra
+        0.4 of a period is being carried in the dates and dropped in the maths.
+        """
+        data, params = fitted
+        fractional = predict(data, params, prediction_end=14.4)
+        truncated = predict(data, params, prediction_end=14)
+        assert (fractional["CET"] > truncated["CET"]).all()
