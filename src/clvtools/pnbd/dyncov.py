@@ -1008,7 +1008,16 @@ def fit_pnbd_dyncov(
         names_cov_trans=names_cov_trans,
         log_likelihood=float(-result.fun),
         converged=bool(result.success),
-        n_customers=walks.n_customers,
+        # Weighted, matching `fit_pnbd`. `weights` multiplies the per-customer
+        # log-likelihoods a few lines up, so the objective is that of a sample
+        # of `sum(weights)` customers and BIC's `n` has to be the same number.
+        # This reported `walks.n_customers` -- the cohort size -- so a bootstrap
+        # draw's BIC was computed against a different n from its own likelihood.
+        n_customers=int(
+            walks.n_customers if weights is None else np.sum(
+                np.asarray(weights, dtype=float)
+            )
+        ),
         n_evaluations=evaluations,
         hessian=hess,
     )

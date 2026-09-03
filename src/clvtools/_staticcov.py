@@ -154,6 +154,26 @@ class DelegatesToCovariates(Fitted):
         return self.covariates.names_cov_trans
 
     @property
+    def names_cov_constr(self) -> list[str]:
+        """S6.5.3's tied covariates, as the Pareto/NBD's result reports them.
+
+        Carried by :class:`StaticCovResult` all along and forwarded nowhere, so
+        the same question -- which covariates share one coefficient? -- could be
+        asked of a Pareto/NBD fit and not of a BG/NBD or GGom/NBD one.
+        """
+        return self.covariates.names_cov_constr
+
+    @property
+    def reg_lambdas(self) -> tuple[float, float] | None:
+        """Eq. (13)'s two penalties, or ``None`` where the fit was unregularized.
+
+        The same gap as :attr:`names_cov_constr`: without it, nothing on a
+        BG/NBD or GGom/NBD result says whether its standard errors are the
+        ridge ones the README's findings warn about.
+        """
+        return self.covariates.reg_lambdas
+
+    @property
     def gamma_life(self):
         return self.covariates.gamma_life
 
@@ -309,6 +329,15 @@ def _validated_reg_lambdas(
     """Eq. (13)'s two weights, as floats."""
     if reg_lambdas is None:
         return None
+    if np.isscalar(reg_lambdas) or isinstance(reg_lambdas, str):
+        # `reg_lambdas=1.0` used to reach `tuple(float(v) for v in ...)` and
+        # come back as "'float' object is not iterable", which names Python's
+        # problem rather than the caller's. Eq. (13) has two weights.
+        raise ValueError(
+            f"reg_lambdas must give two values (life, trans), not the single "
+            f"{reg_lambdas!r}; pass ({reg_lambdas!r}, {reg_lambdas!r}) to "
+            f"penalise both processes equally"
+        )
     reg = tuple(float(v) for v in reg_lambdas)
     if len(reg) != 2:
         raise ValueError("reg_lambdas must give two values (life, trans)")

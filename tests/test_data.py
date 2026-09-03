@@ -546,3 +546,50 @@ class TestTheColumnRenameActuallyRenames:
         """The mapping is checked, rather than quietly producing nothing."""
         with pytest.raises(ValueError, match="missing columns"):
             ClvData(renamed, time_unit="week", name_id="Id", name_date="when")
+
+
+class TestReprNamesTheClassInHand:
+    """Backlog item 27, finding 19: every subclass printed `ClvData(`.
+
+    A literal class name in `__repr__` is inherited, so the covariate objects
+    identified themselves as the base class -- in the one line most likely to
+    be pasted into a bug report to say which object was held.
+    """
+
+    def test_each_class_names_itself(self, static_data):
+        from clvtools import ClvData
+
+        plain = ClvData(
+            static_data.transactions, time_unit="week", estimation_split=104
+        )
+        assert repr(plain).startswith("ClvData(")
+        assert repr(static_data).startswith("ClvDataStaticCov(")
+
+    @pytest.mark.parametrize(
+        "fragment", ["600 customers", "transactions", "weeks", "estimation"]
+    )
+    def test_the_rest_of_the_line_is_unchanged(self, static_data, fragment):
+        """Only the prefix moved; the contents are still the contents."""
+        assert fragment in repr(static_data)
+
+
+class TestIdsMustBeStrings:
+    """Backlog item 27, finding 20: `ids=1` gave "'int' object is not iterable".
+
+    `Id` is a string everywhere in this package -- `tests/conftest.py` enforces
+    it on every fixture -- so an integer id is a common slip with a one
+    character fix, and the message now names it instead of reporting that an
+    `int` cannot be iterated.
+    """
+
+    @pytest.mark.parametrize("method", ["as_data_frame", "summary"])
+    def test_an_integer_id_says_what_to_do(self, static_data, method):
+        with pytest.raises(ValueError, match="ids are strings here"):
+            getattr(static_data, method)(ids=1)
+
+    def test_a_string_id_still_works(self, static_data):
+        assert len(static_data.as_data_frame(ids="1")) == 7
+
+    def test_and_so_does_a_sequence_of_them(self, static_data):
+        both = static_data.as_data_frame(ids=["1", "10"])
+        assert set(both["Id"]) == {"1", "10"}

@@ -765,6 +765,46 @@ class TestFitMechanics:
         )
         assert np.isfinite(fitted.log_likelihood)
 
+    def test_the_reported_count_is_the_weighted_one(self, dyncov_walks):
+        """Backlog item 27, finding 19: this reported the cohort size.
+
+        ``weights`` multiplies the per-customer log-likelihoods, so the
+        objective is that of a sample of ``sum(weights)`` customers and BIC's
+        ``n`` has to be the same number -- which is what ``fit_pnbd`` has always
+        done. Reporting ``walks.n_customers`` meant a bootstrap draw's BIC was
+        computed against a different ``n`` from its own likelihood. Doubling
+        every weight doubles the count and moves BIC by ``k*ln(2)``.
+        """
+        from clvtools.pnbd.dyncov import fit_pnbd_dyncov
+
+        options = {"maxiter": 1, "maxfun": 12}
+        plain = fit_pnbd_dyncov(dyncov_walks, options=options)
+        doubled = fit_pnbd_dyncov(
+            dyncov_walks,
+            weights=np.full(dyncov_walks.n_customers, 2.0),
+            options=options,
+        )
+        assert plain.n_customers == dyncov_walks.n_customers
+        assert doubled.n_customers == 2 * dyncov_walks.n_customers
+        # Doubling every weight doubles the objective, which is what makes the
+        # count the thing under test rather than the fit.
+        assert doubled.log_likelihood == pytest.approx(
+            2 * plain.log_likelihood, rel=1e-9
+        )
+        # BIC against its own definition, k*ln(n) - 2L, with the n each fit
+        # reports. Before the fix `doubled` used the unweighted 600 here while
+        # its L was the weighted one, so the two halves described different
+        # samples.
+        k = doubled.n_parameters
+        assert doubled.bic == pytest.approx(
+            k * np.log(2 * dyncov_walks.n_customers) - 2 * doubled.log_likelihood,
+            rel=1e-12,
+        )
+        assert plain.bic == pytest.approx(
+            k * np.log(dyncov_walks.n_customers) - 2 * plain.log_likelihood,
+            rel=1e-12,
+        )
+
 
 class TestTheDyncovHessianIsOptional:
     """Finding 8: the fit had no ``hessian`` argument and no field.

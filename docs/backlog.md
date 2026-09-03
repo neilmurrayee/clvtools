@@ -10,7 +10,7 @@ speculation.
 stop. Do not add items without evidence, and do not work an item marked
 `[needs-decision]` — those need the maintainer.
 
-**Rounds 3 and 4 are open**, from two reviews on 2026-09-02. Open: 27, 29, 30
+**Rounds 3 and 4 are open**, from two reviews on 2026-09-02. Open: 29, 30, 31
 and the two `[~]` remainders of 23 and 25. Everything else is closed, and item
 16 was the last one carrying `[needs-decision]` — no item does now. The phrase
 survives on two settled sub-bullets inside closed items 13 and 22, which say so
@@ -1312,11 +1312,92 @@ claims the fixtures come from `tools/oracle/*.R`.
 *Definition of done met:* `uv run pytest` 1,153 passed, 1 deselected,
 `TOTAL 2752 0 100%` in 3:44; `uv run ruff check src tests tools docs` clean.
 
-## 27. `[ ]` Reconcile the families — findings 19 and 20
+## 27. `[x]` Reconcile the families — findings 19 and 20
 
 Three validators, two result shapes, two weight conventions, `ClvData(` in
 subclass reprs, `scipy.stats` imported at module scope for 0.36 s of a 0.4 s
 import, and `.claude/settings.local.json` tracked when its name says otherwise.
+
+**Done, 2026-09-03.** Nine distinct claims sat in those two findings. Each was
+reproduced before being acted on, and **two of the nine were already closed** by
+items 21 and 25 — which is the argument for reproducing rather than working from
+the review text:
+
+| | Claim | Found |
+|---|---|---|
+| a | three different validators | **already fixed** — all three families give byte-identical errors for `T <= 0`, `t_x < 0` and `x = 0` with `t_x > 0` |
+| f | `.claude/settings.local.json` tracked | **already fixed** — `git ls-files .claude/` is empty |
+| b | dyncov reports the unweighted count | confirmed and fixed |
+| c | two result shapes | confirmed and fixed |
+| d | subclass reprs print `ClvData(` | confirmed and fixed |
+| e | `cbs.T` is the transpose | confirmed and documented |
+| g | four inputs accepted or bare `TypeError` | confirmed and fixed |
+| h | `scipy.stats` at module scope | confirmed and fixed |
+| i | ~13 covariate refits across four modules | **largely already done** — see below |
+
+**(b) The weight convention.** `fit_pnbd` reports `sum(weights)` as
+`n_customers`; the dyncov fit accepted `weights`, multiplied the per-customer
+log-likelihoods by them, and then reported `walks.n_customers`. So a bootstrap
+draw's BIC was computed against a different `n` from its own likelihood — the
+two halves of `k·ln(n) − 2L` describing different samples. Now weighted, like
+its sibling, and the test asserts BIC against its definition with the `n` each
+fit reports rather than against an algebraic identity (the first draft's
+identity was simply wrong: `BIC_d − 2·BIC_p` is `k(ln2 − ln n)`, not `k·ln2`).
+
+**(c) The result shapes.** The nesting itself is deliberate and documented on
+`DelegatesToCovariates` — the Pareto/NBD's covariate class predates
+`StaticCovResult`. What was not deliberate is that the mixin forwarded ten
+properties and not `names_cov_constr` or `reg_lambdas`, **both of which were on
+`StaticCovResult` already**. So "which covariates are tied?" and "are these the
+ridge standard errors the README warns about?" could be asked of a Pareto/NBD
+fit and of neither other family. Two properties; all three families now answer
+the same twelve questions, asserted as a list to extend rather than a test to
+add.
+
+**(g) Four inputs.** `~ Gender + | Gender` fitted on Gender alone, because the
+parser dropped empty terms — the shape a half-finished edit leaves behind,
+answering as though it were finished. `~ . | .` on plain data was accepted and
+ignored, because the guard tested the *parsed* names and `~ . | .` parses to
+`(None, None)`. `reg_lambdas=1.0` said "'float' object is not iterable" and
+`ids=1` said "'int' object is not iterable", both naming Python's difficulty
+rather than the caller's; each now names the fix, and `ids` suggests the quotes.
+
+**(h) The import.** Measured here, worse than the review had it: `scipy.stats`
+was **0.55 s of a 0.70 s** `import clvtools`, and it is wanted by three
+expressions — two normal tails and a chi-squared — and by nothing in a fit, a
+prediction or a diagnostic. Deferred behind one helper, `import clvtools` is
+**0.436 s against 0.719 s, a 39% saving**. Gated by absence from `sys.modules`
+rather than by a clock, which is this repo's rule: the saving is a property of
+what gets imported, and only the seconds move with the machine. Three tests —
+not imported by `import clvtools`, not by a fit, *and* still imported by
+`summary()`, so the deferral cannot silently become a removal.
+
+**(i)** A shared module-scoped `static_data` fixture already exists and six test
+modules use it. Of the four that still build their own, three need a *different*
+covariate selection (`["Zero"]` for the nesting invariant, `["Nonexistent"]` for
+a validation test, `["Gender"]` alone) and `test_predict.py`'s hits construct
+result objects from fixture coefficients rather than fitting at all. The few
+seconds the review estimated are no longer there to save.
+
+**A mistake worth recording, because it is the one this item was about.** The
+first draft of the parity tests *fitted* three families with constraints and
+regularization over the 600-customer apparel cohort — and a regularized fit
+searches from a cold and a warm start, so that was six full fits. **It took the
+suite from 3:45 to 9:32.** Rewritten over twelve synthetic customers it was
+still 1:57, because a cohort that small leaves the covariates unidentified and
+Nelder-Mead wanders: a single *unregularized* Pareto/NBD covariate fit there was
+**10.6 s**. The code under test was the forwarding, not the optimiser, so the
+tests now build the result objects the way `TestCovariateResultAccessors`
+already did: **18 tests in 0.42 s**. Adding a redundant-refit problem to the
+suite while closing an item about redundant refits is the shape of thing this
+file exists to catch.
+
+No README findings entry: every change here is internal reconciliation between
+this package's own families rather than a divergence from CLVTools, which is
+what that section is for. Each has a test instead.
+
+*Verified:* 1,200 passed (47 new), 1 deselected, `TOTAL 2769 0 100%`, in
+**4:04** against the 3:45 baseline; `ruff check src tests tools docs` clean.
 
 
 ## 28. `[x]` Combine `F1·F2 + F3` in log space — the rest of finding 10
@@ -1425,6 +1506,30 @@ vectors, `TestDyncovStaysVectorised` is extended to count cohort-level
 dispatches rather than per-customer ones, `-m dyncov_fit` still reaches the
 oracle's optimum, and the measured gain is recorded in `docs/performance.md`
 beside item 14's projection — including if it comes in under it.
+
+## 31. `[ ]` Validate optimiser overrides against the method — the rest of finding 20
+
+Found while working item 27, and it is already biting inside this repository.
+`options_for` merges a caller's `overrides` into the method's defaults with no
+check, so a key that belongs to a *different* SciPy method is passed straight
+through and ignored. That is finding 20's "unknown keys reach SciPy as a
+warning where R errors", and spec `V-03`, which `docs/spec-audit.md` marks
+`absent`.
+
+The live instance is `maxfun`. It is a **real** key — `_optimize.py:48` sets it
+for L-BFGS-B — and it is *not* a Nelder-Mead key, which wants `maxfev`. Seven
+call sites across `tests/test_families.py` and `tests/test_pnbd_dyncov.py` pass
+`options={"maxiter": N, "maxfun": M}` to Nelder-Mead fits believing they cap
+function evaluations. `maxiter` works; `maxfun` does nothing. A key that is
+valid for the neighbouring method is exactly the typo no reviewer catches, and
+SciPy's warning is easy to miss and was suppressed in the run that found this.
+
+*Done when:* an override key that the chosen method does not accept raises,
+naming the method and the near-miss where there is one (`maxfun` → `maxfev`);
+the seven call sites are corrected to whatever they meant; and it is decided
+whether R's behaviour (error) or a warning is right here, recorded either way.
+Note that fixing the key will make those tests *slower*, since the cap will
+start applying — check what they cost before and after.
 
 ---
 

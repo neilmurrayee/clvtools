@@ -415,6 +415,12 @@ class ClvData:
         Returns a frame with columns ``Id``, ``x``, ``t_x``, ``T`` and
         ``date_first_transaction``.
 
+        .. warning::
+           Reach for ``T`` with ``cbs["T"]``, never ``cbs.T``. pandas resolves
+           the attribute to :attr:`~pandas.DataFrame.T`, the *transpose*, before
+           it ever looks at the columns, so ``cbs.T`` is a ``(5, n)`` frame of
+           object dtype rather than the observation window. Nothing raises.
+
         ``x`` counts *repeat* transactions, so a customer seen once has
         ``x = 0``. S3: "Most applications of probabilistic models for customer
         base analysis focus on modeling repeat transactions that occur after the
@@ -528,6 +534,18 @@ class ClvData:
         ``?summary.clv.data`` do exactly that. A summary of no customers is
         not an answer to any question worth asking, so this raises.
         """
+        if not isinstance(ids, str):
+            try:
+                iter(ids)
+            except TypeError:
+                # `ids=1` used to surface as "'int' object is not iterable".
+                # `Id` is a string everywhere here (see `tests/conftest.py`),
+                # so the fix a caller needs is the quotes, and saying so beats
+                # coercing silently.
+                raise ValueError(
+                    f"ids must be a customer id or a sequence of them, not "
+                    f"{ids!r}; ids are strings here, so try {str(ids)!r}"
+                ) from None
         wanted = [ids] if isinstance(ids, str) else [str(i) for i in ids]
         known = set(self.transactions["Id"])
         missing = [i for i in wanted if i not in known]
@@ -710,11 +728,18 @@ class ClvData:
         return pd.Series(values, dtype=object)
 
     def __repr__(self) -> str:
+        """The subclass's own name, so a covariate object does not read as plain.
+
+        ``ClvDataStaticCov`` and ``ClvDataDynCov`` inherit this, and a literal
+        ``ClvData(`` here made all three print identically -- the one line most
+        likely to be quoted in a bug report saying which object was held.
+        """
         span = "no holdout" if not self.has_holdout else (
             f"holdout to {self.data_end.date()}"
         )
         return (
-            f"ClvData({self.transactions['Id'].nunique()} customers, "
+            f"{type(self).__name__}("
+            f"{self.transactions['Id'].nunique()} customers, "
             f"{len(self.transactions)} transactions, {self.time_unit}s, "
             f"estimation {self.estimation_start.date()}"
             f"..{self.estimation_end.date()}, {span})"

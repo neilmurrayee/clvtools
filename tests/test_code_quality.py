@@ -296,3 +296,58 @@ class TestTheSlowFitStaysDeselected:
         )
         assert "test_reaches_at_least_the_oracles_optimum" in result.stdout
         assert "1/" in result.stdout, result.stdout[-500:]
+
+
+class TestImportingTheePackageIsCheap:
+    """Backlog item 27, finding 20: ``scipy.stats`` cost 78% of the import.
+
+    It is wanted by three expressions in :mod:`clvtools.inference` -- two normal
+    tails and one chi-squared -- and by nothing in a fit, a prediction or a
+    diagnostic. Imported at module scope it was 0.55 s of a 0.70 s
+    ``import clvtools``; deferred, the import is ~0.44 s.
+
+    Asserted as *absence from* ``sys.modules`` rather than as a wall clock,
+    which is the rule the rest of this suite follows: the saving is a property
+    of what gets imported, and only the seconds move with the machine.
+    """
+
+    @staticmethod
+    def _in_fresh_interpreter(body: str) -> str:
+        import subprocess
+        import sys
+
+        result = subprocess.run(  # noqa: S603 - a fixed argv, no shell
+            [sys.executable, "-c", body],
+            capture_output=True, text=True, cwd=ROOT, check=False,
+        )
+        assert result.returncode == 0, (result.stdout + result.stderr)[-2000:]
+        return result.stdout.strip()
+
+    def test_scipy_stats_is_not_imported_by_import_clvtools(self):
+        out = self._in_fresh_interpreter(
+            "import sys, clvtools; print('scipy.stats' in sys.modules)"
+        )
+        assert out == "False", "scipy.stats is being imported at module scope again"
+
+    def test_nor_by_fitting(self):
+        """The path a script that only fits and predicts actually takes."""
+        out = self._in_fresh_interpreter(
+            "import sys, warnings, numpy as np, clvtools\n"
+            "warnings.simplefilter('ignore')\n"
+            "clvtools.pnbd.fit_pnbd(np.array([1.,0.,3.]), np.array([2.,0.,4.]),\n"
+            "                       np.array([6.,6.,6.]), hessian=False)\n"
+            "print('scipy.stats' in sys.modules)"
+        )
+        assert out == "False"
+
+    def test_but_a_p_value_still_gets_it(self):
+        """The deferral has to be a deferral, not a removal."""
+        out = self._in_fresh_interpreter(
+            "import sys, warnings, numpy as np, clvtools\n"
+            "warnings.simplefilter('ignore')\n"
+            "f = clvtools.pnbd.fit_pnbd(np.array([1.,0.,3.]), np.array([2.,0.,4.]),\n"
+            "                           np.array([6.,6.,6.]), hessian=True)\n"
+            "f.summary()\n"
+            "print('scipy.stats' in sys.modules)"
+        )
+        assert out == "True"

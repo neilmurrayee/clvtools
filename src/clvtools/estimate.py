@@ -102,10 +102,17 @@ def parse_formula(formula: str) -> tuple[list[str] | None, list[str] | None]:
         side = side.strip()
         if side == ".":
             return None
-        found = [n for n in (t.strip() for t in _split_terms(side)) if n]
-        if not found:
+        terms = [t.strip() for t in _split_terms(side)]
+        if not [t for t in terms if t]:
             raise ValueError(f"no covariates named in {side!r}")
-        return found
+        # A `+` with nothing after it used to be dropped silently, so
+        # `~ Gender + | Gender` fitted on Gender alone -- the shape a half-
+        # finished edit leaves behind, answering as though it were finished.
+        if not all(terms):
+            raise ValueError(
+                f"empty covariate term in {side!r}: a '+' with nothing after it"
+            )
+        return terms
 
     return names(parts[0]), names(parts[1])
 
@@ -247,10 +254,14 @@ def latent_attrition(
             _narrowed(data, names_life, names_trans), **kwargs
         )
 
-    if names_life or names_trans:
+    if formula is not None:
+        # `names_life or names_trans` was the old test, which let `~ . | .`
+        # through: it parses to (None, None), the "use every covariate" marker,
+        # and there are none to use. A formula on plain data is a mistake
+        # whether it names covariates or asks for all of them.
         raise ValueError(
-            "the data has no covariates: build it with ClvDataStaticCov or "
-            "ClvDataDynCov before naming any in a formula"
+            "the data has no covariates, so the formula has nothing to select: "
+            "build it with ClvDataStaticCov or ClvDataDynCov first"
         )
     cbs = data.customer_summary()
     fit = fit_pnbd_correlated if use_cor else FAMILIES[name]["plain"]

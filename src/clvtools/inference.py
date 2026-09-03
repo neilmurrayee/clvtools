@@ -25,9 +25,26 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
-from scipy import stats
 
 from clvtools._validate import ConvergenceWarning
+
+
+def _stats():
+    """``scipy.stats``, imported on first use rather than at module scope.
+
+    It is 0.55 s of a 0.70 s ``import clvtools`` -- 78% of the cost of importing
+    the package -- and it is wanted by exactly three expressions here: the normal
+    quantile in :meth:`Fitted.confint`, the normal tail in
+    :meth:`Fitted.summary`, and the chi-squared tail in
+    :func:`likelihood_ratio_test`. Nothing in a fit, a prediction or a
+    diagnostic touches it, so a script that only fits and predicts should not
+    pay for it. Python caches the module after the first call, so the deferral
+    costs one dictionary lookup per use.
+    """
+    from scipy import stats
+
+    return stats
+
 
 __all__ = [
     "Fitted",
@@ -266,7 +283,7 @@ class Fitted:
         """
         if not 0 < level < 1:
             raise ValueError("level must lie strictly between 0 and 1")
-        z = stats.norm.ppf(0.5 + level / 2)
+        z = _stats().norm.ppf(0.5 + level / 2)
         errors = np.array([self.standard_errors()[n] for n in self.names])
         estimates = np.array(list(self), dtype=float)
         tail = (1 - level) / 2
@@ -322,7 +339,7 @@ class Fitted:
             testable, table["Estimate"] / table["Std. Error"], np.nan
         )
         table["z-val"] = z
-        table["Pr(>|z|)"] = 2 * (1 - stats.norm.cdf(np.abs(z)))
+        table["Pr(>|z|)"] = 2 * (1 - _stats().norm.cdf(np.abs(z)))
         return table
 
 
@@ -425,5 +442,5 @@ def likelihood_ratio_test(restricted, unrestricted) -> LikelihoodRatioTest:
         log_likelihood_unrestricted=value(unrestricted),
         df=df,
         statistic=float(statistic),
-        p_value=float(stats.chi2.sf(statistic, df)),
+        p_value=float(_stats().chi2.sf(statistic, df)),
     )

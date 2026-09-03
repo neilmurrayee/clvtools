@@ -14,6 +14,8 @@ GGom/NBD; what moved here is what neither owns.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 import numpy as np
 import pytest
 from conftest import fixture_json
@@ -183,3 +185,137 @@ class TestCovariateResultAccessors:
         fit = self._wrapped(family, model, None)
         with pytest.raises(ValueError, match="hessian=True"):
             fit.confint()
+
+
+class TestTheThreeFamiliesAnswerTheSameQuestions:
+    """Backlog item 27, finding 19: the families had diverged around this code.
+
+    The Pareto/NBD's covariate result carries its estimates as its own fields;
+    the BG/NBD's and the GGom/NBD's hold a
+    :class:`~clvtools._staticcov.StaticCovResult` and forward to it. That
+    difference is deliberate and documented on
+    :class:`~clvtools._staticcov.DelegatesToCovariates`. What was *not*
+    deliberate is that the forwarding was incomplete: ``names_cov_constr`` and
+    ``reg_lambdas`` sat on ``StaticCovResult`` and reached no family that used
+    it, so "which covariates are tied?" and "are these ridge standard errors?"
+    could be asked of one family's fit and not the other two's.
+
+    **Built rather than fitted**, like ``TestCovariateResultAccessors`` above.
+    The code under test is the forwarding, and a fit exercises the optimiser
+    instead -- which the rest of this module already does. Two earlier drafts
+    fitted: over the apparel cohort it took the suite from 3:45 to 9:32, and
+    over twelve synthetic customers a single unregularized Pareto/NBD fit was
+    still 10.6 s, because a cohort that small leaves the covariates
+    unidentified and the search wanders. Neither was testing anything this
+    does not.
+    """
+
+    #: Everything a caller should be able to ask any covariate fit, regardless
+    #: of which family produced it. Extend this rather than adding a test.
+    SHARED = (
+        "names_cov_life", "names_cov_trans", "names_cov_constr", "reg_lambdas",
+        "gamma_life", "gamma_trans", "log_likelihood",
+        "unpenalised_log_likelihood", "n_customers", "converged", "aic", "bic",
+    )
+
+    NAMES_LIFE: ClassVar[list[str]] = ["Gender", "Channel"]
+    CONSTRAINED: ClassVar[list[str]] = ["Gender"]
+    LAMBDAS = (0.1, 0.2)
+
+    @pytest.fixture(scope="class")
+    def results(self):
+        """One covariate result per family, carrying the same covariate part."""
+        from clvtools._staticcov import StaticCovResult
+        from clvtools.pnbd.staticcov import PnbdStaticCovParams
+
+        shared = {
+            "gamma_life": np.array([0.1, 0.2]),
+            "gamma_trans": np.array([0.3, 0.4]),
+            "names_cov_life": self.NAMES_LIFE,
+            "names_cov_trans": self.NAMES_LIFE,
+            "names_cov_constr": self.CONSTRAINED,
+            "reg_lambdas": self.LAMBDAS,
+            "log_likelihood": -1.0,
+            "unpenalised_log_likelihood": -2.0,
+            "converged": True,
+            "n_customers": 600,
+        }
+        covariates = StaticCovResult(model=np.array([1.0, 2.0, 3.0, 4.0]), **shared)
+        return {
+            "pnbd": PnbdStaticCovParams(
+                r=1.0, alpha=2.0, s=3.0, beta=4.0, **shared
+            ),
+            "bgnbd": bgnbd.BgnbdStaticCovParams(
+                r=1.0, alpha=2.0, a=3.0, b=4.0, covariates=covariates
+            ),
+            "ggomnbd": ggomnbd.GgomnbdStaticCovParams(
+                r=1.0, alpha=2.0, b=3.0, s=4.0, beta=5.0, covariates=covariates
+            ),
+        }
+
+    @pytest.mark.parametrize("attribute", SHARED)
+    def test_every_family_answers_it(self, results, attribute):
+        missing = [n for n, f in results.items() if not hasattr(f, attribute)]
+        assert not missing, f"{attribute} is missing from {missing}"
+
+    @pytest.mark.parametrize("family", ["pnbd", "bgnbd", "ggomnbd"])
+    def test_the_two_that_were_missing_report_what_was_asked_for(
+        self, results, family
+    ):
+        """Not merely present -- carrying the fit's own values.
+
+        A property forwarding to a constant would satisfy the check above while
+        telling the caller nothing, so both are given distinguishable values:
+        one of two covariates constrained, and two *different* penalties, which
+        also catches a forward that returns them the wrong way round.
+        """
+        fit = results[family]
+        assert fit.names_cov_constr == self.CONSTRAINED
+        assert fit.reg_lambdas == self.LAMBDAS
+
+    @pytest.mark.parametrize("family", ["pnbd", "bgnbd", "ggomnbd"])
+    def test_an_unregularized_result_reports_no_penalty(self, results, family):
+        """`None` rather than `(0, 0)`, which would be a real fit at zero."""
+        import dataclasses
+
+        fit = results[family]
+        if family == "pnbd":
+            bare = dataclasses.replace(fit, reg_lambdas=None, names_cov_constr=[])
+        else:
+            bare = dataclasses.replace(
+                fit,
+                covariates=dataclasses.replace(
+                    fit.covariates, reg_lambdas=None, names_cov_constr=[]
+                ),
+            )
+        assert bare.reg_lambdas is None
+        assert bare.names_cov_constr == []
+
+
+class TestAScalarRegLambdaSaysWhatItWanted:
+    """Backlog item 27, finding 20: `reg_lambdas=1.0` gave a bare TypeError.
+
+    It reached ``tuple(float(v) for v in reg_lambdas)`` and surfaced as
+    "'float' object is not iterable", which names Python's difficulty rather
+    than the caller's. Eq. (13) has two weights, one per process.
+    """
+
+    @pytest.mark.parametrize("value", [1.0, 0, 10])
+    def test_it_names_the_pair_it_wanted(self, value):
+        from clvtools._staticcov import _validated_reg_lambdas
+
+        with pytest.raises(ValueError, match="two values"):
+            _validated_reg_lambdas(value)
+
+    def test_and_suggests_the_spelling_that_works(self):
+        from clvtools._staticcov import _validated_reg_lambdas
+
+        with pytest.raises(ValueError, match=r"\(10\.0, 10\.0\)"):
+            _validated_reg_lambdas(10.0)
+
+    @pytest.mark.parametrize("value", [(0.1, 0.2), [0.1, 0.2], None])
+    def test_the_shapes_that_were_always_fine_still_are(self, value):
+        from clvtools._staticcov import _validated_reg_lambdas
+
+        got = _validated_reg_lambdas(value)
+        assert got == (None if value is None else (0.1, 0.2))

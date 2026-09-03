@@ -334,3 +334,64 @@ class TestTimeVaryingDispatch:
     def test_correlation_is_refused(self, small):
         with pytest.raises(ValueError, match="plain Pareto/NBD"):
             latent_attrition(family=pnbd, data=small, use_cor=True)
+
+
+class TestAFormulaOnDataThatHasNoCovariates:
+    """Backlog item 27, finding 20: `~ . | .` on plain data was accepted.
+
+    The guard tested `names_life or names_trans`, which are the *parsed* names.
+    `~ . | .` parses to `(None, None)` -- the "use every covariate" marker --
+    so it read as "no names given" and fell through to the plain fit, which
+    silently ignored the formula. Any formula is a mistake here, whether it
+    names covariates or asks for all of them.
+    """
+
+    @pytest.fixture(scope="class")
+    def plain(self):
+        from clvtools import ClvData, load_apparel_trans
+
+        return ClvData(load_apparel_trans(), time_unit="week", estimation_split=104)
+
+    @pytest.mark.parametrize("formula", ["~ . | .", "~ Gender | Channel", "~ . | Gender"])
+    def test_it_is_refused(self, plain, formula):
+        import clvtools
+
+        with pytest.raises(ValueError, match="no covariates"):
+            clvtools.latent_attrition(
+                family=clvtools.pnbd, data=plain, formula=formula, hessian=False
+            )
+
+    def test_but_no_formula_still_fits(self, plain):
+        """The guard must not fire on the ordinary call."""
+        import clvtools
+
+        fit = clvtools.latent_attrition(family=clvtools.pnbd, data=plain, hessian=False)
+        assert fit.converged
+
+
+class TestAnEmptyCovariateTerm:
+    """Backlog item 27: `~ Gender + | Gender` fitted on Gender alone.
+
+    The parser dropped empty terms, so a `+` with nothing after it -- what a
+    half-finished edit leaves behind -- produced a smaller model than the text
+    asks for and said nothing. The name that *is* there makes the old guard
+    ("no covariates named") unreachable, which is why this needed its own.
+    """
+
+    @pytest.mark.parametrize("formula", [
+        "~ Gender + | Gender", "~ Gender | Gender +", "~ Gender +  + Channel | Gender",
+    ])
+    def test_it_is_refused(self, formula):
+        with pytest.raises(ValueError, match="empty covariate term"):
+            parse_formula(formula)
+
+    def test_a_side_naming_nothing_still_says_so(self):
+        """The pre-existing message, which the new check must not shadow."""
+        with pytest.raises(ValueError, match="no covariates named"):
+            parse_formula("~  | Gender")
+
+    def test_and_the_ordinary_formulas_are_unmoved(self):
+        assert parse_formula("~ Gender + Channel | Gender") == (
+            ["Gender", "Channel"], ["Gender"]
+        )
+        assert parse_formula("~ . | .") == (None, None)
