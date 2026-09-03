@@ -335,6 +335,33 @@ def _polish_overrides(overrides: dict | None) -> dict:
     return {k: v for k, v in overrides.items() if k in accepted}
 
 
+def _validated_cov_start(start_cov) -> float:
+    """The covariate coefficients' common start value, checked before the fit.
+
+    Spec `V-02`. Unlike the model start, this is a **single scalar** applied to
+    every covariate coefficient, where R takes a named vector with one entry per
+    covariate -- so five of that claim's seven failure modes (an unnamed entry,
+    a duplicate, a name that is not a covariate, a covariate left out) cannot
+    arise here at all. The two that can are that it be numeric and finite, and
+    a `NaN` used to pass straight through to the objective, which then reported
+    "the static-covariate objective is not finite at the point the search
+    started" -- a statement about the model for a fault in the argument. The
+    same shape as `V-01` and `X-14`.
+    """
+    if start_cov is None:
+        return DEFAULT_COV_START
+    try:
+        value = float(start_cov)
+    except (TypeError, ValueError) as error:
+        raise TypeError(
+            f"start_cov must be a single number applied to every covariate "
+            f"coefficient, not {type(start_cov).__name__}"
+        ) from error
+    if not np.isfinite(value):
+        raise ValueError(f"start_cov must be a finite number, got {start_cov!r}")
+    return value
+
+
 def _validated_constraints(
     names_cov_constr, names_life: list[str], names_trans: list[str]
 ) -> list[str]:
@@ -660,7 +687,7 @@ def fit_static_covariates(
     )
     reg_lambdas = _validated_reg_lambdas(settings.reg_lambdas)
 
-    cov_start = DEFAULT_COV_START if settings.start_cov is None else settings.start_cov
+    cov_start = _validated_cov_start(settings.start_cov)
     candidates = _starting_points(
         layout, settings, start_arr, model_start, cov_start, reg_lambdas,
         baseline=lambda: fit_static_covariates(

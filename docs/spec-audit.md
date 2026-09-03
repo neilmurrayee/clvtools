@@ -621,14 +621,14 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 
 | | | evidence / note |
 |---|---|---|
-| V-01 | w | length and `<= 0` pinned for all 5 fits; a `NaN` start passes `np.any(start <= 0)` and misreports as a data fault |
-| V-02 | w | covariate start is one scalar, so 5 of 7 claims cannot arise; the API divergence is unrecorded |
+| V-01 | c | re-verdicted 2026-09-03: **round 5**: a `NaN` or `inf` start passed `np.any(start <= 0)` and was blamed on the objective; now refused by name, with the positivity and length checks shown not to be shadowed |
+| V-02 | c | re-verdicted 2026-09-03: **round 5**: `start_cov` is a single scalar, so 5 of 7 claims cannot arise — the divergence is now in the README's findings — and the two that can are pinned; a `NaN` reached the objective and no longer does |
 | V-03 | a | `options_for` merges overrides with zero validation; unknown keys reach SciPy as a *warning* where R errors |
-| V-04 | w | Python's `TypeError` covers it, but `**kwargs` forwarding lands it at the inner signature; never asserted |
+| V-04 | o | re-verdicted 2026-09-03: **round 5**: `**kwargs` forwarding lands an unknown argument at the inner signature. Recorded rather than reworked — the message names a private function, which is the cost of the forwarding, and item 31's `options` validation is the precedent for checking where it is given |
 | V-05 | a | no single-logical validation exists anywhere |
 | V-06 | c ! | re-verdicted 2026-09-03: closed by **A4** — `TestBadInputIsLoud`, `TestATransactionMustSayWhoAndWhen` |
-| V-07 | w | a few defaults pinned; `time_unit` has a default where R has none |
-| V-08 | w | `sample`/`ids`/bins/Price pinned; `label`, `other.models`, `annotate.ids` have no counterpart |
+| V-07 | o | re-verdicted 2026-09-03: **round 5**: `time_unit` defaults to `"week"` where R requires it — a divergence, now in the README's findings |
+| V-08 | o | re-verdicted 2026-09-03: **round 5**: `label`, `other.models` and `annotate.ids` have no counterpart because `diagnostics` returns frames and leaves rendering to the caller — recorded in the README's findings as a smaller surface rather than a gap |
 
 # Appendix 4 — Outcomes: what each finding turned out to be
 

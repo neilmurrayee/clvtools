@@ -391,6 +391,25 @@ were wrong in the fourth digit; at a *relative* 1e-4 they agree with
 GGom/NBD's `b = 8.1e-07` from being stepped negative, where the likelihood does
 not exist.
 
+**Three input-checking places where R is stricter, and one where it is not.**
+`start_cov` is a **single scalar** applied to every covariate coefficient, where
+CLVTools takes a named vector with one entry per covariate — so five of the
+seven failure modes its own tests cover (an unnamed entry, a duplicate, a name
+that is not a covariate, a covariate left out) cannot arise here at all. The
+same goes for `time_unit`, which defaults to `"week"` where R requires it, and
+for `plot`'s `label`, `other.models` and `annotate.ids`, which have no
+counterpart because `diagnostics` returns frames and leaves rendering to the
+caller. None of those are gaps to close; each is a smaller surface with fewer
+ways to be wrong, and they are listed so an audit against R's input checks can
+tell a decision from an omission. Spec V-02, V-07 and V-08.
+
+**Where a non-finite argument used to be blamed on the model.** `nan <= 0` is
+`False`, so a `NaN` in `start`, in `start_cov` or in `reg_lambdas` passed every
+positivity check and reached the objective — which then reported *"the objective
+is not finite at the point the search started"*, a statement about the model or
+the data for a fault in the argument. All three now name themselves where they
+are given. Spec V-01, V-02 and X-14.
+
 **The two time-varying covariate series may run to different dates.** R
 requires that "if one covariate's data is longer than the other's, all data must
 be that long"; here they may differ. The weakening is deliberate and is safe

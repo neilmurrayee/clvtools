@@ -1893,6 +1893,39 @@ same floats), at :math:`\gamma \ne 0` — with :math:`\gamma = 0` every
 multiplier is 1 and the reconstruction holds for reasons having nothing to do
 with the walks, which is how DY-15's `d_omega` oracle came to be degenerate.
 
+### Batch 9 — the `V` section: the same defect in three places
+
+`V-01` names it and `V-02` carries it one level down. **`nan <= 0` is `False`**,
+so a `NaN` start passed every positivity check and reached the optimiser, which
+reported *"the objective is not finite at the point the search started"* — a
+statement about the model, or about the data, for a fault in the argument. The
+same held for `start_cov`. Batch 7 had already found the third instance,
+`X-14`'s `NaN` regularization lambda, without my noticing they were the same
+bug: **three arguments, one blind spot**, all now refused where they are given
+and recorded together in the README's findings.
+
+That is the sharpest instance yet of this round's recurring shape — an argument
+refused for a reason that is true but not the problem — and the reason it
+appeared three times is that each check was written where its own value is
+consumed rather than once, at the boundary. Worth noting as a place a future
+round could look: `_validate.start_values` now covers the model start, but
+`start_cov` and `reg_lambdas` each grew their own.
+
+The other three are **divergences, recorded rather than closed**, and all in the
+same direction — a smaller surface than R's, with fewer ways to be wrong.
+`start_cov` is one scalar for every coefficient where R takes a named vector, so
+five of `V-02`'s seven failure modes cannot arise. `time_unit` defaults to
+`"week"` where R requires it (`V-07`). `plot`'s `label`, `other.models` and
+`annotate.ids` have no counterpart because `diagnostics` returns frames and
+leaves rendering to the caller (`V-08`). Re-verdicted `o` rather than `c`, since
+none is a test that could be written.
+
+`V-04` is recorded rather than reworked: `**kwargs` forwarding lands an unknown
+argument at the *inner* signature, so the message names a private function.
+That is the cost of the forwarding, and item 31's per-method `options`
+validation is the precedent for checking at the boundary instead — but it is a
+change to every entry point, not a test.
+
 ### Batch 8 — the `B` section, and a helper I nearly mis-reported
 
 `B-08` is the one worth the care, and it is the shape a shape-assertion cannot

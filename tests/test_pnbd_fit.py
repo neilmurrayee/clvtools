@@ -275,3 +275,68 @@ class TestValidation:
         )
         assert isinstance(got, PnbdParams)
         assert got.n_evaluations > 0
+
+
+class TestNonFiniteStartValuesAreRefusedByName:
+    """Spec V-01 and V-02, and the same defect one level apart.
+
+    `nan <= 0` is ``False``, so a `NaN` start passed the positivity check and
+    reached the optimiser, which reported *"the objective is not finite at the
+    point the search started"* -- a statement about the model, or about the
+    data, for a fault in the argument. `X-14`'s `NaN` regularization lambda was
+    the same shape, and so is `start_cov`: a single scalar here where R takes a
+    named vector, so five of `V-02`'s seven claims cannot arise, but "numeric"
+    and "finite" can and the second one did not hold.
+
+    Backlog item 34, round 5.
+    """
+
+    @pytest.fixture(scope="class")
+    def inputs(self, cbs_estimation):
+        return (
+            cbs_estimation["x"].to_numpy(dtype=float),
+            cbs_estimation["t.x"].to_numpy(dtype=float),
+            cbs_estimation["T.cal"].to_numpy(dtype=float),
+        )
+
+    @pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+    def test_a_non_finite_model_start_names_itself(self, inputs, bad):
+        from clvtools.pnbd import fit_pnbd
+
+        x, t_x, T = inputs
+        with pytest.raises(ValueError, match="start values must be finite"):
+            fit_pnbd(x, t_x, T, start=(bad, 1.0, 1.0, 1.0), hessian=False)
+
+    def test_the_positivity_check_still_fires_where_it_should(self, inputs):
+        """The new guard must not shadow the old one."""
+        from clvtools.pnbd import fit_pnbd
+
+        x, t_x, T = inputs
+        with pytest.raises(ValueError, match="strictly positive"):
+            fit_pnbd(x, t_x, T, start=(0.0, 1.0, 1.0, 1.0), hessian=False)
+
+    def test_and_the_length_check_before_both(self, inputs):
+        from clvtools.pnbd import fit_pnbd
+
+        x, t_x, T = inputs
+        with pytest.raises(ValueError, match="start must give 4"):
+            fit_pnbd(x, t_x, T, start=(1.0, 1.0, 1.0), hessian=False)
+
+    def test_a_non_finite_covariate_start_names_itself_too(self):
+        from clvtools._staticcov import _validated_cov_start
+
+        with pytest.raises(ValueError, match="start_cov must be a finite"):
+            _validated_cov_start(float("nan"))
+
+    def test_and_a_vector_where_a_scalar_belongs_says_which(self):
+        """R takes one entry per covariate; here it is one value for all."""
+        from clvtools._staticcov import _validated_cov_start
+
+        with pytest.raises(TypeError, match="single number applied to every"):
+            _validated_cov_start([0.1, 0.2])
+
+    def test_the_default_and_a_plain_scalar_are_unmoved(self):
+        from clvtools._staticcov import DEFAULT_COV_START, _validated_cov_start
+
+        assert _validated_cov_start(None) == DEFAULT_COV_START
+        assert _validated_cov_start(0.5) == 0.5

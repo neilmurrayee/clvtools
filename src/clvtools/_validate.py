@@ -179,10 +179,24 @@ def start_values(
     Traceback (most recent call last):
         ...
     ValueError: start values must be strictly positive
+
+    A non-finite start is refused here rather than by the objective:
+
+    >>> start_values((1.0, float("nan")), count=2, parameters="values (r, alpha)")
+    Traceback (most recent call last):
+        ...
+    ValueError: start values must be finite numbers, got [ 1. nan]
     """
     values = np.asarray(start, dtype=float)
     if values.shape != (count,):
         raise ValueError(f"start must give {count} {parameters}")
+    if not np.all(np.isfinite(values)):
+        # `nan <= 0` is False, so a NaN slipped past the positivity check below
+        # and reached the optimiser, which reported "the objective is not
+        # finite at the point the search started" -- a statement about the
+        # model, or about the data, for a fault in the argument. Spec `V-01`,
+        # and the same shape as `X-14`'s NaN regularization lambda.
+        raise ValueError(f"start values must be finite numbers, got {values}")
     if np.any(values <= 0):
         raise ValueError("start values must be strictly positive")
     return values
