@@ -420,3 +420,74 @@ class TestTheRemainingFrequencyBinMatchesR:
             data, bins=range(31), label_remaining="31+"
         )
         assert str(named.iloc[-1]["num.transactions"]) == "31+"
+
+
+class TestTheSummaryDoesNotDependOnInputOrder:
+    """Spec D-18 and S-03, both `weak` and both holding.
+
+    `D-18`'s second half is the interesting one: the mean interpurchase time is
+    "the mean of interval differences", and that must **not depend on the input
+    being sorted by (Id, Date)**. R's own test computes it on data sorted the
+    other way. A gap between transactions is a difference between consecutive
+    rows, so a sort that is assumed rather than performed gives negative gaps
+    and a mean that is quietly wrong -- and every fixture here arrives already
+    sorted, which is exactly the condition under which such an assumption
+    survives untested.
+
+    `S-03` -- `summary(ids=None)` equals `summary(ids=<all ids>)` -- was
+    asserted for two cells where R compares the whole object. Backlog item 34,
+    round 5.
+    """
+
+    @pytest.fixture(scope="class")
+    def shuffled(self, apparel_trans):
+        return apparel_trans.sample(frac=1.0, random_state=11).reset_index(drop=True)
+
+    def test_shuffling_the_rows_changes_nothing(self, apparel_trans, shuffled):
+        from clvtools import ClvData
+
+        ordered = ClvData(apparel_trans, time_unit="week", estimation_split=104)
+        jumbled = ClvData(shuffled, time_unit="week", estimation_split=104)
+        assert ordered.summary().equals(jumbled.summary())
+
+    def test_nor_does_it_change_the_customer_summary(self, apparel_trans, shuffled):
+        """The cbs is where a sort assumption would show as a negative gap."""
+        from clvtools import ClvData
+
+        ordered = ClvData(apparel_trans, time_unit="week", estimation_split=104)
+        jumbled = ClvData(shuffled, time_unit="week", estimation_split=104)
+        assert ordered.customer_summary().equals(jumbled.customer_summary())
+        assert ordered.transactions.equals(jumbled.transactions)
+
+    def test_selecting_every_id_is_the_same_as_selecting_none(self, apparel_trans):
+        """S-03, over the whole object rather than two cells."""
+        from clvtools import ClvData
+
+        data = ClvData(apparel_trans, time_unit="week", estimation_split=104)
+        every = sorted(data.transactions["Id"].unique())
+        assert data.summary().equals(data.summary(ids=every))
+
+    def test_a_customer_with_no_holdout_purchases_reports_an_empty_holdout(
+        self, apparel_trans
+    ):
+        """S-05, and a presentation difference worth naming.
+
+        R prints ``-`` in the holdout column for such a customer; pandas prints
+        ``NaN`` and ``NaT``. The *values* agree -- there is nothing to report --
+        and the spelling is pandas' own for a missing value, so it is recorded
+        rather than reformatted.
+        """
+        from clvtools import ClvData
+
+        data = ClvData(apparel_trans, time_unit="week", estimation_split=104)
+        estimation = set(data.as_data_frame(sample="estimation")["Id"])
+        holdout = set(data.as_data_frame(sample="holdout")["Id"])
+        without = sorted(estimation - holdout)
+        assert without, "the cohort should contain such a customer"
+
+        summary = data.summary(ids=[without[0]])
+        assert summary.loc["Total # Transactions", "Holdout"] == 0.0
+        assert pd.isna(summary.loc["Mean # Transactions per cust", "Holdout"])
+        assert pd.isna(summary.loc["First Transaction in period", "Holdout"])
+        # And the estimation column is not empty, so this is a real customer.
+        assert summary.loc["Total # Transactions", "Estimation"] > 0

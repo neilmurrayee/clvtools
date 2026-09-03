@@ -378,7 +378,7 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | D-15 | a | strings and `datetime.date` work, untested |
 | D-16 | c | `test_cdnow.py:73,95` — incidental but genuine |
 | D-17 | — | not reached by the audit |
-| D-18 | w | NA-for-one-transaction pinned via descriptives; the sort-order half untested |
+| D-18 | c | re-verdicted 2026-09-03: **round 5**: the sort-order half asserted — shuffling the input rows leaves the summary, the cbs and the transactions identical, which is where an assumed sort would show as a negative interpurchase gap |
 
 ## S2 Time and splits
 
@@ -413,9 +413,9 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 |---|---|---|
 | S-01 | c | |
 | S-02 | c | |
-| S-03 | w | `test_descriptives.py:145` asserts 2 cells where R asserts the whole object (which does match) |
+| S-03 | c | re-verdicted 2026-09-03: **round 5**: the whole object compared, not two cells |
 | S-04 | c | |
-| S-05 | w | `test_descriptives.py:100`; the no-holdout customer only appears aggregated |
+| S-05 | c ! | re-verdicted 2026-09-03: **round 5**: the values agree — a no-holdout customer's holdout column is empty — and the spelling differs, R printing `-` where pandas prints `NaN`/`NaT`. Recorded rather than reformatted |
 | S-06 | c | |
 | S-07 | a | copy holds on pandas 3.0.5, nothing asserts it |
 | S-08 | c | |
@@ -426,7 +426,7 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | S-13 | c ! | re-verdicted 2026-09-03: closed by **A7** — `test_descriptives.py:388`, pinned as agreement with R |
 | S-14 | c | |
 | S-15 | c | |
-| S-16 | w | `ids` honoured; `annotate.ids` has no counterpart |
+| S-16 | o | re-verdicted 2026-09-03: **round 5**: `annotate.ids` has no counterpart because `diagnostics` returns frames and leaves rendering to the caller; same disposition as `V-08` |
 
 ## S4 Covariate data
 
@@ -557,9 +557,9 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | NC-06 | c | re-verdicted 2026-09-03: closed by **B1** — the test predicts four scenarios and asserts the spread |
 | NC-07 | a | no test varies `first_transaction` on an effectively static path |
 | NC-08 | c | `test_pnbd_dyncov_predict.py:277,334`, rel 1e-12, both branches |
-| NC-09 | w | the `< 1` case is dyncov only |
-| NC-10 | w | both tests are the *refusal* side; the working cases are not asserted |
-| NC-11 | w | only `str` ever passed as `first_transaction` |
+| NC-09 | c | re-verdicted 2026-09-03: **round 5**: fractional horizons (0.25, 0.5) for the plain model, not dyncov alone, and asserted monotone so a horizon dropped on the floor would show |
+| NC-10 | c | re-verdicted 2026-09-03: **round 5**: the working side asserted, the refusals having been covered already |
+| NC-11 | c | re-verdicted 2026-09-03: **round 5**: `str`, `date`, `datetime` and `Timestamp` all accepted and shown to normalise to the same timestamp |
 | NC-12 | c | |
 | NC-13 | — | not reached by the audit |
 

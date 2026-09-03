@@ -1893,6 +1893,39 @@ same floats), at :math:`\gamma \ne 0` — with :math:`\gamma = 0` every
 multiplier is 1 and the reconstruction holds for reasons having nothing to do
 with the walks, which is how DY-15's `d_omega` oracle came to be degenerate.
 
+### Batch 11 — the `D`, `S` and `NC` sections, all holding
+
+No defects, and one claim worth the care it took. **`D-18`'s second half** is
+that the mean interpurchase time "must not depend on the input being sorted by
+(Id, Date)" — R's own test computes it on data sorted the other way. A gap
+between transactions is a difference between consecutive rows, so a sort that is
+*assumed* rather than performed gives negative gaps and a quietly wrong mean —
+and every fixture here arrives already sorted, which is exactly the condition
+under which such an assumption survives untested. Shuffling the rows leaves the
+summary, the cbs and the transactions identical.
+
+`NC-09`'s fractional horizons were "dyncov only", so the plain model never saw
+one; they are now asserted **monotone**, since a horizon dropped on the floor
+would make 0.5 equal 0 rather than fail. `NC-11`'s four spellings of a date all
+normalise to the same timestamp — a type that silently failed to parse would
+shift a whole covariate window.
+
+`S-05` is a presentation difference: the *values* agree, a no-holdout
+customer's holdout column being empty, and R prints `-` where pandas prints
+`NaN` and `NaT`. Recorded rather than reformatted, that being pandas' own
+spelling for a missing value. `S-16` joins `V-08` as `o` — `annotate.ids` has
+no counterpart because `diagnostics` returns frames and leaves rendering to the
+caller.
+
+**The size gate fired, which is the round's own tests catching the round.**
+`test_predict.py` reached **706** code lines against the 700 limit, so
+`tests/test_newcustomer.py` is split out: S6.3.4's prospective customer, whose
+predictions have no history to condition on and therefore no PAlive, no CET and
+no actuals — neither the fixtures nor the shape of what stayed behind.
+`_oracle_params` moved to `conftest.py`, which is the move item 25 made for
+`DYNCOV_GRID` when `test_pnbd_dyncov.py` outgrew the same limit. 706 → **559**,
+with room.
+
 ### Batch 10 — the `PMF` and `PR` sections, and the shape a fourth time
 
 **`PMF-06` is the batch's own defect and a different kind.** A non-integer `k`
