@@ -91,10 +91,10 @@ jobs:
       - name: Lint
         run: uv run ruff check src tests tools docs
 
-      # 1,153 tests including the doctests in `src/` and `docs/paper.md`, plus
+      # 1,244 tests including the doctests in `src/` and `docs/paper.md`, plus
       # the standing bar: 100% line coverage of `src/`, which `--cov-fail-under`
       # turns from a habit into a gate. Both figures are what a run prints --
-      # `1153 passed, 1 deselected` and `TOTAL 2752 0 100%` on 2026-09-03 -- and
+      # `1244 passed, 1 deselected` and `TOTAL 2874 0 100%` on 2026-09-03 -- and
       # a comment that drifts from them is worth correcting, since this file is
       # where a reader comes to find out what green means.
       - name: Test

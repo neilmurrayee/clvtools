@@ -10,8 +10,8 @@ speculation.
 stop. Do not add items without evidence, and do not work an item marked
 `[needs-decision]` — those need the maintainer.
 
-**Rounds 3 and 4 are open**, from two reviews on 2026-09-02. Open: only the
-two `[~]` remainders of 23 and 25. Every numbered item is closed. Everything else is closed, and item
+**Rounds 3 and 4 are open**, from two reviews on 2026-09-02. Open: **item 33
+alone**, which needs R. Items 1-32 are all closed. Everything else is closed, and item
 16 was the last one carrying `[needs-decision]` — no item does now. The phrase
 survives on two settled sub-bullets inside closed items 13 and 22, which say so
 where they stand.
@@ -34,8 +34,8 @@ while that run was still in progress and then failed; the tick was written from
 a local suite and an expectation. Ticking on an expectation is how a record
 becomes wrong, and correcting it is cheaper than trusting it afterwards.
 
-Definition of done for every item: `uv run pytest` green (1,153 passed and 1
-deselected as of 2026-09-03; `TOTAL 2752 0 100%`), `uv run ruff check src tests
+Definition of done for every item: `uv run pytest` green (1,244 passed and 1
+deselected as of 2026-09-03; `TOTAL 2874 0 100%`), `uv run ruff check src tests
 tools docs` clean, and 100% line coverage of `src/`. Anything that changes
 behaviour also needs a test and, if it deviates from CLVTools, a README findings
 entry — the house rule.
@@ -1135,7 +1135,7 @@ is what the GGom covariate fit produces at `b = 8.1e-07`.
   unregularized fit's -- which neither CLVTools nor the paper says anywhere,
   and is the part that protects whoever reads the table.
 
-## 23. `[~]` Log-domain integrals for the regimes the oracle cannot see — findings 4 and 10
+## 23. `[x]` Log-domain integrals for the regimes the oracle cannot see — findings 4 and 10
 
 The GGom/NBD forms its integrand as `(alpha + tau)^(r + x)` in the direct
 domain: at the fitted parameters `x = 140` gives `CET 0.00` and `x = 160` gives
@@ -1162,6 +1162,13 @@ The check is the one this item asked for, because no oracle reaches here: as
 agree to 1.2e-3 relative on `CET` and 1e-6 absolute on `PAlive` at
 `x = 5, 50, 160, 400` — including the two values where the old code returned
 `nan`. Fourteen tests, and the 33 GGom oracle checks unmoved.
+
+**Closed 2026-09-03, both halves.** The GGom/NBD half is above. The dyncov
+half was finished by item 28, and the two pieces of finding 10 that this item
+explicitly carried forward were closed after it: the unguarded `s - 1` divide
+by item 29, and the `pmf`'s cancellation by items 29 and 32 — the latter
+finding that the arrangement had been wrong by 1e-3 at `k = 16` well before it
+was visibly `NaN`. Nothing under findings 4 or 10 is outstanding.
 
 **The dyncov half was finished by item 28.** Each `F2` term was
 `value / alpha**(r+s+x)`, whose divisor passes the top of float64 by `x = 160`
@@ -1195,7 +1202,7 @@ looked reproducible were not); a one-argument sampler, which is the shape
 announce themselves from inside the refit, through item 21's
 `ConvergenceWarning`, which is a better place for it than the pooling code.
 
-## 25. `[~]` Suite hygiene — findings 14, 15, 16, 17
+## 25. `[x]` Suite hygiene — findings 14, 15, 16, 17
 
 `tools/benchmark.py` crashes (`fit_static_covariates() got an unexpected
 keyword argument 'method'`) and nothing imports it; a user's own `-m` flag
@@ -1225,6 +1232,77 @@ directions are asserted: a user's `-m` does not re-select it, and
 `inference_pnbd_staticcov.json` carried CLVTools' full-precision standard
 errors while the test compared against the paper's printed four decimals at 5%
 — written, committed, never read. It is wired in at 2e-3, 25 times tighter.
+
+**Closed 2026-09-03**, and two of finding 17's claims did not survive being
+checked. What was left is worked below; the paragraph after it is the original
+list, kept for the trail.
+
+**The four orphaned fixtures, each decided on its own evidence.**
+
+* `hyp2f0.csv` — **wired in.** There is no `hyp2f0` in `src/`, so it looked
+  like data for something unported. But GSL defines :math:`{}_2F_0` *through*
+  the confluent :math:`U`, which this package does have as `kummer_u`:
+  `2F0(a,b;;x) = (-1/x)^a U(a, 1+a-b, -1/x)`, and the identity holds on all
+  eighteen rows. That makes them an oracle for `kummer_u` **from a different
+  library than SciPy**, which is worth more than deleting the file and more
+  than a SciPy-against-SciPy check. At `rtol` 1e-12: seventeen rows agree to
+  better than 1e-14 and one, `a=6, b=3, z=-0.5`, differs by 4.2e-13, which is
+  `hyperu` against `hyp2f0` rather than either being wrong — and the fixture
+  itself only carries about fourteen digits.
+* `dyncov_palive.csv` — **deleted.** Its 600 values are *bit-identical*
+  (`np.array_equal`) to the `PAlive` column of `dyncov_predict_holdout`, which
+  the suite already checks at `rtol` 1e-11. Wiring it in would have added a
+  duplicate wearing the clothes of a second oracle. The generator keeps the
+  `check()` that establishes the two R entry points agree — that is the part
+  with content — and simply stops writing the file.
+* `dyncov_future_covariates.json` — **wired in.** Row counts and the covariate
+  window's bounds, asserted nowhere: the frame was loaded and used, so a
+  truncated export would have surfaced as a prediction disagreeing with the
+  oracle rather than as a dataset of the wrong size.
+* `pnbd_staticcov_lrtest.json` — **wired in**, and it is the stronger of the
+  two LRT fixtures. `lrtest_pnbd_staticcov.json` pins the *derived* quantities;
+  this one pins the two log-likelihoods they come from. A chi-squared statistic
+  comes out right from two wrong fits that differ by the right amount.
+
+**The self-comparing R check was real.** `cf <- coef(fit)` sits a few lines
+above `check("coef r", cf[["r"]], coef(fit)[["r"]])`, so it could not fail. It
+now compares against `exp()` of optimx's own `log.r`, `log.alpha`, ... —
+verified in R to agree at 1e-10. That checks the log-scale convention the whole
+port is built on, so a transformation or ordering slip between the search and
+`coef()` is what it would catch.
+
+**Finding 17, with two claims overturned.**
+
+* *Three `paper` marks were wrong* — none compares against a number the paper
+  prints. Two read oracle fixtures and are now `oracle`; one compares two of
+  this package's own likelihoods and is now unmarked. `-m paper` 25 → **22**.
+* *The `pragma: no cover` claim is **wrong**.* Finding 17 says it "covers a
+  branch the suite already exercises". Nothing simulates a missing matplotlib —
+  `pytest.importorskip` *skips* when it is absent rather than faking absence —
+  so the `ImportError` arm is genuinely unreachable and the pragma is right.
+* *The unmarked slow fit is real, in a different test than cited.* Not
+  `test_estimate.py:166` at twelve seconds but
+  `TestDispatch::test_the_other_families_dispatch_too[clvtools.ggomnbd]` at
+  **18.4 s**, the slowest unmarked test in the suite. Now `slow`.
+* *Both wall clocks are gone.* `assert elapsed < 0.5` and `assert elapsed <
+  10.0` in `test_special.py` contradicted the README and `docs/performance.md`,
+  which both say nothing here asserts one — and a half-second bound on a shared
+  runner is the first gate to go flaky. They now assert what they were really
+  guarding: that the series decides its term count up front, and that the
+  degenerate fit is bounded by `maxiter` rather than by the clock.
+* *The coverage bar* stays enforced in CI rather than in `addopts`, so that an
+  ordinary local run is not made to pay for `--cov`. `CLAUDE.md` prints the
+  command.
+
+**Still not done, and it needs R:** `time_elapsed.csv` and
+`time_add_periods.csv` have no generator, so they cannot be re-baselined.
+`CLAUDE.md`, `README.md` and `tests/conftest.py` each say so at the point where
+they would otherwise claim every fixture comes from `tools/oracle/*.R`. Writing
+that generator is the one piece of this item carried forward, as **item 33**.
+
+*Counts re-measured after the marker changes*, since three files quote them:
+default **1,244**, `paper` 22, `rdoc` 22, `literature` 14, `oracle` 249, `slow`
+157, `quality` 14, `performance` 18; `TOTAL 2874 0 100%` in 3:57.
 
 **Left:** four genuinely orphaned fixtures (`dyncov_palive`,
 `dyncov_future_covariates`, `hyp2f0`, `pnbd_staticcov_lrtest`) to delete or
@@ -1686,6 +1764,24 @@ this function already has a finding about.
 The oracle cannot see any of this — CLVTools arranges the arithmetic the same
 way and cancels in the same place — so the reference is `mpmath` at 50 digits,
 the same standing as items 23 and 28.
+
+## 33. `[ ]` A generator for the two time fixtures — the rest of item 25
+
+`tests/fixtures/time_elapsed.csv` and `time_add_periods.csv` — the 840 spans
+and 280 additions `tests/test_timeunit.py` reads, and the "Time arithmetic, §5"
+row of the README's table — are produced by no script in `tools/oracle/`. They
+came from CLVTools' `clv.time` classes in commit `e385a16`, by a generator that
+was never committed, so they are the one thing here that cannot be
+re-baselined. Three files now say so where they would otherwise claim every
+fixture comes from `tools/oracle/*.R`.
+
+*Done when:* a `tools/oracle/generate_time_fixtures.R` regenerates both files
+byte-for-byte (or the difference is explained and the committed copies
+replaced), it asserts its own conventions the way its siblings do, and the
+caveats in `CLAUDE.md`, `README.md` and `tests/conftest.py` come out.
+
+Needs R, which is why it is separate: everything else in item 25 was reachable
+from the committed fixtures alone.
 
 ---
 

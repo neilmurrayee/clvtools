@@ -1,6 +1,6 @@
 # Performance
 
-Everything in this repo is gated on being *correct* — 1,153 tests, the paper's
+Everything in this repo is gated on being *correct* — 1,244 tests, the paper's
 numbers, the R package's numbers, oracle fixtures expression by expression —
 and on being *tidy*: ruff, complexity, module size, 100% line coverage. Nothing
 has ever asked whether it is *fast*. This document is the first pass at that

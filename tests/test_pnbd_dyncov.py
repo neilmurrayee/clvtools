@@ -339,7 +339,11 @@ class TestAgainstOracle:
         assert total == pytest.approx(DYNCOV_GRID["LL.sum"][case], rel=1e-11)
         assert total == pytest.approx(float(got["LL"].sum()), rel=1e-12)
 
-    @pytest.mark.paper
+    # `oracle`, not `paper`: the value compared against comes from the
+    # `dyncov_fit` fixture, and the README records that the paper's own S6.4.2
+    # table cannot be reproduced from CLVTools 0.12.1's fit at all. Finding 17,
+    # backlog item 25.
+    @pytest.mark.oracle
     def test_the_fitted_likelihood_matches(self, dyncov_walks):
         """The MLE grid point is CLVTools' own fit, so this pins ``logLik()``."""
         r, alpha, s, beta, g_life, g_trans = dyncov_grid_case("mle")

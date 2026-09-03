@@ -75,9 +75,20 @@ write_json(list(
   vcov.names = names(cf)
 ), "cdnow_pnbd_fit")
 
-# The self-check CLAUDE.md asks for: the dumped coefficients are the ones the
-# public generic reports, so a name or ordering slip cannot ship.
-check("coef r", cf[["r"]], coef(fit)[["r"]])
+# The self-check CLAUDE.md asks for. This used to read
+# `check("coef r", cf[["r"]], coef(fit)[["r"]])`, and since `cf <- coef(fit)` a
+# few lines up, it compared a value with itself -- it could not have failed.
+# Backlog item 25.
+#
+# The independent route is the optimiser's own output, which optimx reports on
+# the *log* scale as `log.r`, `log.alpha`, ... That is the convention this whole
+# port is built on (CLAUDE.md: "model parameters go in on the log scale"), so a
+# transformation or ordering slip between the search and `coef()` is exactly
+# what this should catch, and now can.
+from.log.scale <- exp(as.numeric(
+  fit@optimx.estimation.output[1, paste0("log.", names(cf))]
+))
+check("coef from log-scale optimx", as.numeric(cf), from.log.scale, tol = 1e-10)
 check("logLik", as.numeric(logLik(fit)), sum(fit@optimx.estimation.output$value) * -1,
       tol = 1e-4)
 

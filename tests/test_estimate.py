@@ -152,6 +152,10 @@ class TestDispatch:
         by_name = latent_attrition(family="pnbd", data=data, hessian=False)
         np.testing.assert_allclose(list(by_name), list(by_module))
 
+    # 18.4 s for the GGom/NBD arm, which is a full-dataset MLE and belongs
+    # under `slow` with the other 150-odd. It was the slowest unmarked test in
+    # the suite. Finding 17, backlog item 25.
+    @pytest.mark.slow
     @pytest.mark.parametrize("family", [bgnbd, ggomnbd])
     def test_the_other_families_dispatch_too(self, data, family):
         fit = latent_attrition(family=family, data=data, hessian=False)

@@ -248,6 +248,32 @@ class TestLikelihoodRatioTest:
         """S6.5.3 concludes the two processes' Gender effects differ."""
         assert likelihood_ratio_test(*fits).p_value < 0.01
 
+    @pytest.mark.oracle
+    def test_the_two_log_likelihoods_behind_it_match_the_oracle(self, fits):
+        """Backlog item 25: ``pnbd_staticcov_lrtest.json`` had no reader.
+
+        ``lrtest_pnbd_staticcov.json``, read above, pins the *derived*
+        quantities -- degrees of freedom, the statistic, the p-value. This
+        second fixture carries the two log-likelihoods they are derived from,
+        which is the stronger check: a statistic comes out right from two wrong
+        fits that happen to differ by the right amount.
+        """
+        want = fixture_json("pnbd_staticcov_lrtest")
+        tied, free = fits
+        assert tied.log_likelihood == pytest.approx(
+            want["logLik.constrained"], rel=1e-6
+        )
+        assert free.log_likelihood == pytest.approx(
+            want["logLik.unconstrained"], rel=1e-6
+        )
+        assert tied.n_parameters == want["df.constrained"]
+        assert free.n_parameters == want["df.unconstrained"]
+
+    def test_the_constrained_fit_is_the_worse_one(self, fits):
+        """Which is what makes the statistic positive at all."""
+        tied, free = fits
+        assert tied.log_likelihood < free.log_likelihood
+
     def test_statistic_is_twice_the_likelihood_gap(self, fits):
         tied, free = fits
         got = likelihood_ratio_test(tied, free)

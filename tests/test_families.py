@@ -411,7 +411,8 @@ class TestFamiliesCompared:
     Gompertz/gamma.
     """
 
-    @pytest.mark.paper
+    # Not `paper`: this compares two of this package's own likelihoods against
+    # each other and the paper prints neither. Finding 17, backlog item 25.
     def test_the_ggomnbd_collapses_onto_the_pareto_nbd(self):
         r"""Its fitted ``b`` is 8.1e-07, and the fit is the Pareto/NBD's.
 
@@ -478,7 +479,10 @@ class TestFamiliesCompared:
         )
         assert abs(got - want) > 100
 
-    @pytest.mark.paper
+    # `oracle`, not `paper`: it reads `bgnbd_fit` and compares against
+    # `PNBD_LL`, which the README's table marks as an oracle value the paper
+    # does not print. Finding 17, backlog item 25.
+    @pytest.mark.oracle
     def test_the_bgnbd_fits_worse_than_the_pareto_nbd_here(self):
         """Same parameter count, lower likelihood: 9 log-likelihood units."""
         fitted = fixture_json("bgnbd_fit")

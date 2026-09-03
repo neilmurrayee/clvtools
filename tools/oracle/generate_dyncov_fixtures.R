@@ -187,8 +187,12 @@ cat("\n== prediction (S6.4.2) ==\n")
 
 SAMPLE_IDS <- c("1", "10", "100", "1000", "1001")
 
+# Not written out: its 600 values are bit-identical to the `PAlive` column of
+# `dyncov_predict_holdout`, which the suite already checks at rtol 1e-11, so the
+# file was a second copy of numbers already pinned. The `check()` below is the
+# part worth keeping -- it is what establishes that the two R entry points agree
+# in the first place. Backlog item 25.
 dt.palive <- cpp("pnbd_dyncov_palive")(fit)
-write_csv(dt.palive, "dyncov_palive")
 
 date.holdout.end <- clv@clv.time@timepoint.holdout.end
 dt.abcd <- cpp("pnbd_dyncov_ABCD")(

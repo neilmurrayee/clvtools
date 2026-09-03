@@ -94,7 +94,7 @@ jobs:
       # `dyncov_fit` item *unless* it was asked for, and asking for it by name
       # is one of the two ways in -- `--run-dyncov-fit` is the other -- so this
       # run is the single `TestFit` case and nothing else. Verified by
-      # collection -- `1/1154 tests collected (1153 deselected)` on 2026-09-03.
+      # collection -- `1/1245 tests collected (1244 deselected)` on 2026-09-03.
       # No `--cov` here: coverage of one test cannot clear the 100% bar
       # `ci.yml` enforces, and asking it to would only teach us to loosen the
       # bar.

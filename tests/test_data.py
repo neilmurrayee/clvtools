@@ -593,3 +593,36 @@ class TestIdsMustBeStrings:
     def test_and_so_does_a_sequence_of_them(self, static_data):
         both = static_data.as_data_frame(ids=["1", "10"])
         assert set(both["Id"]) == {"1", "10"}
+
+
+@pytest.mark.oracle
+class TestTheFutureCovariatesMatchWhatRExported:
+    """Backlog item 25: ``dyncov_future_covariates.json`` had no reader.
+
+    S6.4.2 needs the covariate path *ahead* of the estimation period, and
+    ``apparelDynCovFuture`` is where it comes from. Its shape was asserted
+    nowhere -- the frame was loaded and used, so a truncated or duplicated
+    export would have shown up as a prediction that disagreed with the oracle
+    rather than as a dataset that was the wrong size, which is a much harder
+    thing to read.
+    """
+
+    @pytest.fixture(scope="class")
+    def want(self):
+        from conftest import fixture_json
+
+        return fixture_json("dyncov_future_covariates")
+
+    def test_the_row_counts_are_rs(self, want):
+        from clvtools import load_apparel_dyn_cov, load_apparel_dyn_cov_future
+
+        assert len(load_apparel_dyn_cov()) == want["n.rows.past"]
+        assert len(load_apparel_dyn_cov_future()) == want["n.rows.future"]
+
+    def test_and_so_is_the_window_they_cover(self, want):
+        """The future frame has to start where prediction does, not before."""
+        from clvtools import load_apparel_dyn_cov_future
+
+        dates = load_apparel_dyn_cov_future()["Cov.Date"]
+        assert str(dates.min().date()) == want["first.future.date"]
+        assert str(dates.max().date()) == want["last.future.date"]
