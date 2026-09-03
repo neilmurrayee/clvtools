@@ -1893,6 +1893,47 @@ same floats), at :math:`\gamma \ne 0` — with :math:`\gamma = 0` every
 multiplier is 1 and the reconstruction holds for reasons having nothing to do
 with the walks, which is how DY-15's `d_omega` oracle came to be degenerate.
 
+### Batch 4 — the `FI` section: three defects in the formula interface
+
+The richest batch. `FI-04`, `FI-13`, `FI-14` and half of `FI-15` were real, and
+all four failed the same way — a construct the parser did not understand became
+a **literal covariate name**, so the formula failed looking for a column called
+`"."`, or `". - Gender"`, or `"constraint(Gender)"`, or `"y ~ Gender"`.
+
+* `FI-04` — `.` beside another term. Expanding it needs the data, which
+  `parse_formula` never sees, so parsing keeps the `"."` term and `_narrowed`
+  resolves it against the data's own names.
+* `FI-15`'s two halves went different ways. `.` **with exclusions**
+  (`~ . - Gender | .`) is a capability the spec names, so it is implemented —
+  with `I(Channel - 1)` left alone, since that is an expression and not a term
+  list. R's **`constraint()`** is a spelling this package replaces with
+  `names_cov_constr=`, so it is refused *by name*, pointing at the argument.
+* `FI-13`'s left-hand side, and `FI-13`/`FI-14`'s non-`ClvData` data, which
+  gave `AttributeError: 'DataFrame' object has no attribute 'customer_summary'`
+  — naming an internal method, and reading like a bug in the library rather
+  than in the call.
+
+`FI-08` and `FI-11` hold and were merely untested; `FI-11`'s four sub-claims had
+one loose `not allclose` behind them.
+
+**`FI-09` is a divergence recorded rather than fixed.** R copies so a narrowed
+object shares no storage; here it shares the frames. What decided it:
+`ClvData.__init__` already copies the *caller's* frame, so nothing a caller
+holds is reachable from a fitted object and the sharing is between two of this
+package's own objects. Copying 187,800 covariate rows on every formula call to
+guard an in-place mutation of an internal attribute is not a trade worth
+making. Pinned in both directions, with a README findings entry.
+
+**Two regressions of my own, both caught by existing tests rather than review.**
+The left-hand-side check required a *leading* `~` and broke
+`TestFormula::test_the_tilde_is_optional` — `Gender | Gender` is a valid
+formula here, so the rule is "nothing before the tilde". And
+`_expand_exclusions` filtered empty terms on its way past, which silently
+disabled the "a `+` with nothing after it" check added in item 27;
+`TestAnEmptyCovariateTerm` failed on all three of its cases. Both behaviours
+now have tests beside the checks that nearly removed them, including a formula
+that trips both at once.
+
 ### Batch 3 — the `DY` section, and a filter that under-selected
 
 **Two more were stale, and batch 1's filter had missed them.** `DY-03` and

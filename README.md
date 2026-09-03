@@ -391,6 +391,31 @@ were wrong in the fourth digit; at a *relative* 1e-4 they agree with
 GGom/NBD's `b = 8.1e-07` from being stepped negative, where the likelihood does
 not exist.
 
+**Two formula spellings R has that this does not, and one it shares.**
+S6.4's formula is `~ life | trans`, and three constructs inside it needed
+deciding. `.` expands to every covariate the data carries, *including* beside
+other terms — `~ . | . + I(Gender + 1)` selects all of them on the attrition
+side and all plus the transformation on the transaction side; it used to read
+the `.` as a literal column name and go looking for a covariate called `"."`.
+`.` also takes exclusions, `~ . - Gender | .`, which arrived as the single term
+`". - Gender"` for the same reason. Both now work. **`constraint()` does not**:
+R names tied covariates inside the formula, this package takes them as
+`names_cov_constr=['Gender']`, and the formula now says so rather than reading
+`constraint(Gender)` as a column name. The capability is identical, the
+spelling is not, and `TestRsConstraintSyntaxIsRefusedNotMisread` pins the
+refusal alongside the argument that replaces it. Spec FI-04 and FI-15.
+
+**A formula's narrowed data shares its frames; R's copies.** `with_covariates`
+hands the narrowed object the same transaction and covariate frames, where
+CLVTools' formula interface copies so that the result shares no storage with
+the input. The boundary that matters is guarded: `ClvData.__init__` copies the
+caller's frame, so nothing a caller holds is reachable from a fitted object,
+and what is shared is one of this package's objects with a narrowed descendant
+of itself. Copying 187,800 covariate rows on every formula call to prevent an
+in-place mutation of an internal attribute is not a trade worth making. Spec
+FI-09, pinned in both directions by
+`TestNarrowingKeepsTheClassAndSharesTheFrames`.
+
 **Covariate names are kept verbatim where R mangles them.** CLVTools passes
 column names through `make.names()`, so a covariate called `my var!` becomes
 `my.var.` and the coefficient is reported under a name the caller never wrote.

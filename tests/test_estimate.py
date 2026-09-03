@@ -399,3 +399,305 @@ class TestAnEmptyCovariateTerm:
             ["Gender", "Channel"], ["Gender"]
         )
         assert parse_formula("~ . | .") == (None, None)
+
+
+class TestTheDotExpandsBesideOtherTerms:
+    """Spec FI-04's third claim: `~ . | . + I(Gender + 1)`.
+
+    `.` means "every covariate the data carries". Alone it worked; beside
+    another term it was passed through as a **literal column name**, so the
+    formula went looking for a covariate called ``"."``. The audit put it
+    plainly -- "`~ . | . + I(...)` unsupported -- `'.'` is looked up as a
+    literal column".
+
+    Expanding it needs the data, which :func:`~clvtools.estimate.parse_formula`
+    does not see, so parsing keeps the ``"."`` term and ``_narrowed`` resolves
+    it. Backlog item 34, round 5.
+    """
+
+    def test_the_dot_survives_parsing_as_a_term(self):
+        assert parse_formula("~ . | . + I(Gender + 1)") == (
+            None, [".", "I(Gender + 1)"]
+        )
+
+    @pytest.mark.slow
+    def test_and_expands_against_the_data_when_the_fit_runs(self, static_data):
+        fit = latent_attrition(
+            family=pnbd, data=static_data,
+            formula="~ . | . + I(Gender + 1)", hessian=False,
+        )
+        assert fit.names_cov_life == ["Gender", "Channel"]
+        assert fit.names_cov_trans == ["Gender", "Channel", "I(Gender + 1)"]
+
+    def test_a_covariate_named_twice_is_selected_once(self):
+        """`~ . + Gender | .` asks for nothing more than `~ . | .`."""
+        from clvtools.estimate import _expanded
+
+        assert _expanded([".", "Gender"], ["Gender", "Channel"]) == [
+            "Gender", "Channel"
+        ]
+
+    def test_the_datas_own_order_is_kept(self):
+        """So a coefficient vector does not reorder with the formula's spelling."""
+        from clvtools.estimate import _expanded
+
+        assert _expanded([".", "Extra"], ["Gender", "Channel"]) == [
+            "Gender", "Channel", "Extra"
+        ]
+
+    def test_a_bare_dot_still_means_everything(self):
+        from clvtools.estimate import _expanded
+
+        assert _expanded(None, ["Gender"]) is None
+
+
+class TestTheEntryPointsRefuseWhatIsNotClvData:
+    """Spec FI-13 and FI-14, first claim of each: non-`clv.data` data.
+
+    Both entry points did fail -- with ``AttributeError: 'DataFrame' object has
+    no attribute 'customer_summary'``, which names an internal method rather
+    than what the caller got wrong, and reads like a bug in the library rather
+    than in the call. Backlog item 34, round 5.
+    """
+
+    @pytest.fixture(scope="class")
+    def frame(self):
+        from clvtools import load_apparel_trans
+
+        return load_apparel_trans()
+
+    def test_latent_attrition_says_what_it_wanted(self, frame):
+        with pytest.raises(TypeError, match="needs a ClvData, not DataFrame"):
+            latent_attrition(family=pnbd, data=frame)
+
+    def test_and_so_does_spending(self, frame):
+        from clvtools import gg, spending
+
+        with pytest.raises(TypeError, match="needs a ClvData, not DataFrame"):
+            spending(family=gg, data=frame)
+
+    def test_the_message_names_the_constructor_to_use(self, frame):
+        with pytest.raises(TypeError, match=r"ClvData\(transactions"):
+            latent_attrition(family=pnbd, data=frame)
+
+    @pytest.mark.parametrize("value", [None, 42, "apparel"])
+    def test_anything_else_is_refused_too(self, value):
+        with pytest.raises(TypeError, match="needs a ClvData"):
+            latent_attrition(family=pnbd, data=value)
+
+
+class TestAFormulaHasNoLeftHandSide:
+    """Spec FI-13: "a LHS parses silently and fails with the wrong message".
+
+    ``y ~ Gender | Channel`` parsed to ``(['y ~ Gender'], ['Channel'])`` -- the
+    left-hand side swallowed into the first covariate name -- and then failed
+    complaining about a covariate called ``"y ~ Gender"``. It *did* fail, which
+    is what the spec asks; it failed for the wrong reason and said so.
+    """
+
+    @pytest.mark.parametrize("formula", [
+        "y ~ Gender | Channel", "Spending ~ . | .", "x~a|b",
+    ])
+    def test_it_is_refused_by_name(self, formula):
+        with pytest.raises(ValueError, match="no left-hand side"):
+            parse_formula(formula)
+
+    def test_and_the_ordinary_formulas_are_unmoved(self):
+        assert parse_formula("~ Gender | Channel") == (["Gender"], ["Channel"])
+        assert parse_formula("  ~ . | .  ") == (None, None)
+
+    def test_the_tilde_is_still_optional(self):
+        """The rule is "nothing before the tilde", not "starts with one".
+
+        The first draft required a leading ``~`` and broke
+        ``TestFormula::test_the_tilde_is_optional``, which documents that
+        ``Gender | Gender`` is a valid formula. Kept here as well, next to the
+        check that nearly removed it.
+        """
+        assert parse_formula("Gender | Gender") == (["Gender"], ["Gender"])
+        assert parse_formula(". | .") == (None, None)
+
+    def test_an_empty_term_is_still_caught_beside_an_exclusion(self):
+        """The two checks share ``_split_terms`` and must not mask each other.
+
+        ``_expand_exclusions`` filtered empty terms out on its way past, which
+        silently disabled the "a '+' with nothing after it" check added in
+        backlog item 27 -- ``TestAnEmptyCovariateTerm`` caught it. Both now fire
+        on a formula that trips both.
+        """
+        with pytest.raises(ValueError, match="empty covariate term"):
+            parse_formula("~ . - Gender + | .")
+
+
+class TestRemoveFirstTransactionChangesEverythingButTheIds:
+    """Spec FI-11, `weak`: only "not np.allclose(...)" was asserted.
+
+    Four claims, of which one was pinned loosely and three not at all: **every**
+    coefficient differs, **every** cbs ``x`` differs, the id set is unchanged,
+    and it equals the transaction data's ids. S6.2.3's reason for the option is
+    that the first transaction "has been found to be atypical", so a difference
+    that showed up in one coefficient and not the others would mean the option
+    was reaching only part of the fit.
+    """
+
+    @pytest.fixture(scope="class")
+    def fits(self, apparel_trans):
+        from clvtools import gg, spending
+
+        data = ClvData(apparel_trans, time_unit="week", estimation_split=104)
+        return data, (
+            spending(family=gg, data=data, remove_first_transaction=False,
+                     hessian=False),
+            spending(family=gg, data=data, remove_first_transaction=True,
+                     hessian=False),
+        )
+
+    @pytest.mark.slow
+    @pytest.mark.parametrize("name", ["p", "q", "gamma"])
+    def test_every_coefficient_differs(self, fits, name):
+        _data, (with_first, without) = fits
+        assert getattr(with_first, name) != getattr(without, name)
+
+    def test_every_customers_transaction_count_differs(self, apparel_trans):
+        data = ClvData(apparel_trans, time_unit="week", estimation_split=104)
+        with_first = data.spending_summary(remove_first_transaction=False)
+        without = data.spending_summary(remove_first_transaction=True)
+        assert (with_first["x"].to_numpy() != without["x"].to_numpy()).all()
+
+    def test_but_the_id_set_is_unchanged_and_is_the_logs(self, apparel_trans):
+        """Dropping a transaction must not drop a *customer*."""
+        data = ClvData(apparel_trans, time_unit="week", estimation_split=104)
+        with_first = data.spending_summary(remove_first_transaction=False)
+        without = data.spending_summary(remove_first_transaction=True)
+        assert set(with_first["Id"]) == set(without["Id"])
+        assert set(without["Id"]) == set(apparel_trans["Id"])
+
+
+class TestNarrowingKeepsTheClassAndSharesTheFrames:
+    """Spec FI-08 and FI-09.
+
+    `FI-08` -- a formula applied to dynamic covariate data returns a dynamic
+    object and one applied to static data returns a static object that is *not*
+    dynamic -- holds, and was untested. It matters because the time-varying fit
+    has nothing to walk if narrowing quietly downcasts.
+
+    `FI-09` is a **divergence, recorded rather than fixed**. R copies, so its
+    narrowed object shares no storage with the input. Here narrowing shares the
+    transaction and covariate frames, and this pins that it does.
+
+    The risk it would carry is bounded at the only place it could bite:
+    ``ClvData.__init__`` *does* copy the caller's frame, so nothing a caller
+    holds is reachable from a fitted object. What is shared is one of this
+    package's objects with a narrowed descendant of itself, and mutating
+    ``data.transactions`` in place -- an internal attribute -- is outside the
+    contract either way. Copying 187,800 covariate rows on every formula call
+    to prevent that is not a trade worth making, so the sharing is deliberate.
+    """
+
+    def test_static_data_narrows_to_a_static_object(self, static_data):
+        from clvtools import ClvDataDynCov, ClvDataStaticCov
+
+        narrowed = static_data.with_covariates(["Gender"], ["Gender"])
+        assert isinstance(narrowed, ClvDataStaticCov)
+        assert not isinstance(narrowed, ClvDataDynCov)
+
+    def test_dynamic_data_stays_dynamic(self, apparel_trans):
+        from clvtools import ClvDataDynCov, load_apparel_dyn_cov
+
+        names = ["High.Season", "Gender", "Channel"]
+        dynamic = ClvDataDynCov(
+            ClvData(apparel_trans, time_unit="week", estimation_split=104),
+            load_apparel_dyn_cov(), names_cov_life=names, names_cov_trans=names,
+        )
+        narrowed = dynamic.with_covariates(["High.Season"], ["High.Season"])
+        assert isinstance(narrowed, ClvDataDynCov)
+        assert narrowed.names_cov_life == ["High.Season"]
+
+    def test_narrowing_shares_the_transaction_frame(self, static_data):
+        """FI-09's divergence, pinned so it cannot change unnoticed."""
+        narrowed = static_data.with_covariates(["Gender"], ["Gender"])
+        assert narrowed.transactions is static_data.transactions
+
+    def test_but_construction_copies_the_callers_frame(self, apparel_trans):
+        """Which is the boundary that actually matters.
+
+        Nothing a caller holds is reachable from a fitted object, so the
+        sharing above is between two of this package's own objects.
+        """
+        data = ClvData(apparel_trans, time_unit="week", estimation_split=104)
+        assert data.transactions is not apparel_trans
+
+
+class TestTheDotTakesExclusions:
+    """Spec FI-15, which names "`.` with exclusions" among its twelve claims.
+
+    `_split_terms` splits on ``+`` only, so ``~ . - Gender | .`` arrived as the
+    single term ``". - Gender"`` and was looked up as a column of that name.
+    Backlog item 34, round 5.
+    """
+
+    def test_an_exclusion_becomes_its_own_term(self):
+        assert parse_formula("~ . - Gender | .") == ([".", "-Gender"], None)
+
+    def test_and_resolves_against_the_data(self):
+        from clvtools.estimate import _expanded
+
+        assert _expanded([".", "-Gender"], ["Gender", "Channel"]) == ["Channel"]
+
+    def test_a_transformation_containing_a_minus_is_left_alone(self):
+        """`I(...)` is an expression, not a list of terms."""
+        assert parse_formula("~ . | . + I(Channel - 1)") == (
+            None, [".", "I(Channel - 1)"]
+        )
+
+    def test_excluding_a_covariate_the_data_does_not_carry_says_so(self):
+        from clvtools.estimate import _expanded
+
+        with pytest.raises(ValueError, match="cannot exclude 'Nonexistent'"):
+            _expanded([".", "-Nonexistent"], ["Gender", "Channel"])
+
+    def test_and_excluding_without_a_dot_is_refused(self):
+        """Subtracting from an explicit list is the same as not listing it."""
+        from clvtools.estimate import _expanded
+
+        with pytest.raises(ValueError, match="does not use '\\.'"):
+            _expanded(["Gender", "-Channel"], ["Gender", "Channel"])
+
+    @pytest.mark.slow
+    def test_the_fit_selects_what_is_left(self, static_data):
+        fit = latent_attrition(
+            family=pnbd, data=static_data, formula="~ . - Gender | .",
+            hessian=False,
+        )
+        assert fit.names_cov_life == ["Channel"]
+        assert fit.names_cov_trans == ["Gender", "Channel"]
+
+
+class TestRsConstraintSyntaxIsRefusedNotMisread:
+    """Spec FI-15: "`constraint()` syntax does not exist here".
+
+    True, and it was being read as a *column name*, so
+    ``~ constraint(Gender) | Gender`` failed looking for a covariate called
+    ``"constraint(Gender)"``. R names tied covariates inside the formula; here
+    they are the ``names_cov_constr`` argument, which is a deliberate
+    difference and now says so at the point of use.
+    """
+
+    def test_it_names_the_argument_to_use_instead(self):
+        with pytest.raises(ValueError, match="names_cov_constr"):
+            parse_formula("~ constraint(Gender) | Gender")
+
+    def test_on_either_side(self):
+        with pytest.raises(ValueError, match="constraint"):
+            parse_formula("~ Gender | constraint(Gender)")
+
+    @pytest.mark.slow
+    def test_and_the_argument_itself_still_works(self, static_data):
+        """The capability is present; only the spelling differs."""
+        from clvtools.pnbd import fit_pnbd_staticcov
+
+        fit = fit_pnbd_staticcov(
+            static_data, names_cov_constr=["Gender"], hessian=False,
+        )
+        assert fit.names_cov_constr == ["Gender"]
+        assert "constr.Gender" in fit.names

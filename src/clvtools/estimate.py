@@ -88,8 +88,36 @@ def parse_formula(formula: str) -> tuple[list[str] | None, list[str] | None]:
     (None, None)
     >>> parse_formula("~ Gender | I(log(Channel + 2))")
     (['Gender'], ['I(log(Channel + 2))'])
+
+    A side that is exactly ``.`` comes back as ``None`` -- "everything the data
+    carries". Mixed with other terms it survives as a ``"."`` term, because what
+    it expands *to* depends on the data and this function does not see it;
+    :func:`_narrowed` does the expanding:
+
+    >>> parse_formula("~ . | . + I(Gender + 1)")
+    (None, ['.', 'I(Gender + 1)'])
+
+    ``.`` also takes exclusions, written as R writes them:
+
+    >>> parse_formula("~ . - Gender | .")
+    (['.', '-Gender'], None)
     """
     body = formula.strip()
+    # A left-hand side used to be swallowed into the first covariate name:
+    # `y ~ Gender | Channel` parsed to `(['y ~ Gender'], ['Channel'])` and then
+    # failed complaining about a covariate called "y ~ Gender". Spec `FI-13`
+    # asks for it to fail, and it did -- for the wrong reason.
+    #
+    # The rule is "nothing before the tilde", not "starts with a tilde": the
+    # tilde is optional here and `Gender | Gender` is a valid formula, which
+    # `TestFormula::test_the_tilde_is_optional` caught the first draft of this
+    # breaking.
+    if "~" in body and body.split("~", 1)[0].strip():
+        raise ValueError(
+            f"a covariate formula has no left-hand side: got {formula!r}, with "
+            f"{body.split('~', 1)[0].strip()!r} before the '~'. The response is "
+            f"the data, not a column"
+        )
     body = body.removeprefix("~")
     parts = body.split("|")
     if len(parts) != 2:
@@ -102,7 +130,7 @@ def parse_formula(formula: str) -> tuple[list[str] | None, list[str] | None]:
         side = side.strip()
         if side == ".":
             return None
-        terms = [t.strip() for t in _split_terms(side)]
+        terms = [t.strip() for t in _expand_exclusions(_split_terms(side))]
         if not [t for t in terms if t]:
             raise ValueError(f"no covariates named in {side!r}")
         # A `+` with nothing after it used to be dropped silently, so
@@ -111,6 +139,16 @@ def parse_formula(formula: str) -> tuple[list[str] | None, list[str] | None]:
         if not all(terms):
             raise ValueError(
                 f"empty covariate term in {side!r}: a '+' with nothing after it"
+            )
+        constrained = [t for t in terms if t.startswith("constraint(")]
+        if constrained:
+            # R names tied covariates inside the formula; here they are an
+            # argument, so `constraint(Gender)` used to be read as a column of
+            # that name. Spec `FI-15`.
+            raise ValueError(
+                f"{constrained[0]!r}: R's constraint() has no counterpart in a "
+                f"formula here. Pass names_cov_constr=['Gender'] to the fit "
+                f"instead -- see S6.5.3 and the README's findings"
             )
         return terms
 
@@ -158,6 +196,51 @@ def _reject_use_cor(name: str, covariates: bool) -> None:
 _CovariateData = TypeVar("_CovariateData", ClvDataStaticCov, ClvDataDynCov)
 
 
+def _expand_exclusions(terms: list[str]) -> list[str]:
+    """Split R's ``a - b`` exclusions into separate ``-b`` terms.
+
+    ``_split_terms`` splits on ``+`` only, so ``~ . - Gender | .`` arrived as
+    the single term ``". - Gender"`` and was looked up as a column of that
+    name. Spec `FI-15` names "``.`` with exclusions" as one of its twelve
+    claims.
+
+    Only ``.`` can be excluded *from*, which is R's rule too: subtracting from
+    an explicit list is the same as not listing it, so there is nothing to
+    express. That is checked in :func:`_expanded`, where the names are known.
+    """
+    out: list[str] = []
+    for term in terms:
+        # `I(...)` may contain a minus of its own -- `I(Channel - 1)` -- and is
+        # an expression rather than a list of terms, so it is left alone.
+        if term.strip().startswith("I("):
+            out.append(term)
+            continue
+        head, *excluded = term.split("-")
+        out.append(head)
+        out.extend(f"-{name.strip()}" for name in excluded)
+    # Empty terms are *kept*: `~ Gender + | Gender` has to reach the "a '+' with
+    # nothing after it" check in `parse_formula`, and filtering them here
+    # silently disabled it -- `TestAnEmptyCovariateTerm` caught that.
+    return out
+
+
+def _require_clv_data(data, entry_point: str) -> None:
+    """Refuse a raw frame before it reaches a method it does not have.
+
+    Spec `FI-13` and `FI-14` both ask that the entry points fail on data that
+    is not a ``clv.data``. They did -- with
+    ``AttributeError: 'DataFrame' object has no attribute 'customer_summary'``,
+    which names an internal method rather than the thing the caller got wrong,
+    and which reads like a bug in the library rather than in the call.
+    """
+    if not isinstance(data, ClvData):
+        raise TypeError(
+            f"{entry_point}() needs a ClvData, not {type(data).__name__}: "
+            f"wrap the transactions first, as ClvData(transactions, "
+            f"time_unit=..., estimation_split=...)"
+        )
+
+
 def _narrowed(  # noqa: UP047 - PEP 695 here breaks get_type_hints on 3.12.3; see above
     data: _CovariateData,
     names_life: list[str] | None,
@@ -171,7 +254,46 @@ def _narrowed(  # noqa: UP047 - PEP 695 here breaks get_type_hints on 3.12.3; se
     """
     if names_life is None and names_trans is None:
         return data
-    return data.with_covariates(names_life, names_trans)
+    return data.with_covariates(
+        _expanded(names_life, data.names_cov_life),
+        _expanded(names_trans, data.names_cov_trans),
+    )
+
+
+def _expanded(named: list[str] | None, available: list[str]) -> list[str] | None:
+    """A side's terms with ``.`` replaced by every covariate the data carries.
+
+    ``~ . | . + I(Gender + 1)`` is one of spec `FI-04`'s three claims: every
+    covariate on the attrition side, and every covariate *plus* a transformed
+    term on the transaction side. A bare ``.`` never reaches here -- it arrives
+    as ``None`` and means the same thing -- but a ``.`` beside other terms used
+    to be passed through as a **literal column name**, so the formula failed
+    looking for a covariate called ``"."``.
+
+    Order is the data's own, with the named terms after it, and a covariate
+    named twice is selected once -- ``~ . + Gender | .`` asks for nothing more
+    than ``~ . | .``.
+    """
+    excluded = [t[1:] for t in (named or []) if t.startswith("-")]
+    if named is None or "." not in named:
+        if excluded:
+            raise ValueError(
+                f"cannot exclude {excluded[0]!r} from a side that does not use "
+                f"'.': list the covariates you want instead"
+            )
+        return named
+    unknown = [name for name in excluded if name not in available]
+    if unknown:
+        raise ValueError(
+            f"cannot exclude {unknown[0]!r}: the data carries "
+            f"{', '.join(available)}"
+        )
+    out = [name for name in available if name not in excluded]
+    out.extend(
+        term for term in named
+        if term != "." and not term.startswith("-") and term not in out
+    )
+    return out
 
 
 def _fit_dyncov(name: str, data: ClvDataDynCov, **kwargs):
@@ -238,6 +360,7 @@ def latent_attrition(
     0.624
     """
     name = _family_name(family)
+    _require_clv_data(data, "latent_attrition")
     names_life, names_trans = (
         parse_formula(formula) if formula is not None else (None, None)
     )
@@ -290,5 +413,6 @@ def spending(
         raise ValueError(
             "the Gamma-Gamma is the only spending model in the paper (S3.5)"
         )
+    _require_clv_data(data, "spending")
     spend = data.spending_summary(remove_first_transaction=remove_first_transaction)
     return fit_gg(spend["x"], spend["Spending"], **kwargs)

@@ -604,18 +604,18 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | | | evidence / note |
 |---|---|---|
 | FI-01..FI-03 | c | |
-| FI-04 | w | 2 of 3; `~ . \| . + I(...)` unsupported — `'.'` is looked up as a literal column |
+| FI-04 | c | re-verdicted 2026-09-03: **round 5**: `.` beside another term was read as a literal column name; it now expands against the data in `_narrowed`, all three claims pinned |
 | FI-05 | a | duplicate name yields `['Gender','Gender']` and a rank-deficient `(600, 2)` design — a defect, untested |
 | FI-06 | a ! | naming-by-term-text *is* recorded (`audit.md:489`); bare `log(x+2)` unsupported is not (**A7**) |
 | FI-07 | a ! | `Gender*Channel` and `.-Gender` parse then fail as column names (**A7**) |
-| FI-08 | w | the *type* claim never asserted |
-| FI-09 | w | plain and `.` cases share storage via `copy.copy` |
+| FI-08 | c | re-verdicted 2026-09-03: **round 5**: the type claim asserted both ways — static narrows to static and is not dynamic, dynamic stays dynamic |
+| FI-09 | c ! | **round 5**, a recorded divergence: narrowing shares the transaction and covariate frames where R copies. `ClvData.__init__` copies the *caller's* frame, so nothing a caller holds is reachable from a fitted object; the sharing is between two of this package's own objects. Pinned in both directions and in the README's findings |
 | FI-10 | c | |
-| FI-11 | w | only `not np.allclose(...)`, not "every coefficient"; nothing on cbs `x` or the id set |
+| FI-11 | c | re-verdicted 2026-09-03: **round 5**: all four claims — every coefficient, every cbs `x`, the id set unchanged and equal to the log's |
 | FI-12 | c | re-verdicted 2026-09-03: closed by **D5** — the invariant is stated in `test_invariants.py` |
-| FI-13 | w | 4 of 11; `**kwargs` forwards anything; a LHS parses silently and fails with the wrong message |
-| FI-14 | w | 1 of 4 |
-| FI-15 | w | ~4 of 12; `constraint()` syntax does not exist here |
+| FI-13 | c | re-verdicted 2026-09-03: **round 5**: a left-hand side was swallowed into the first covariate name; now refused by name. Non-`ClvData` data was a bare `AttributeError`; now a `TypeError` naming the constructor |
+| FI-14 | c | re-verdicted 2026-09-03: **round 5**: non-`ClvData` data now names what the caller got wrong rather than an internal method |
+| FI-15 | c | re-verdicted 2026-09-03: **round 5**: `.` with exclusions implemented (`~ . - Gender | .` mis-parsed as one literal term), and R's `constraint()` refused by name with the argument that replaces it |
 
 ## S15 Input validation
 
