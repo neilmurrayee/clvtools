@@ -1893,6 +1893,30 @@ same floats), at :math:`\gamma \ne 0` — with :math:`\gamma = 0` every
 multiplier is 1 and the reconstruction holds for reasons having nothing to do
 with the walks, which is how DY-15's `d_omega` oracle came to be degenerate.
 
+### Batch 8 — the `B` section, and a helper I nearly mis-reported
+
+`B-08` is the one worth the care, and it is the shape a shape-assertion cannot
+catch. Resampling with replacement draws the same customer more than once, and
+each copy takes a synthetic id (`101_BOOTSTRAP_ID_1`) so the cbs can hold both.
+The claim is that the static covariates follow — same ids, sorted as the cbs is.
+The suite asserted a `(600, 2)` **shape**, which a design matrix built in the
+wrong order satisfies equally well, and that is a fit whose every coefficient is
+estimated against the wrong customer's covariates. Now every row is asserted to
+carry its own customer's values, with the synthetic id mapped back.
+
+**And I nearly reported a defect that is not there.** `bootstrap_data` returns a
+plain `ClvData` even from covariate data, which looks exactly like finding A2 —
+the dyncov bootstrap that refitted without covariates. It is the low-level
+helper: `bootstrap_apply` calls `_resample_covariates` around it, and through
+that path the class and the alignment are both correct. Checking the helper
+rather than the entry point would have produced a confident bug report about
+working code. The test says which path it uses and why.
+
+`B-15`: a non-callable `apply` ran **all 100 draws** and reported that all 100
+had failed — a hundred symptoms of one mistake, and a hundred resamples spent
+to say so. Refused before any draw now. `B-01`'s `num_boots=100` default is
+pinned, a default being exactly the kind of thing that drifts unnoticed.
+
 ### Batch 7 — the `X` section: four more arguments that lied about themselves
 
 `X-14` and `X-15` between them name twelve failure claims, and **four landed

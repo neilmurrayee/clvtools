@@ -232,6 +232,16 @@ def bootstrap_apply(
     """
     if num_boots < 1:
         raise ValueError("num_boots must be at least 1")
+    if not callable(apply):
+        # Checked here rather than left to the first draw. Spec `B-15` asks
+        # that `fn.boot.apply` be a function; a non-callable used to run every
+        # draw and then report "all 100 bootstrap draws failed", which buries
+        # the one thing that was wrong under a hundred symptoms of it -- and
+        # costs a hundred resamples to say so.
+        raise TypeError(
+            f"apply must be callable, not {type(apply).__name__}: it is given "
+            f"one resampled ClvData per draw and returns what to collect"
+        )
 
     ids = np.array(sorted(data.transactions["Id"].unique()))
     draw = _drawer(sample, np.random.default_rng(seed))

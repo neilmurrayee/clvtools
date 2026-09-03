@@ -567,21 +567,21 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 
 | | | evidence / note |
 |---|---|---|
-| B-01 | w | `num_boots=100` default never pinned |
+| B-01 | c | re-verdicted 2026-09-03: **round 5**: the `num_boots=100` default pinned |
 | B-02 | c | re-verdicted 2026-09-03: closed by **D6** — the bootstrap identity over the full id list, `test_invariants.py` |
 | B-03 | c | |
 | B-04 | a | holdout rows do survive; nothing asserts it |
 | B-05 | c | |
 | B-06 | c | |
 | B-07 | c | |
-| B-08 | w | `test_diagnostics.py:546` asserts a `(600, 2)` shape only; alignment is correct but unchecked |
+| B-08 | c | re-verdicted 2026-09-03: **round 5**: every design row asserted to carry its own customer's covariates, through `bootstrap_apply` and under duplicated ids — the `(600, 2)` shape a wrongly ordered matrix would also satisfy |
 | B-09 | a ! | **`ClvDataDynCov` subclasses `ClvData`, so the resample branch never fires — the dyncov bootstrap silently refits without covariates** (**A2**) |
 | B-10 | o | the library never holds a specification: `apply` does its own fitting, so nothing can drop `use_cor` or lambdas. Architectural, not tested — and B-09 breaks the dyncov arm regardless |
 | B-11 | a | no all-customers refit compared to the original coefficients (**D6**) |
 | B-12 | w | pinned at data level for one id |
 | B-13 | c | |
 | B-14 | w | one combination end to end; static-cov shape-tested; dyncov broken per B-09 |
-| B-15 | w | 2 of 6 |
+| B-15 | c | re-verdicted 2026-09-03: **round 5**: a non-callable `apply` ran all 100 draws and reported all 100 failures; now refused before any runs. The draw-count and level bounds pinned |
 
 ## S13 Inference
 

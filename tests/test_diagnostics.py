@@ -838,3 +838,93 @@ class TestBootstrappingDynamicCovariatesRefuses:
         )
         with pytest.raises(NotImplementedError, match="time-varying covariate"):
             bootstrap_apply(data, lambda resampled: resampled.nobs(), num_boots=1)
+
+
+class TestBootstrapArgumentsAndCovariateAlignment:
+    """Spec B-01, B-08 and B-15, all `weak`.
+
+    `B-01` -- the default `num_boots` is 100 -- was never pinned, and a default
+    is exactly the kind of thing that drifts unnoticed.
+
+    `B-08` is the one worth the care. Resampling *with replacement* draws the
+    same customer more than once, and each copy gets a synthetic id
+    (``101_BOOTSTRAP_ID_1``) so the cbs can hold both. The claim is that the
+    static covariates follow: same ids, sorted the same way as the cbs. The
+    suite asserted a ``(600, 2)`` shape, which a design matrix built in the
+    wrong order would also satisfy -- and that is a fit whose every coefficient
+    is estimated against the wrong customer's covariates.
+
+    `B-15`'s six argument checks were two-of-six, and one landed badly.
+    Backlog item 34, round 5.
+    """
+
+    def test_the_default_number_of_draws_is_a_hundred(self):
+        import inspect
+
+        from clvtools import bootstrap
+
+        default = inspect.signature(
+            bootstrap.bootstrap_apply
+        ).parameters["num_boots"].default
+        assert default == 100
+
+    @pytest.mark.slow
+    def test_every_design_row_is_its_own_customers_covariates(self, static_data):
+        """B-08, through `bootstrap_apply` rather than `bootstrap_data`.
+
+        The latter is the low-level helper and returns plain data on purpose;
+        `bootstrap_apply` rebuilds the covariates around it. Checking the helper
+        would have reported a defect that is not there.
+        """
+        from clvtools import bootstrap, load_apparel_static_cov
+
+        original = load_apparel_static_cov().set_index("Id")
+        seen = []
+
+        def check(resampled):
+            cbs = resampled.customer_summary()
+            design = np.asarray(resampled.design_life())
+            assert isinstance(resampled, type(static_data))
+            assert design.shape[0] == len(cbs)
+            for row, customer in enumerate(cbs["Id"]):
+                # A duplicated customer carries a synthetic id; the covariates
+                # it should carry are the original customer's.
+                source = str(customer).split("_BOOTSTRAP_ID_")[0]
+                assert float(design[row, 0]) == float(
+                    original.loc[source, "Gender"]
+                ), f"row {row} carries the wrong customer's covariates"
+            seen.append(len(cbs))
+            return 1.0
+
+        bootstrap.bootstrap_apply(static_data, apply=check, num_boots=3, seed=7)
+        assert seen == [600, 600, 600]
+
+    def test_a_non_callable_apply_is_refused_before_any_draw_runs(self):
+        """B-15. It used to run all 100 draws and report that all 100 failed.
+
+        A hundred symptoms of one mistake, and a hundred resamples spent to say
+        so -- the count is what makes this worth fixing rather than rewording.
+        """
+        from clvtools import ClvData, bootstrap, load_apparel_trans
+
+        data = ClvData(load_apparel_trans(), time_unit="week", estimation_split=104)
+        with pytest.raises(TypeError, match="apply must be callable, not int"):
+            bootstrap.bootstrap_apply(data, apply=5, num_boots=100)
+
+    @pytest.mark.parametrize("num_boots", [0, -1])
+    def test_a_non_positive_draw_count_is_refused(self, num_boots):
+        from clvtools import ClvData, bootstrap, load_apparel_trans
+
+        data = ClvData(load_apparel_trans(), time_unit="week", estimation_split=104)
+        with pytest.raises(ValueError, match="num_boots must be at least 1"):
+            bootstrap.bootstrap_apply(data, apply=lambda d: 1.0, num_boots=num_boots)
+
+    @pytest.mark.parametrize("level", [1.5, -0.1, 0.0, 1.0])
+    def test_a_confidence_level_outside_the_unit_interval_is_refused(self, level):
+        from clvtools import bootstrap
+
+        draws = pd.DataFrame({"Id": ["a", "a", "b"], "value": [1.0, 2.0, 3.0]})
+        with pytest.raises(ValueError, match="level must lie strictly between"):
+            bootstrap.confidence_intervals(
+                draws, columns=["value"], by="Id", level=level
+            )
