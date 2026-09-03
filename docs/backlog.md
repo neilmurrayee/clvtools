@@ -10,8 +10,8 @@ speculation.
 stop. Do not add items without evidence, and do not work an item marked
 `[needs-decision]` — those need the maintainer.
 
-**Rounds 3 and 4 are open**, from two reviews on 2026-09-02. Open: 31, 32 and
-the two `[~]` remainders of 23 and 25. Everything else is closed, and item
+**Rounds 3 and 4 are open**, from two reviews on 2026-09-02. Open: 32 and the
+two `[~]` remainders of 23 and 25. Everything else is closed, and item
 16 was the last one carrying `[needs-decision]` — no item does now. The phrase
 survives on two settled sub-bullets inside closed items 13 and 22, which say so
 where they stand.
@@ -1399,6 +1399,13 @@ what that section is for. Each has a test instead.
 *Verified:* 1,200 passed (47 new), 1 deselected, `TOTAL 2769 0 100%`, in
 **4:04** against the 3:45 baseline; `ruff check src tests tools docs` clean.
 
+**One thing this item concluded was wrong**, and item 31 carries the
+correction: chasing why a capped fit still ran long, it blamed `maxfun` being a
+Nelder-Mead near-miss and raised item 31 on that. All the call sites in question
+use L-BFGS-B, where `maxfun` is correct. The real cause was the polish stage
+ignoring the caller's options entirely. This commit's message states the wrong
+version; item 31 states what is true.
+
 
 ## 28. `[x]` Combine `F1·F2 + F3` in log space — the rest of finding 10
 
@@ -1572,29 +1579,53 @@ that SciPy is asked for no argument twice, and asserts the memo does not outlive
 its evaluation — scope being load-bearing in both directions, since a wider one
 would grow an unbounded dictionary of misses across a fit's ~1,900 evaluations.
 
-## 31. `[ ]` Validate optimiser overrides against the method — the rest of finding 20
+## 31. `[x]` Validate optimiser overrides — and the claim that raised it was wrong
 
-Found while working item 27, and it is already biting inside this repository.
-`options_for` merges a caller's `overrides` into the method's defaults with no
-check, so a key that belongs to a *different* SciPy method is passed straight
-through and ignored. That is finding 20's "unknown keys reach SciPy as a
-warning where R errors", and spec `V-03`, which `docs/spec-audit.md` marks
-`absent`.
+Found while working item 27, and **the specific instance it named does not
+exist.** This item, as written, said:
 
-The live instance is `maxfun`. It is a **real** key — `_optimize.py:48` sets it
-for L-BFGS-B — and it is *not* a Nelder-Mead key, which wants `maxfev`. Seven
-call sites across `tests/test_families.py` and `tests/test_pnbd_dyncov.py` pass
-`options={"maxiter": N, "maxfun": M}` to Nelder-Mead fits believing they cap
-function evaluations. `maxiter` works; `maxfun` does nothing. A key that is
-valid for the neighbouring method is exactly the typo no reviewer catches, and
-SciPy's warning is easy to miss and was suppressed in the run that found this.
+> The live instance is `maxfun`. [...] Seven call sites across
+> `tests/test_families.py` and `tests/test_pnbd_dyncov.py` pass
+> `options={"maxiter": N, "maxfun": M}` to Nelder-Mead fits believing they cap
+> function evaluations. `maxiter` works; `maxfun` does nothing.
 
-*Done when:* an override key that the chosen method does not accept raises,
-naming the method and the near-miss where there is one (`maxfun` → `maxfev`);
-the seven call sites are corrected to whatever they meant; and it is decided
-whether R's behaviour (error) or a warning is right here, recorded either way.
-Note that fixing the key will make those tests *slower*, since the cap will
-start applying — check what they cost before and after.
+**All seven call sites use L-BFGS-B, where `maxfun` is the correct key.**
+`fit_pnbd`, `fit_ggomnbd`, `fit_pnbd_dyncov` and the covariate fits all default
+to `method="L-BFGS-B"`; only the polish stage inside `_staticcov` is
+Nelder-Mead. Nothing was dead. The inference came from watching a capped fit
+run long and reaching for the nearest explanation without checking which method
+the call actually used — the same shape as the `args(bgbb)` mistake in item 16,
+made by me one item earlier.
+
+**What was really defeating the cap is worse, and is now fixed.** The polish
+stage ran `optimize.minimize(..., options={"maxiter": 20_000, "maxfev": 20_000,
+...})` — its own budget, hard-coded, ignoring the caller's `options` entirely.
+So a caller who bounded a fit got an unbounded second stage:
+
+| `fit_pnbd_staticcov(options={"maxiter": 3})` | |
+|---|---|
+| `polish=False` | 0.005 s |
+| `polish=True` (the default) | **10.527 s** |
+
+A factor of **2,100** between what was asked for and what ran, on twelve
+customers. The polish now carries the caller's overrides too, narrowed to the
+keys Nelder-Mead reads — the search above it is usually L-BFGS-B, so `maxfun`
+would be forwarded into a stage that rejects it. Capped, the same fit is now
+**0.008 s**. With no overrides `_polish_overrides` returns `{}` and the polish
+options are byte-identical to before, so the default path is unchanged.
+
+**And the general claim behind the item holds, so the validation was built.**
+`options_for` merged anything: `overrides={"nonsense": 1}` passed straight
+through, and SciPy's response is a `UserWarning: Unknown solver options` and
+then silently dropping the key. R errors. So does this now, naming the method,
+the near-miss where there is one (`maxfun` ↔ `maxfev`, which cap the same thing
+under different spellings), and the keys the method does accept. That is finding
+20's last bullet and spec `V-03`.
+
+The accepted keys are **asked of SciPy** rather than listed here — the keyword
+parameters of `_minimize_neldermead` and `_minimize_lbfgsb` *are* the contract,
+and a hard-coded copy would drift from it. An unrecognised method validates
+nothing rather than refusing something SciPy might accept.
 
 ## 32. `[ ]` Form the `pmf`'s difference without cancelling — the rest of item 29
 

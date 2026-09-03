@@ -319,3 +319,87 @@ class TestAScalarRegLambdaSaysWhatItWanted:
 
         got = _validated_reg_lambdas(value)
         assert got == (None if value is None else (0.1, 0.2))
+
+
+class TestOptimiserOverridesAreCheckedAgainstTheMethod:
+    """Backlog item 31: `options_for` merged anything the caller passed.
+
+    SciPy's answer to a key the solver does not read is a
+    ``UserWarning: Unknown solver options`` and then dropping it, so a caller
+    who asked for a bound got a fit that ran without one. R errors. Finding 20
+    of ``docs/review-2026-09-02.md``, spec ``V-03``.
+
+    The accepted keys are asked of SciPy rather than listed here -- the keyword
+    parameters of ``_minimize_neldermead`` and ``_minimize_lbfgsb`` *are* the
+    contract, and a copy would drift from it.
+    """
+
+    @staticmethod
+    def _options(method, **overrides):
+        from clvtools._optimize import options_for
+
+        return options_for(method, 100, np.zeros(3), overrides=overrides or None)
+
+    def test_a_key_the_method_cannot_read_is_refused(self):
+        with pytest.raises(ValueError, match="does not accept 'nonsense'"):
+            self._options("L-BFGS-B", nonsense=1)
+
+    @pytest.mark.parametrize("method,wrong,right", [
+        ("Nelder-Mead", "maxfun", "maxfev"),
+        ("L-BFGS-B", "maxfev", "maxfun"),
+    ])
+    def test_the_near_miss_pair_is_named(self, method, wrong, right):
+        """`maxfun` and `maxfev` cap the same thing under two spellings.
+
+        Which is exactly why passing one where the other belongs looks right,
+        and why the message says which one this method wants.
+        """
+        with pytest.raises(ValueError, match=f"did you mean '{right}'"):
+            self._options(method, **{wrong: 5})
+
+    @pytest.mark.parametrize("method,key", [
+        ("L-BFGS-B", "maxfun"), ("Nelder-Mead", "maxfev"),
+        ("L-BFGS-B", "ftol"), ("Nelder-Mead", "fatol"),
+    ])
+    def test_and_the_right_spelling_still_gets_through(self, method, key):
+        assert self._options(method, **{key: 5})[key] == 5
+
+    def test_an_unrecognised_method_validates_nothing(self):
+        """Rather than refusing a method SciPy might well accept."""
+        assert self._options("Powell", anything=1)["anything"] == 1
+
+    def test_no_overrides_is_not_an_error(self):
+        assert "maxiter" in self._options("L-BFGS-B")
+
+
+class TestTheCallersCapReachesThePolish:
+    """Backlog item 31: the polish ran on its own budget, not the caller's.
+
+    ``_fit_from_candidates`` polishes an L-BFGS-B result with Nelder-Mead under
+    a hard-coded ``maxiter=20_000, maxfev=20_000``, and used to keep those
+    whatever the caller asked for. Measured on twelve customers,
+    ``fit_pnbd_staticcov(options={"maxiter": 3})`` took **10.527 s** with the
+    polish and **0.005 s** without it -- a factor of 2,100 between what was
+    requested and what ran.
+    """
+
+    def test_the_overrides_reach_the_polish(self):
+        from clvtools._staticcov import _polish_overrides
+
+        assert _polish_overrides({"maxiter": 3})["maxiter"] == 3
+
+    def test_but_only_the_keys_nelder_mead_reads(self):
+        """The search above is usually L-BFGS-B, whose `maxfun` this stage
+        would reject -- so it is filtered rather than forwarded or translated.
+        """
+        from clvtools._staticcov import _polish_overrides
+
+        got = _polish_overrides({"maxiter": 3, "maxfun": 9, "ftol": 1e-9})
+        assert got == {"maxiter": 3}
+
+    def test_and_no_overrides_leaves_the_polish_exactly_as_it_was(self):
+        """The default path has to be unchanged, not merely equivalent."""
+        from clvtools._staticcov import _polish_overrides
+
+        assert _polish_overrides(None) == {}
+        assert _polish_overrides({}) == {}

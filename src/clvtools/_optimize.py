@@ -22,6 +22,9 @@ finds the published optimum.
 
 from __future__ import annotations
 
+import functools
+import inspect
+
 import numpy as np
 
 __all__ = ["options_for"]
@@ -63,6 +66,76 @@ def _initial_simplex(x0: np.ndarray) -> np.ndarray:
     return simplex
 
 
+#: Option keys a method actually reads, asked of SciPy rather than listed here.
+#:
+#: A hard-coded list is a second copy of SciPy's contract and would drift from
+#: it; the keyword parameters of the ``_minimize_*`` implementations *are* the
+#: contract. Looked up once per method and cached, since it is a signature
+#: inspection rather than anything numerical.
+_NOT_AN_OPTION = frozenset(
+    {"fun", "func", "x0", "args", "jac", "hess", "hessp", "bounds", "constraints",
+     "callback", "return_all", "unknown_options"}
+)
+
+
+@functools.cache
+def _accepted_options(method: str) -> frozenset[str]:
+    """The option keys ``method`` reads, from its SciPy implementation."""
+    from scipy import optimize
+    from scipy.optimize import _minimize
+
+    implementations = {
+        "Nelder-Mead": _minimize._minimize_neldermead,
+        "L-BFGS-B": optimize._lbfgsb_py._minimize_lbfgsb,
+    }
+    implementation = implementations.get(method)
+    if implementation is None:
+        # An unrecognised method: nothing to check against, so check nothing
+        # rather than refusing a method SciPy may well accept.
+        return frozenset()
+    return frozenset(
+        name
+        for name, parameter in inspect.signature(implementation).parameters.items()
+        if parameter.default is not parameter.empty and name not in _NOT_AN_OPTION
+    )
+
+
+#: Keys that are valid for one method and mean the same thing under another
+#: name for the other. `maxfun` and `maxfev` are the pair that matters: both
+#: cap function evaluations, L-BFGS-B spells it the first way and Nelder-Mead
+#: the second, so passing one where the other belongs looks entirely right.
+_NEAR_MISSES = {"maxfun": "maxfev", "maxfev": "maxfun"}
+
+
+def _reject_unknown_options(method: str, overrides: dict) -> None:
+    """Refuse an override key the method will silently ignore.
+
+    SciPy warns here -- ``UserWarning: Unknown solver options: maxfun`` -- and
+    then drops the key. R errors, and so does this: an option that was asked for
+    and not applied is a fit that did something other than what was requested,
+    which is the one thing an escape hatch must not do quietly. See finding 20
+    of ``docs/review-2026-09-02.md`` and spec ``V-03``.
+    """
+    accepted = _accepted_options(method)
+    if not accepted:
+        return
+    unknown = sorted(set(overrides) - accepted)
+    if not unknown:
+        return
+    hints = []
+    for key in unknown:
+        near = _NEAR_MISSES.get(key)
+        if near is not None and near in accepted:
+            hints.append(f"{key!r} (did you mean {near!r}? {method} spells it that way)")
+        else:
+            hints.append(repr(key))
+    raise ValueError(
+        f"{method} does not accept {', '.join(hints)}. SciPy would warn and "
+        f"ignore these, leaving the fit unbounded by an option that was asked "
+        f"for. It accepts: {', '.join(sorted(accepted))}."
+    )
+
+
 def options_for(
     method: str,
     maxiter: int,
@@ -74,11 +147,16 @@ def options_for(
     ``overrides`` is the escape hatch S6.2.1 describes for CLVTools: "If
     questions on optimality arise, the parameter ``optimx.args`` allows the
     optimization routine to be controlled."
+
+    A key ``method`` does not read is refused rather than passed on. SciPy
+    warns and drops it, which means a caller who asked for a bound gets a fit
+    that ran without one -- and the warning is easy to miss.
     """
     options: dict = {"maxiter": maxiter}
     options.update(_TOLERANCES.get(method, {}))
     if method == "Nelder-Mead":
         options["initial_simplex"] = _initial_simplex(np.asarray(x0, dtype=float))
     if overrides:
+        _reject_unknown_options(method, overrides)
         options.update(overrides)
     return options

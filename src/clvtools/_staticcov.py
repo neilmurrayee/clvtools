@@ -30,7 +30,7 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from scipy import optimize
 
-from clvtools._optimize import options_for
+from clvtools._optimize import _accepted_options, options_for
 from clvtools._validate import ConvergenceWarning, finished, start_values
 from clvtools.inference import Fitted, numerical_hessian
 
@@ -323,6 +323,21 @@ class _Layout:
         ])
 
 
+def _polish_overrides(overrides: dict | None) -> dict:
+    """The caller's optimiser overrides, narrowed to what the polish can read.
+
+    The polish is always Nelder-Mead while the search above it is usually
+    L-BFGS-B, so the two accept different spellings of the same bound --
+    ``maxfun`` against ``maxfev``. Forwarding the intersection means a caller
+    who caps the fit caps all of it, without this stage inheriting a key that
+    :func:`~clvtools._optimize.options_for` would refuse.
+    """
+    if not overrides:
+        return {}
+    accepted = _accepted_options("Nelder-Mead")
+    return {k: v for k, v in overrides.items() if k in accepted}
+
+
 def _validated_reg_lambdas(
     reg_lambdas: tuple[float, float] | None,
 ) -> tuple[float, float] | None:
@@ -431,6 +446,15 @@ def _search(
                 # far below anything that matters.
                 "maxiter": 20_000, "maxfev": 20_000,
                 "xatol": 1e-10, "fatol": 1e-10, "initial_simplex": simplex,
+                # A caller who bounded the search meant the whole fit, not its
+                # first stage. This stage used to keep the 20,000 above
+                # whatever was asked for, so `options={"maxiter": 3}` returned
+                # in 10.5 s where `polish=False` returned in 0.005 s -- a
+                # factor of 2,100 between what was requested and what ran.
+                # Backlog item 31. Only the keys Nelder-Mead reads are carried
+                # over: the search above may be L-BFGS-B, whose `maxfun` this
+                # stage would reject.
+                **_polish_overrides(settings.options),
             },
         )
         if polished.fun < result.fun:
