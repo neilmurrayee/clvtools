@@ -1893,6 +1893,40 @@ same floats), at :math:`\gamma \ne 0` — with :math:`\gamma = 0` every
 multiplier is 1 and the reconstruction holds for reasons having nothing to do
 with the walks, which is how DY-15's `d_omega` oracle came to be degenerate.
 
+### Batch 7 — the `X` section: four more arguments that lied about themselves
+
+`X-14` and `X-15` between them name twelve failure claims, and **four landed
+badly** — all of the shape the last three rounds keep finding, where an argument
+is accepted or refused for a reason that is true but not the problem:
+
+* A **`NaN` regularization lambda** was accepted, reached the objective, and
+  surfaced as `"objective is not finite"` — a message about the model, caused
+  by an argument. A non-numeric pair surfaced `float()`'s own
+  `could not convert string to float: 'a'`.
+* **`names_cov_constr="Gender"`**, a bare string, was iterated character by
+  character and reported `cannot constrain 'G'`. Python's oldest sharp edge,
+  and the message gave no hint of it.
+* A **duplicated** constraint was accepted, tying one covariate twice and
+  leaving the search a coordinate it could not move.
+* An **unknown** name was told "it must be a covariate of both processes" —
+  true, and not the problem: `Nope` is a covariate of neither, and the message
+  sent the reader looking for an asymmetry that is not there. The one-sided
+  case now names *which* side it is missing from, which is the message that
+  was right all along.
+
+`X-02` is the one worth the care. With covariate data identically zero,
+`exp(γ'x) = 1` for **every** γ, so the covariate model is the plain one — and
+the audit's note is the claim itself: "the randomness is the claim: it must hold
+for any gamma". A fixed γ leaves open the single way this could fail, a γ
+reaching the likelihood by some path other than the multiplier. Now eight
+seeded draws over [-40, 40] so a coefficient of 40 is tried beside one of 1e-9,
+across all three families, and **bit-exact** for the Pareto/NBD: `exp(0)` is 1
+to the bit, and a tolerance would hide a multiplier that was 1 + 1e-13 for a
+reason.
+
+`X-12` was simply untested with a non-default `start_m`; an argument accepted
+and dropped would have looked identical.
+
 ### Batch 6 — the `C` section, and a decision that lived only in a docstring
 
 `C-01` to `C-04` all hold, each with one arm tested. `C-03` is the one whose

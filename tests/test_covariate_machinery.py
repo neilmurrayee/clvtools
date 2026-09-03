@@ -403,3 +403,113 @@ class TestTheCallersCapReachesThePolish:
 
         assert _polish_overrides(None) == {}
         assert _polish_overrides({}) == {}
+
+
+class TestRegularizationWeightsAndConstraintNamesSayWhatIsWrong:
+    """Spec X-14 and X-15, six failure claims each, and four landed badly.
+
+    Both are the "make bad input loud" class this repository has spent items
+    21, 27 and 29 on, and both were caught by the same kind of reading: the
+    argument was accepted, or refused for a reason that was true but not the
+    problem. Backlog item 34, round 5.
+    """
+
+    LIFE: ClassVar[list[str]] = ["Gender", "Channel"]
+
+    def test_a_nan_lambda_is_refused_rather_than_reaching_the_objective(self):
+        """X-14. It used to be accepted and surface as "objective is not
+        finite" -- a message about the model, from an argument."""
+        from clvtools._staticcov import _validated_reg_lambdas
+
+        with pytest.raises(ValueError, match="must be numbers"):
+            _validated_reg_lambdas((float("nan"), 0.2))
+
+    def test_and_so_is_a_pair_that_is_not_numeric(self):
+        """Previously `could not convert string to float: 'a'`, from `float()`."""
+        from clvtools._staticcov import _validated_reg_lambdas
+
+        with pytest.raises(ValueError, match="must be numbers"):
+            _validated_reg_lambdas(("a", "b"))
+
+    @pytest.mark.parametrize("value", [(0.1, 0.2), [0.0, 0.0], None])
+    def test_the_pairs_that_were_always_fine_still_are(self, value):
+        from clvtools._staticcov import _validated_reg_lambdas
+
+        _validated_reg_lambdas(value)
+
+    def test_a_bare_string_constraint_is_not_iterated_character_by_character(
+        self,
+    ):
+        """X-15. `names_cov_constr="Gender"` reported `cannot constrain 'G'`.
+
+        Python's oldest sharp edge, and the message gave no hint of it.
+        """
+        from clvtools._staticcov import _validated_constraints
+
+        with pytest.raises(TypeError, match=r"pass \['Gender'\]"):
+            _validated_constraints("Gender", self.LIFE, self.LIFE)
+
+    def test_a_duplicated_constraint_is_refused(self):
+        """It used to be accepted, tying one covariate twice and leaving the
+        search a coordinate it could not move."""
+        from clvtools._staticcov import _validated_constraints
+
+        with pytest.raises(ValueError, match="twice"):
+            _validated_constraints(
+                ["Gender", "Gender"], self.LIFE, self.LIFE
+            )
+
+    def test_an_unknown_name_says_it_is_unknown(self):
+        """Not "it must be a covariate of both processes", which was true and
+        not the problem: `Nope` is a covariate of neither, and the old message
+        sent the reader looking for an asymmetry that is not there."""
+        from clvtools._staticcov import _validated_constraints
+
+        with pytest.raises(ValueError, match="the data carries Channel, Gender"):
+            _validated_constraints(["Nope"], self.LIFE, self.LIFE)
+
+    def test_but_a_one_sided_name_still_names_the_side_it_is_missing_from(self):
+        """The message that *was* right, kept and made specific."""
+        from clvtools._staticcov import _validated_constraints
+
+        with pytest.raises(ValueError, match="missing from the transaction one"):
+            _validated_constraints(["Channel"], self.LIFE, ["Gender"])
+
+    def test_and_the_valid_forms_are_unmoved(self):
+        from clvtools._staticcov import _validated_constraints
+
+        assert _validated_constraints(["Gender"], self.LIFE, self.LIFE) == [
+            "Gender"
+        ]
+        assert _validated_constraints(None, self.LIFE, self.LIFE) == []
+        assert _validated_constraints([], self.LIFE, self.LIFE) == []
+
+
+class TestCorrelationTakesAStartValue:
+    """Spec X-12, `weak`: "`start_m` never given a non-default value".
+
+    S6.5.2's ``use.cor`` is offered "alone and with start parameters". The
+    refusals were covered -- the other families reject correlation -- but the
+    start value itself was never exercised, so an argument that was accepted
+    and dropped would have looked identical.
+    """
+
+    @pytest.mark.slow
+    def test_a_start_value_reaches_the_search(self, cbs_estimation):
+        """Two different starts must not give the same first step.
+
+        Capped hard: what is under test is that the argument arrives, not where
+        the optimiser ends up.
+        """
+        from clvtools.pnbd import fit_pnbd_correlated
+
+        common = {
+            "hessian": False, "options": {"maxiter": 2},
+        }
+        args = (
+            cbs_estimation["x"], cbs_estimation["t.x"], cbs_estimation["T.cal"],
+        )
+        default = fit_pnbd_correlated(*args, **common)
+        started = fit_pnbd_correlated(*args, start_m=0.2, **common)
+        assert default.m != started.m
+        assert -1.0 <= started.m <= 1.0

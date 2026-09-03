@@ -479,7 +479,7 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | | | evidence / note |
 |---|---|---|
 | X-01 | a | no fit ever run on identically-zero covariate data |
-| X-02 | w | `test_pnbd_staticcov.py:267` uses *fixed* γ, not a random draw — the randomness is the claim; pnbd only; summed form not asserted |
+| X-02 | c | re-verdicted 2026-09-03: **round 5**: eight seeded random gammas over [-40, 40], all three families, and bit-exact (`np.array_equal`) for the Pareto/NBD — the randomness being the claim |
 | X-03 | c | |
 | X-04 | a | no γ=0 `predict()` comparison in any of the three forms |
 | X-05 | a | no γ=0 plot/pmf/pmf-plot comparison |
@@ -489,10 +489,10 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | X-09 | c ! | re-verdicted 2026-09-03: closed by **A7** — `test_estimate.py:244` pins correlation + covariates raising |
 | X-10 | c | |
 | X-11 | a | no syntactically illegal covariate name |
-| X-12 | w | refusals covered; `start_m` never given a non-default value |
+| X-12 | c | re-verdicted 2026-09-03: **round 5**: `start_m` given a non-default value and shown to reach the search |
 | X-13 | a | `start_m` has no single-value/NA/[-1,1] check, no warning when `use_cor=False` |
-| X-14 | w | 2 of 6; NaN escapes and misreports as "objective is not finite"; the (life, trans) order *is* pinned |
-| X-15 | w | 1 of 6; `names_cov_constr=["Nope"]` gives a misleading "covariate of both" message |
+| X-14 | c | re-verdicted 2026-09-03: **round 5**: a `NaN` lambda was accepted and surfaced later as "objective is not finite"; now refused, as is a non-numeric pair |
+| X-15 | c | re-verdicted 2026-09-03: **round 5**: three of six landed badly — a bare string was iterated character by character, a duplicate was accepted, and an unknown name was blamed on "both processes". All three now name the actual problem |
 
 ## S9 Dyncov
 

@@ -269,12 +269,9 @@ class _Layout:
         ([1], [0], 3)
         """
         names_life, names_trans = list(names_cov_life), list(names_cov_trans)
-        constrained = list(names_cov_constr or [])
-        for name in constrained:
-            if name not in names_life or name not in names_trans:
-                raise ValueError(
-                    f"cannot constrain {name!r}: it must be a covariate of both processes"
-                )
+        constrained = _validated_constraints(
+            names_cov_constr, names_life, names_trans
+        )
         free_life = [n for n in names_life if n not in constrained]
         free_trans = [n for n in names_trans if n not in constrained]
         return cls(
@@ -338,6 +335,54 @@ def _polish_overrides(overrides: dict | None) -> dict:
     return {k: v for k, v in overrides.items() if k in accepted}
 
 
+def _validated_constraints(
+    names_cov_constr, names_life: list[str], names_trans: list[str]
+) -> list[str]:
+    """S6.5.3's tied covariates, checked before they reach the layout.
+
+    Spec `X-15` names six failure claims. Three of them landed badly:
+
+    * A **bare string** was iterated character by character, so
+      ``names_cov_constr="Gender"`` reported ``cannot constrain 'G'``. Python's
+      oldest sharp edge, and the message gave no hint of it.
+    * A **duplicate** was accepted, silently tying one covariate twice and
+      leaving the search a coordinate it could not move.
+    * An **unknown name** was told "it must be a covariate of both processes",
+      which is true and not the problem: ``Nope`` is a covariate of neither, and
+      the message sent the reader looking for an asymmetry that is not there.
+    """
+    if names_cov_constr is None:
+        return []
+    if isinstance(names_cov_constr, str):
+        raise TypeError(
+            f"names_cov_constr must be a list of covariate names, not the "
+            f"string {names_cov_constr!r}: pass [{names_cov_constr!r}]"
+        )
+    constrained = list(names_cov_constr)
+    duplicates = [
+        name for i, name in enumerate(constrained) if name in constrained[:i]
+    ]
+    if duplicates:
+        raise ValueError(
+            f"cannot constrain {duplicates[0]!r} twice: names_cov_constr has "
+            f"{len(constrained)} entries and {len(set(constrained))} distinct"
+        )
+    known = set(names_life) | set(names_trans)
+    for name in constrained:
+        if name not in known:
+            raise ValueError(
+                f"cannot constrain {name!r}: the data carries "
+                f"{', '.join(sorted(known))}"
+            )
+        if name not in names_life or name not in names_trans:
+            side = "transaction" if name in names_life else "lifetime"
+            raise ValueError(
+                f"cannot constrain {name!r}: it must be a covariate of both "
+                f"processes and is missing from the {side} one"
+            )
+    return constrained
+
+
 def _validated_reg_lambdas(
     reg_lambdas: tuple[float, float] | None,
 ) -> tuple[float, float] | None:
@@ -353,9 +398,19 @@ def _validated_reg_lambdas(
             f"{reg_lambdas!r}; pass ({reg_lambdas!r}, {reg_lambdas!r}) to "
             f"penalise both processes equally"
         )
-    reg = tuple(float(v) for v in reg_lambdas)
+    try:
+        reg = tuple(float(v) for v in reg_lambdas)
+    except (TypeError, ValueError) as error:
+        raise ValueError(
+            f"regularization weights must be numbers, got {tuple(reg_lambdas)!r}"
+        ) from error
     if len(reg) != 2:
         raise ValueError("reg_lambdas must give two values (life, trans)")
+    if any(np.isnan(v) for v in reg):
+        # Accepted until now, and it escaped into the objective: the fit then
+        # failed with "objective is not finite", which points at the model
+        # rather than at the argument. Spec `X-14`.
+        raise ValueError(f"regularization weights must be numbers, got {reg}")
     if any(v < 0 for v in reg):
         raise ValueError("regularization weights must be non-negative")
     return reg

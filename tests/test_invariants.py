@@ -31,6 +31,8 @@ that silently refitted without covariates.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -378,3 +380,78 @@ class TestDrawingEveryCustomerOnce:
         again = fit_pnbd(drawn["x"], drawn["t_x"], drawn["T"], hessian=False)
         assert list(again) == list(first)
         assert again.log_likelihood == first.log_likelihood
+
+
+class TestZeroCovariatesMatchTheNoCovariateModelForAnyGamma:
+    """Spec X-02, `weak`: the existing test used a *fixed* gamma.
+
+    With covariate data identically zero, ``exp(gamma'x) = exp(0) = 1`` for
+    **every** gamma, so a covariate model is the plain one. The audit's note is
+    the whole point: "the randomness is the claim: it must hold for any gamma".
+    A fixed gamma leaves open the one way this could fail -- a gamma reaching
+    the likelihood by some path other than the multiplier.
+
+    Drawn from a seeded generator across a wide range, so a coefficient of 40 is
+    tried beside one of 1e-9, and for all three families rather than the
+    Pareto/NBD alone. Element-wise where the family exposes a per-customer
+    entry point, summed where it does not. Backlog item 34, round 5.
+    """
+
+    N_DRAWS = 8
+    SEED = 20260903
+    MODEL: ClassVar[dict] = {
+        "pnbd": (1.4490, 48.6361, 0.5613, 46.8844),
+        "bgnbd": (0.2426, 4.4136, 0.7929, 2.4259),
+        "ggomnbd": (0.6, 10.0, 1e-6, 0.6, 12.0),
+    }
+
+    @pytest.fixture(scope="class")
+    def inputs(self, cbs_estimation):
+        x = cbs_estimation["x"].to_numpy(dtype=float)
+        t_x = cbs_estimation["t.x"].to_numpy(dtype=float)
+        T = cbs_estimation["T.cal"].to_numpy(dtype=float)
+        return x, t_x, T, np.zeros((x.size, 2))
+
+    def _gammas(self):
+        rng = np.random.default_rng(self.SEED)
+        for _ in range(self.N_DRAWS):
+            # Wide on purpose: exp(40 * 0) is 1 exactly, and so is exp(1e-9 * 0).
+            yield rng.uniform(-40.0, 40.0, size=2)
+
+    def test_the_pareto_nbd_agrees_element_wise_for_every_drawn_gamma(
+        self, inputs
+    ):
+        from clvtools.pnbd import log_likelihood_ind
+        from clvtools.pnbd.staticcov import log_likelihood_staticcov_ind
+
+        x, t_x, T, zeros = inputs
+        plain = log_likelihood_ind(x, t_x, T, *self.MODEL["pnbd"])
+        for gamma in self._gammas():
+            covaried = log_likelihood_staticcov_ind(
+                x, t_x, T, *self.MODEL["pnbd"],
+                gamma_life=gamma, gamma_trans=gamma,
+                cov_life=zeros, cov_trans=zeros,
+            )
+            # Exact, not close: `exp(0)` is 1 to the bit, and a tolerance here
+            # would hide a multiplier that was 1 + 1e-13 for a reason.
+            assert np.array_equal(covaried, plain), f"moved for gamma={gamma}"
+
+    @pytest.mark.parametrize("family", ["bgnbd", "ggomnbd"])
+    def test_and_the_other_families_agree_in_the_sum(self, inputs, family):
+        """Summed because these two expose no per-customer covariate entry."""
+        import clvtools
+
+        x, t_x, T, zeros = inputs
+        module = getattr(clvtools, family)
+        plain = float(np.sum(
+            module.log_likelihood_ind(x, t_x, T, *self.MODEL[family])
+        ))
+        for gamma in self._gammas():
+            covaried = module.log_likelihood_staticcov(
+                x, t_x, T, *self.MODEL[family],
+                gamma_life=gamma, gamma_trans=gamma,
+                cov_life=zeros, cov_trans=zeros,
+            )
+            assert float(covaried) == pytest.approx(plain, rel=1e-15), (
+                f"{family} moved for gamma={gamma}"
+            )
