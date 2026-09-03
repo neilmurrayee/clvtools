@@ -22,7 +22,7 @@ a :class:`~clvtools.data.ClvDataDynCov` the time-varying one.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TypeVar
 
 from clvtools import bgnbd, ggomnbd
 from clvtools.data import ClvData, ClvDataDynCov, ClvDataStaticCov
@@ -139,9 +139,23 @@ def _reject_use_cor(name: str, covariates: bool) -> None:
         )
 
 
-def _narrowed[Data: (ClvDataStaticCov, ClvDataDynCov)](
-    data: Data, names_life: list[str] | None, names_trans: list[str] | None
-) -> Data:
+#: The two covariate data classes, as a constrained type variable rather than
+#: PEP 695's ``def _narrowed[Data: (...)]``. That syntax is what this was
+#: written as, and it resolves under 3.12.11 but raises ``NameError: name
+#: 'Data' is not defined`` from ``typing.get_type_hints()`` under 3.12.3 --
+#: the type-parameter scope and ``from __future__ import annotations`` did not
+#: cooperate until later in the 3.12 series. ``requires-python`` says ">=3.12",
+#: `py.typed` promises these annotations are usable, and
+#: ``TestTy.test_the_shipped_annotations_resolve`` is what holds us to it, so
+#: the spelling that works on every supported version is the right one.
+_CovariateData = TypeVar("_CovariateData", ClvDataStaticCov, ClvDataDynCov)
+
+
+def _narrowed(  # noqa: UP047 - PEP 695 here breaks get_type_hints on 3.12.3; see above
+    data: _CovariateData,
+    names_life: list[str] | None,
+    names_trans: list[str] | None,
+) -> _CovariateData:
     """The covariate data a formula asks for, or all of it when none was given.
 
     Generic over the two covariate data classes because each narrows to its own
