@@ -431,6 +431,66 @@ That figure is a projection and is labelled as one: the restructure has not been
 done, and it would additionally remove 4,770 NumPy dispatches per evaluation
 that the projection gives it no credit for. Carried as backlog item 30.
 
+### Backlog item 30: the duplicates, collapsed without a restructure
+
+Item 14 projected 2.6x from deduplicating the hypergeometrics and said it needed
+the likelihood batched over the cohort, because the duplication is *across*
+customers. It does not. A memo shared by one evaluation reaches exactly the same
+duplicates, and it is both cheaper and less invasive than the restructure.
+
+`_hyp_alpha_ge_beta` and `_hyp_beta_gt_alpha` both want one shape,
+:math:`{}_2F_1(a, b; a{+}1; z)`. Both now go through `_hyp2f1`, which consults a
+`ContextVar` memo when one is open, gathers the misses, and evaluates them in a
+**single** vectorised call — so the batching item 9 bought is not handed back one
+element at a time. `log_likelihood_ind` opens the memo once for the whole sweep,
+beside the `errstate` context manager that is already hoisted there.
+
+| | evaluation before | after | `hyp2f1` before | after |
+|---|---|---|---|---|
+| CLVTools' fitted parameters | 0.120 s | **0.110 s** | 0.045 s | 0.032 s |
+| the vector the search dwells on | 0.480 s | **0.119 s** | 0.409 s | 0.042 s |
+
+The dwell vector is now as cheap as the easy one, which was the whole object of
+items 14 and 30: two thirds of a fit was being spent at 4x the cost of the other
+third, and that gap is gone rather than narrowed.
+
+**Why a memo beats the `np.unique` dedup item 14 measured.** That approach sorted
+79,508×3 values to find 5,303 distinct ones, and the sort cost more than the
+hypergeometrics saved wherever they were cheap — 6.0x at the dwell vector but
+**0.72x, a loss**, at CLVTools' fit. A dict keyed on `(a, b, z)` pays per lookup
+instead of per sort, so it wins at both: 1.6x where there is little to save and
+9.9x where there is much. Item 14's table has the losing version; this one
+replaces it.
+
+**Scope is the whole design, and it is load-bearing in both directions.**
+Narrower than one evaluation and the memo catches nothing, since within a single
+customer's call every :math:`z` differs. Wider and it is worse than useless: the
+parameters move every evaluation, so a key from the last one can never hit, and
+a fit's ~1,900 evaluations would grow an unbounded dictionary of pure misses.
+`tests/test_performance.py::TestDyncovDeduplicatesItsHypergeometrics` gates
+both — that SciPy is asked for no argument twice, and that the memo does not
+outlive its evaluation.
+
+**On the fit itself, 2:53.** `-m dyncov_fit` passed in **173.87 s** against the
+**7:31** item 28 recorded and the **10:07** item 9 did — 2.6x and 3.5x. That
+figure is corroboration and not the measurement, for the reason this document
+gives twice already: a fit's wall clock is the optimiser's path on a very flat
+likelihood, and item 28 saw 7:31 against 10:07 for a change that made every
+evaluation 26% *slower*. The per-evaluation numbers in the table above are the
+ones to compare. What the fit run does establish is that the optimiser still
+arrives: the assertion it passed is that this implementation reaches at least
+CLVTools' optimum.
+
+**What it cost in the last digits: nothing at all.** Not "agrees to 1e-14" —
+**bit-identical**. All **30 intermediate columns over all 600 customers at both
+oracle grid vectors** compare equal under `np.array_equal`, because a memo
+returns the same function's value for the same arguments; there is no
+rearrangement to lose a digit to. That is a stronger guarantee than item 9's
+rewrite could give (27 of 30) or item 28's (3e-14 relative), and it is the
+reason this was worth preferring over the restructure item 30 specified: the
+restructure would have re-associated the arithmetic and had to argue about the
+last two bits.
+
 ## What a performance gate should look like
 
 Not `assert elapsed < 2.0`. Every gate in this repo is deterministic — tests,
@@ -484,6 +544,8 @@ Wall-clock still belongs in `tools/benchmark.py`, and *where* the time goes in
 - **This bullet used to say the opposite, and it was wrong.** It read:
   "Vectorising `log_likelihood_customer` across customers as well — the obvious
   next refactor — would not touch it, and the numbers above are the reason not
-  to start it." Cross-customer batching does not merely remove Python dispatch;
-  it is what puts the duplicate arguments in one array where they can be
-  collapsed. Item 30, projected 2.6x on the fit.
+  to start it." The duplicate arguments were the thing it could not see.
+- ~~`docs/backlog.md` item 30~~ — done, and *not* by the restructure that item
+  specified. A per-evaluation memo reaches the same duplicates: the dwell vector
+  falls 0.480 s to 0.119 s, all 30 intermediates stay **bit-identical** at both
+  grid vectors, and `log_likelihood_customer` keeps its shape. Written up above.

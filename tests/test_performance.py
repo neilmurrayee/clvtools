@@ -533,3 +533,94 @@ class TestDyncovStaysVectorised:
             "away from the optimum every interval takes the other arm."
         )
         assert dyncov_counts.gt.elements > 0  # measured: 38,542
+
+
+class TestDyncovDeduplicatesItsHypergeometrics:
+    r"""Backlog item 30: 93.3% of the hypergeometrics are duplicate arguments.
+
+    ``docs/performance.md``: one evaluation over the apparel cohort asks for
+    **79,508** :math:`{}_2F_1` values and only **5,303** are distinct, because
+    the covariates are categorical, so :math:`\exp(\gamma'x)` takes few values
+    and so does :math:`z`. The duplication is entirely *across* customers --
+    within one customer's call every :math:`z` differs -- which is why the memo
+    is opened once for the whole sweep in ``log_likelihood_ind`` and why a
+    narrower scope would catch nothing.
+
+    Gated here for the same reason as :class:`TestDyncovStaysVectorised` above:
+    the oracle fixtures check the *numbers*, and removing the memo would produce
+    exactly the same ones, only slowly. Counted rather than timed, which is this
+    module's rule.
+    """
+
+    def test_scipy_sees_only_the_distinct_arguments(self, dyncov_walks):
+        """The count SciPy is asked for, against the count the model wants."""
+        from clvtools.pnbd import dyncov
+
+        asked, distinct = [0], set()
+        real = dyncov.special.hyp2f1
+
+        def counting(a, b, c, z):
+            z_arr = np.atleast_1d(np.asarray(z, float))
+            a_arr = np.broadcast_to(np.atleast_1d(np.asarray(a, float)), z_arr.shape)
+            b_arr = np.broadcast_to(np.atleast_1d(np.asarray(b, float)), z_arr.shape)
+            asked[0] += z_arr.size
+            distinct.update(zip(a_arr.ravel(), b_arr.ravel(), z_arr.ravel(),
+                                strict=True))
+            return real(a, b, c, z)
+
+        coefficients = fixture_json("dyncov_fit")["coefficients"]
+        names = fixture_json("dyncov_fit")["names.cov"]
+        dyncov.special.hyp2f1 = counting
+        try:
+            dyncov.log_likelihood(
+                dyncov_walks,
+                *(coefficients[k] for k in ("r", "alpha", "s", "beta")),
+                gamma_life=[coefficients[f"life.{n}"] for n in names],
+                gamma_trans=[coefficients[f"trans.{n}"] for n in names],
+            )
+        finally:
+            dyncov.special.hyp2f1 = real
+
+        # Every argument SciPy is handed is one the memo had not seen: no
+        # duplicate reaches it. This is the invariant -- the absolute counts
+        # below are the measurement that motivated it.
+        assert asked[0] == len(distinct), (
+            f"SciPy was asked for {asked[0]} hypergeometrics but only "
+            f"{len(distinct)} distinct arguments: the memo is not being reached"
+        )
+        # And the saving is the order of magnitude recorded, not a rounding.
+        assert asked[0] < 12_000, (
+            f"{asked[0]} distinct arguments; ~5,300 was the measurement, and "
+            "79,508 is what an unmemoised evaluation asks for"
+        )
+
+    def test_the_memo_does_not_outlive_one_evaluation(self):
+        """Scope is load-bearing in both directions.
+
+        Narrower catches nothing, since the duplication is across customers.
+        *Wider* is worse than useless: the parameters move every evaluation, so
+        a key from the last one can never hit, and a fit's ~1,900 evaluations
+        would grow an unbounded dictionary of pure misses.
+        """
+        from clvtools.pnbd.dyncov import _HYP_MEMO, _memoised_hypergeometrics
+
+        assert _HYP_MEMO.get() is None
+        with _memoised_hypergeometrics():
+            assert _HYP_MEMO.get() == {}
+            _HYP_MEMO.get()["sentinel"] = 1.0
+        assert _HYP_MEMO.get() is None, "the memo outlived its evaluation"
+
+    def test_and_it_returns_what_scipy_would_have(self):
+        """Bit-exact, since it is the same function on the same arguments."""
+        from scipy import special
+
+        from clvtools.pnbd.dyncov import _hyp2f1, _memoised_hypergeometrics
+
+        a = np.array([4.0, 4.0, 5.0, 4.0])
+        z = np.array([0.5, 0.5, 0.9, 0.5])
+        want = special.hyp2f1(a, 3.0, a + 1.0, z)
+        assert np.array_equal(_hyp2f1(a, 3.0, z), want)
+        with _memoised_hypergeometrics():
+            assert np.array_equal(_hyp2f1(a, 3.0, z), want)
+            # Second pass is all hits, and must still be identical.
+            assert np.array_equal(_hyp2f1(a, 3.0, z), want)

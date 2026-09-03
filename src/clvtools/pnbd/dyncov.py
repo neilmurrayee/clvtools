@@ -60,6 +60,9 @@ per-customer output in ``tests/test_pnbd_dyncov.py``.
 
 from __future__ import annotations
 
+import contextlib
+import contextvars
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Literal, overload
 
@@ -350,6 +353,72 @@ def _value(log_magnitude: float, sign: float) -> float:
 # -- the hypergeometric pair --------------------------------------------------
 
 
+#: The memo for one likelihood evaluation, or ``None`` outside one.
+#:
+#: A :class:`~contextvars.ContextVar` rather than a module global so that two
+#: threads fitting at once cannot share a cache keyed on each other's
+#: parameters. Nothing in ``src/`` threads, but a caller's bootstrap might.
+_HYP_MEMO: contextvars.ContextVar[dict | None] = contextvars.ContextVar(
+    "_HYP_MEMO", default=None
+)
+
+
+@contextlib.contextmanager
+def _memoised_hypergeometrics() -> Iterator[None]:
+    r"""Share one :math:`{}_2F_1` memo across the customers of one evaluation.
+
+    Backlog item 30. One evaluation over the apparel cohort asks for **79,508**
+    hypergeometrics and only **5,303** of them are distinct: the covariates are
+    categorical, so :math:`\exp(\gamma'x)` takes few values and so does the
+    argument :math:`z`. The duplication is entirely *across* customers -- within
+    one customer's call every :math:`z` differs -- which is why nothing local
+    could reach it.
+
+    Scoped to the evaluation, and that scope is load-bearing in both directions.
+    Narrower and it catches nothing. Wider and it is worse than useless: the
+    parameters move every evaluation, so keys from the last one can never hit,
+    and a fit's ~1,900 evaluations would grow an unbounded dictionary of misses.
+
+    The saving is exact rather than approximate -- the same function on the same
+    arguments -- so every fixture comparison is unmoved bit for bit.
+    """
+    token = _HYP_MEMO.set({})
+    try:
+        yield
+    finally:
+        _HYP_MEMO.reset(token)
+
+
+def _hyp2f1(a: NDArray[np.float64], b: float, z: NDArray[np.float64]):
+    r""":math:`{}_2F_1(a, b; a+1; z)`, through the memo when one is open.
+
+    Both arms want this one shape, and ``c = a + 1`` in each. Misses are
+    gathered and evaluated in a *single* vectorised call, so the batching item 9
+    bought is not given back one element at a time.
+    """
+    memo = _HYP_MEMO.get()
+    if memo is None:
+        return special.hyp2f1(a, b, a + 1.0, z)
+
+    a_flat = np.broadcast_to(np.asarray(a, float), np.shape(z)).ravel()
+    z_flat = np.asarray(z, float).ravel()
+    out = np.empty(z_flat.shape)
+    missing = []
+    for i in range(z_flat.size):
+        hit = memo.get((a_flat[i], b, z_flat[i]))
+        if hit is None:
+            missing.append(i)
+        else:
+            out[i] = hit
+    if missing:
+        idx = np.array(missing)
+        values = special.hyp2f1(a_flat[idx], b, a_flat[idx] + 1.0, z_flat[idx])
+        out[idx] = values
+        for j, i in enumerate(missing):
+            memo[(a_flat[i], b, z_flat[i])] = values[j]
+    return out.reshape(np.shape(z))
+
+
 def _hyp_alpha_ge_beta(
     r: float, s: float, x: float,
     alpha_1: ArrayLike, beta_1: ArrayLike, alpha_2: ArrayLike, beta_2: ArrayLike,
@@ -386,7 +455,7 @@ def _hyp_alpha_ge_beta(
     logs = []
     for alpha, beta in ((alpha_1, beta_1), (alpha_2, beta_2)):
         z = 1.0 - beta / alpha
-        value = special.hyp2f1(a, s + 1.0, a + 1.0, z)
+        value = _hyp2f1(a, s + 1.0, z)
         with np.errstate(divide="ignore"):
             log_term = np.log(value) - a * np.log(alpha)
         failed = ~np.isfinite(value)
@@ -429,7 +498,7 @@ def _hyp_beta_gt_alpha(
     logs = []
     for alpha, beta in ((alpha_1, beta_1), (alpha_2, beta_2)):
         z = 1.0 - alpha / beta
-        value = special.hyp2f1(a, r + x, a + 1.0, z)
+        value = _hyp2f1(a, r + x, z)
         with np.errstate(divide="ignore"):
             log_term = np.log(value) - a * np.log(beta)
         failed = ~np.isfinite(value)
@@ -800,9 +869,14 @@ def log_likelihood_ind(
     own.
     """
     customers = walks.customers(gamma_life, gamma_trans)
-    # Entered once for the whole sweep. Per-term, the context manager alone
-    # accounted for an eighth of the runtime.
-    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+    # Both context managers are entered once for the whole sweep rather than per
+    # term. For `errstate` that is a measured eighth of the runtime; for the
+    # memo it is the entire point, since the duplicate arguments are *across*
+    # customers and a narrower scope would see none of them.
+    with (
+        np.errstate(divide="ignore", invalid="ignore", over="ignore"),
+        _memoised_hypergeometrics(),
+    ):
         rows = [log_likelihood_customer(r, alpha, s, beta, c) for c in customers]
     if not intermediates:
         return np.array([row["LL"] for row in rows])

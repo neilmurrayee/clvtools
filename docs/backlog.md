@@ -10,8 +10,8 @@ speculation.
 stop. Do not add items without evidence, and do not work an item marked
 `[needs-decision]` — those need the maintainer.
 
-**Rounds 3 and 4 are open**, from two reviews on 2026-09-02. Open: 30, 31, 32
-and the two `[~]` remainders of 23 and 25. Everything else is closed, and item
+**Rounds 3 and 4 are open**, from two reviews on 2026-09-02. Open: 31, 32 and
+the two `[~]` remainders of 23 and 25. Everything else is closed, and item
 16 was the last one carrying `[needs-decision]` — no item does now. The phrase
 survives on two settled sub-bullets inside closed items 13 and 22, which say so
 where they stand.
@@ -1518,32 +1518,59 @@ that the paper's own parameters are untouched (400 terms, still summing to 1 to
 
 *Verified:* 15 new tests; `uv run pytest` green; ruff clean.
 
-## 30. `[ ]` Batch the dyncov likelihood over the cohort — item 14's successor
+## 30. `[x]` Collapse the dyncov likelihood's duplicate hypergeometrics
 
 Item 14 measured the prize and named this. `log_likelihood_customer` runs once
 per customer, and the 79,508 hypergeometrics one evaluation asks for are 93.3%
 duplicates — but the duplication is *across* customers, so nothing local can
-reach it. Batched over the cohort, the distinct 5,303 can be evaluated once and
-scattered back, **bit-exact**: it is the same function on the same arguments,
-not an approximation.
+reach it.
 
-Projected 2.6x on the fit (0.360 s → 0.137 s per evaluation at the decile
-table's 1:2 weighting; ~10:07 → ~4 minutes), and the projection is conservative
-— it gives no credit for removing 4,770 NumPy dispatches per evaluation, whose
-median width is one element.
+**Done, 2026-09-03 — and not by the restructure this item specified, which
+turned out to be unnecessary.** The item assumed that reaching duplicates
+*across* customers required batching the likelihood *over* customers. It does
+not: a memo shared by one evaluation reaches exactly the same duplicates, and it
+is cheaper, smaller and safer than the restructure.
 
-**The hard part is not the batching, it is the shape.** `log_likelihood_customer`
-is what the 30-column oracle fixtures compare against, per customer, at two
-parameter vectors; whatever replaces it has to keep producing that table.
-Item 9's precedent is the one to follow — it batched over covariate intervals
-*inside* a customer and kept 27 of 30 intermediates bit-identical, with the
-three that moved traced to one line.
+Both arms want one shape, :math:`{}_2F_1(a, b; a{+}1; z)`. Both now call
+`_hyp2f1`, which consults a `ContextVar` memo when one is open, gathers the
+misses and evaluates them in a **single** vectorised call, so item 9's batching
+is not handed back one element at a time. `log_likelihood_ind` opens the memo
+once for the whole sweep, beside the `errstate` manager already hoisted there.
+`log_likelihood_customer` keeps its shape and its thirty-column table entirely.
 
-*Done when:* the fixtures are green expression by expression at both grid
-vectors, `TestDyncovStaysVectorised` is extended to count cohort-level
-dispatches rather than per-customer ones, `-m dyncov_fit` still reaches the
-oracle's optimum, and the measured gain is recorded in `docs/performance.md`
-beside item 14's projection — including if it comes in under it.
+| | evaluation before | after | `hyp2f1` before | after |
+|---|---|---|---|---|
+| CLVTools' fitted parameters | 0.120 s | **0.110 s** | 0.045 s | 0.032 s |
+| the vector the search dwells on | 0.480 s | **0.119 s** | 0.409 s | 0.042 s |
+
+The dwell vector is now as cheap as the easy one, which was the object of both
+items: two thirds of a fit ran at 4x the cost of the other third, and that gap
+is gone rather than narrowed. `-m dyncov_fit` passed in **2:53** against the
+7:31 item 28 recorded and the 10:07 item 9 did — quoted as corroboration, not
+as the measurement, because a fit's wall clock is the optimiser's path (item 28
+saw 7:31 for a change that made every evaluation 26% *slower*). It does
+establish that the optimiser still arrives: what passed asserts this
+implementation reaches at least CLVTools' optimum.
+
+**A memo beats the `np.unique` dedup item 14 measured.** Sorting 79,508×3 values
+to find 5,303 distinct ones cost more than the hypergeometrics saved wherever
+they were cheap — 6.0x at the dwell vector but **0.72x, a loss**, at CLVTools'
+fit. A dict pays per lookup rather than per sort and wins at both, 1.6x and
+9.9x. Item 14's table recorded the losing arrangement; `docs/performance.md`
+now carries this one beside it.
+
+**Bit-identical, not merely close.** All **30 intermediate columns over all 600
+customers at both oracle grid vectors** compare equal under `np.array_equal` —
+a memo returns the same function's value for the same arguments, so there is no
+rearrangement to lose a digit to. Stronger than item 9's rewrite could manage
+(27 of 30) or item 28's (3e-14 relative), and the reason to prefer this over
+the specified restructure, which would have re-associated the arithmetic and
+had to argue about the last two bits.
+
+*Done when* asked for a gate: `TestDyncovDeduplicatesItsHypergeometrics` counts
+that SciPy is asked for no argument twice, and asserts the memo does not outlive
+its evaluation — scope being load-bearing in both directions, since a wider one
+would grow an unbounded dictionary of misses across a fit's ~1,900 evaluations.
 
 ## 31. `[ ]` Validate optimiser overrides against the method — the rest of finding 20
 
