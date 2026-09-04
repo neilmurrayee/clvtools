@@ -462,7 +462,7 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | C-11 | a | dyncov has no duplicate, NA, or (Id, Date) completeness check |
 | C-12 | c | |
 | C-13 | c | re-verdicted 2026-09-04: closed by **A4** — re-setting covariates no longer silently overwrites |
-| C-14 | a | covariate `name_id` has no test; works |
+| C-14 | c | re-verdicted 2026-09-04: **round 6**: `name_id` on the covariate frame, compared against the default-named build rather than merely run |
 
 ## S5 Model expressions · S6 PMF · S7 Estimation
 
@@ -505,7 +505,7 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | X-08 | c | re-verdicted 2026-09-04: closed by **D2** — and columns |
 | X-09 | c ! | re-verdicted 2026-09-03: closed by **A7** — `test_estimate.py:244` pins correlation + covariates raising |
 | X-10 | c | |
-| X-11 | a | no syntactically illegal covariate name |
+| X-11 | c | re-verdicted 2026-09-04: **round 6**: works, and now says so. There is no name-mangling step in this port at all, which is exactly why the claim needed an assertion -- its absence would be invisible until someone used such a column |
 | X-12 | c | re-verdicted 2026-09-03: **round 5**: `start_m` given a non-default value and shown to reach the search |
 | X-13 | c ! | re-verdicted 2026-09-04: **round 6**: the `[-1, 1]` half is a *misreading* — `m` is the Sarmanov mixing parameter, whose admissible interval is `correlation_bounds`, [-1.042, 34.822] at the paper's parameters and moving with them; `correlation_coefficient` is what lies in [-1, 1]. The rest was real: a `NaN` start reached the objective (the fifth such argument), and a start outside the bounds earned the same message where the bounds are computable at the start point. Both now named |
 | X-14 | c | re-verdicted 2026-09-03: **round 5**: a `NaN` lambda was accepted and surfaced later as "objective is not finite"; now refused, as is a non-numeric pair |
@@ -558,7 +558,7 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | PR-11 | c ! | re-verdicted 2026-09-03: closed by **A3** — `TestTheDiscountFactorRange` pins both ends |
 | PR-12 | c | `test_predict.py:354` |
 | PR-13 | c | re-verdicted 2026-09-03: **round 5**: the scenario half was closed by item 27; the data half surfaced as `KeyError: "['Gender'] not in index"` and now names the covariate and lists what the data carries |
-| PR-14 | a | nothing checks for `NaN` parameters at predict time; returns an all-`NaN` table silently |
+| PR-14 | c ! | re-verdicted 2026-09-04: **round 6**: was a defect, now refused. `r = nan` produced a full table with `PAlive`, `CET` and `DERT` entirely `NaN` and nothing to say why -- the **sixth** argument here diagnosed by whatever consumed it first. The message lists every offending parameter and points at `converged` |
 | PR-15 | c | re-verdicted 2026-09-03: **round 5**: a `NaN` horizon came back as "cannot convert float NaN to integer" and a list as pandas' "Cannot convert input"; both now name the argument |
 | PR-16 | c | `test_predict.py:684-720` |
 
@@ -606,7 +606,7 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 |---|---|---|
 | I-01 | c | re-verdicted 2026-09-03: **round 5**: `coef`/`vcov`/`summary` name the same parameters in the same order, across all three covariate families and a constrained fit |
 | I-02 | c | re-verdicted 2026-09-03: **round 5**: the `vcov` index and columns checked for covariate and constrained fits, not the plain Pareto/NBD alone |
-| I-03 | a | `confint` takes only `level`; no `parm` argument exists |
+| I-03 | c | re-verdicted 2026-09-04: **round 6**: `parm` did not exist; added, taking names or 0-based positions and returning a `NaN` row for an unknown name, which is R's own behaviour and lets a caller assemble one table across models |
 | I-04 | c | re-verdicted 2026-09-03: **round 5**: R's four columns in order, one row per estimated parameter, and that the frame prints |
 | I-05 | c ! | **round 5, closed by item 35**: `fit_pnbd_dyncov` now takes `names_cov_constr` and `reg_lambdas`, reusing `_staticcov`'s `_Layout` and `_penalised` — both act on the parameter vector, so neither cares that the covariates vary over time. Three of the four dyncov configurations are constructible and pinned. `use_cor` is not: Sarmanov correlation is a different likelihood rather than a reparameterisation, and the README states the two as separate Pareto/NBD-only features. That last quarter is the `!` |
 | I-06 | c | warns rather than raising — recorded in README Findings |
@@ -622,7 +622,7 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 |---|---|---|
 | FI-01..FI-03 | c | |
 | FI-04 | c | re-verdicted 2026-09-03: **round 5**: `.` beside another term was read as a literal column name; it now expands against the data in `_narrowed`, all three claims pinned |
-| FI-05 | a | duplicate name yields `['Gender','Gender']` and a rank-deficient `(600, 2)` design — a defect, untested |
+| FI-05 | c ! | re-verdicted 2026-09-04: **round 6**: was a defect, now refused. A name given twice built a `(600, 2)` design of two identical columns; the fit reported two coefficients whose *sum* is what the data identifies, each with a standard error the Hessian cannot support |
 | FI-06 | a ! | naming-by-term-text *is* recorded (`audit.md:489`); bare `log(x+2)` unsupported is not (**A7**) |
 | FI-07 | a ! | `Gender*Channel` and `.-Gender` parse then fail as column names (**A7**) |
 | FI-08 | c | re-verdicted 2026-09-03: **round 5**: the type claim asserted both ways — static narrows to static and is not dynamic, dynamic stays dynamic |
@@ -640,7 +640,7 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 |---|---|---|
 | V-01 | c | re-verdicted 2026-09-03: **round 5**: a `NaN` or `inf` start passed `np.any(start <= 0)` and was blamed on the objective; now refused by name, with the positivity and length checks shown not to be shadowed |
 | V-02 | c | re-verdicted 2026-09-03: **round 5**: `start_cov` is a single scalar, so 5 of 7 claims cannot arise — the divergence is now in the README's findings — and the two that can are pinned; a `NaN` reached the objective and no longer does |
-| V-03 | a | `options_for` merges overrides with zero validation; unknown keys reach SciPy as a *warning* where R errors |
+| V-03 | c | re-verdicted 2026-09-04: **round 6**: stale -- item 31's `_reject_unknown_options` refuses an unknown key by name and lists what the method accepts |
 | V-04 | o | re-verdicted 2026-09-03: **round 5**: `**kwargs` forwarding lands an unknown argument at the inner signature. Recorded rather than reworked — the message names a private function, which is the cost of the forwarding, and item 31's `options` validation is the precedent for checking where it is given |
 | V-05 | a | no single-logical validation exists anywhere |
 | V-06 | c ! | re-verdicted 2026-09-03: closed by **A4** — `TestBadInputIsLoud`, `TestATransactionMustSayWhoAndWhen` |

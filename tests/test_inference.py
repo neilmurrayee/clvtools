@@ -153,6 +153,46 @@ class TestGenerics:
         with pytest.raises(ValueError, match="strictly between 0 and 1"):
             fit.confint(1.0)
 
+    def test_confint_selects_rows_by_name(self, fit):
+        """Spec `I-03`, `absent`: the argument did not exist until round 6.
+
+        R's ``confint`` takes ``parm`` as a character or an integer vector.
+        Four claims, of which this port had none, and the rows it returns must
+        be the same rows the full table has -- selection, not recomputation.
+        """
+        picked = fit.confint(parm=["alpha", "beta"])
+        assert list(picked.index) == ["alpha", "beta"]
+        full = fit.confint()
+        np.testing.assert_array_equal(picked.to_numpy(), full.loc[picked.index])
+
+    def test_confint_takes_a_bare_name_as_well_as_a_list(self, fit):
+        assert list(fit.confint(parm="s").index) == ["s"]
+
+    def test_confint_selects_rows_by_position(self, fit):
+        """Positions are 0-based here; R's are 1-based, and this says so."""
+        assert list(fit.confint(parm=[0, 3]).index) == ["r", "beta"]
+        assert list(fit.confint(parm=-1).index) == ["beta"]
+
+    def test_confint_returns_nan_for_a_name_the_fit_does_not_have(self, fit):
+        """R's own behaviour, and the reason this is not simply an error.
+
+        A row of ``NaN`` keeps the shape of the request, so a caller assembling
+        a table across models gets one row per name asked for whether or not
+        each model has it.
+        """
+        got = fit.confint(parm=["alpha", "nonesuch"])
+        assert list(got.index) == ["alpha", "nonesuch"]
+        assert got.loc["nonesuch"].isna().all()
+        assert got.loc["alpha"].notna().all()
+
+    def test_confint_refuses_a_position_that_is_not_there(self, fit):
+        with pytest.raises(IndexError, match="outside the 4 parameters"):
+            fit.confint(parm=4)
+
+    def test_confint_refuses_a_parm_that_is_neither(self, fit):
+        with pytest.raises(TypeError, match="names or positions"):
+            fit.confint(parm=[1.5])
+
     def test_vcov_is_symmetric_and_matches_the_errors(self, fit):
         cov = fit.vcov()
         np.testing.assert_allclose(cov.to_numpy(), cov.to_numpy().T, rtol=1e-12)

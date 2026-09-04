@@ -614,6 +614,54 @@ def _add_spending(
         table[clv_column] = table[discount_column] * mean_spending
 
 
+
+def _finite_parameters(params, which: str) -> None:
+    """A fit that did not converge must not predict in silence.
+
+    Spec `PR-14`. A ``PnbdParams`` carrying ``r = nan`` -- which is what a
+    diverged fit returns, and what an unpickled or hand-built one can hold --
+    used to produce a full prediction table whose ``PAlive``, ``CET`` and
+    ``DERT`` columns were entirely ``NaN``, with nothing to say why. That is the
+    **sixth** argument in this package to have been diagnosed by whatever
+    consumed it first, after ``start``, ``start_cov``, ``reg_lambdas``,
+    ``prediction_end`` and ``start_m``, and the pattern is always the same:
+    ``nan`` fails every ``<= 0`` test written to catch a bad value.
+
+    >>> from clvtools.pnbd.fit import PnbdParams
+    >>> bad = PnbdParams(r=float("nan"), alpha=5.0, s=0.5, beta=40.0,
+    ...                  log_likelihood=float("nan"), converged=False,
+    ...                  n_customers=600)
+    >>> _finite_parameters(bad, "the transaction model")
+    Traceback (most recent call last):
+        ...
+    ValueError: the transaction model has non-finite parameters ['r'], so every
+    prediction from it would be nan; the usual cause is a fit that did not
+    converge, which its `converged` attribute reports.
+
+    ``None`` is how ``predict`` says a spending model was not supplied:
+
+    >>> _finite_parameters(None, "the spending model")
+
+    Anything that is not a fit at all passes through untouched, so that
+    ``predict``'s own "no prediction expressions" message keeps naming it:
+
+    >>> _finite_parameters(object(), "the transaction model")
+    """
+    if params is None or not hasattr(params, "names"):
+        return
+    bad = [
+        name
+        for name, value in zip(params.names, params, strict=True)
+        if not np.isfinite(value)
+    ]
+    if bad:
+        raise ValueError(
+            f"{which} has non-finite parameters {bad!r}, so every prediction "
+            "from it would be nan; the usual cause is a fit that did not "
+            "converge, which its `converged` attribute reports."
+        )
+
+
 def predict(
     clv_data: ClvData | NewCustomer | NewCustomerSpending,
     params: PnbdParams,
@@ -700,6 +748,9 @@ def predict(
     ...                  table["CET"] * table["predicted.mean.spending"]))
     True
     """
+    _finite_parameters(params, "the transaction model")
+    _finite_parameters(spending_params, "the spending model")
+
     if isinstance(clv_data, (NewCustomer, NewCustomerSpending)):
         _reject_unused_for_new_customer(spending_params, prediction_end)
         return _predict_new_customer(clv_data, params)

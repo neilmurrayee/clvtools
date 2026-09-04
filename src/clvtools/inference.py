@@ -274,7 +274,51 @@ class Fitted:
         """Standard errors from the inverse Hessian, by name."""
         return dict(zip(self.names, np.sqrt(np.diag(self._covariance())), strict=True))
 
-    def confint(self, level: float = 0.95) -> pd.DataFrame:
+    def _selected_names(self, parm) -> list[str]:
+        """``confint``'s ``parm``: names, positions, or ``None`` for all.
+
+        R's ``confint`` takes a character vector or an integer vector, and
+        returns an all-``NA`` row for a name it does not recognise rather than
+        raising -- spec `I-03`, four claims, of which this port had none because
+        the argument did not exist. Positions are 0-based here, which is the
+        one place this deliberately does not follow R: every other index in this
+        package is a pandas index.
+
+        >>> from clvtools.pnbd.fit import PnbdParams
+        >>> p = PnbdParams(r=1.0, alpha=2.0, s=3.0, beta=4.0,
+        ...                log_likelihood=0.0, converged=True, n_customers=1)
+        >>> p._selected_names(None)
+        ['r', 'alpha', 's', 'beta']
+        >>> p._selected_names("alpha")
+        ['alpha']
+        >>> p._selected_names([0, 3])
+        ['r', 'beta']
+        >>> p._selected_names(["alpha", "nonesuch"])
+        ['alpha', 'nonesuch']
+        """
+        names = list(self.names)
+        if parm is None:
+            return names
+        wanted = [parm] if isinstance(parm, str | int | np.integer) else list(parm)
+        out = []
+        for item in wanted:
+            if isinstance(item, str):
+                out.append(item)
+            elif isinstance(item, int | np.integer):
+                if not -len(names) <= int(item) < len(names):
+                    raise IndexError(
+                        f"parm position {item} is outside the "
+                        f"{len(names)} parameters of this fit"
+                    )
+                out.append(names[int(item)])
+            else:
+                raise TypeError(
+                    "parm must be parameter names or positions, not "
+                    f"{type(item).__name__}"
+                )
+        return out
+
+    def confint(self, level: float = 0.95, parm=None) -> pd.DataFrame:
         r"""Wald confidence intervals. Cf. ``confint()``.
 
         :math:`\hat\theta \pm z_{1-\alpha/2}\,\mathrm{se}(\hat\theta)`, on every
@@ -282,6 +326,10 @@ class Fitted:
         run below zero for a parameter the model constrains to be positive.
         S6.4.1 makes the same point about the *hypothesis*: a null of
         :math:`\theta = 0` "lies outside the admissible parameter space".
+
+        ``parm`` selects rows, by name or by position, as R's ``confint`` does;
+        a name the fit does not have comes back as a ``NaN`` row rather than an
+        error, which is also R's behaviour. See :meth:`_selected_names`.
 
         Examples
         --------
@@ -299,15 +347,19 @@ class Fitted:
         if not 0 < level < 1:
             raise ValueError("level must lie strictly between 0 and 1")
         z = _stats().norm.ppf(0.5 + level / 2)
-        errors = np.array([self.standard_errors()[n] for n in self.names])
-        estimates = np.array(list(self), dtype=float)
+        wanted = self._selected_names(parm)
+        known = dict(zip(self.names, self, strict=True))
+        errors = self.standard_errors()
+        nan = float("nan")
+        estimates = np.array([known.get(n, nan) for n in wanted], dtype=float)
+        spread = z * np.array([errors.get(n, nan) for n in wanted], dtype=float)
         tail = (1 - level) / 2
         return pd.DataFrame(
             {
-                f"{tail * 100:g} %": estimates - z * errors,
-                f"{(1 - tail) * 100:g} %": estimates + z * errors,
+                f"{tail * 100:g} %": estimates - spread,
+                f"{(1 - tail) * 100:g} %": estimates + spread,
             },
-            index=self.names,
+            index=wanted,
         )
 
     def summary(self) -> pd.DataFrame:

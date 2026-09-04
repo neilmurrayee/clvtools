@@ -941,3 +941,80 @@ class TestAFitAppliedToOtherData:
             on_full.loc[on_part.index, column].to_numpy(),
             on_part[column].to_numpy(),
         )
+
+
+class TestADivergedFitCannotPredictInSilence:
+    """Spec `PR-14`, `absent`: the sixth argument diagnosed by its consumer.
+
+    A ``PnbdParams`` carrying ``r = nan`` -- what a diverged fit returns, and
+    what a hand-built or unpickled one can hold -- used to produce a full
+    prediction table whose ``PAlive``, ``CET`` and ``DERT`` columns were
+    entirely ``NaN``, with nothing anywhere to say why. Every value that
+    *should* have caught it is a ``<= 0`` or ``> 0`` test, and ``nan`` fails
+    all of them, which is the same shape as `V-01`, `V-02`, `X-14`, `PR-15` and
+    `X-13`. Backlog item 36, round 6.
+    """
+
+    @pytest.fixture(scope="class")
+    def data(self, apparel_trans):
+        from clvtools import ClvData
+
+        return ClvData(apparel_trans, time_unit="week", estimation_split=104)
+
+    @staticmethod
+    def _pnbd(**overrides):
+        from clvtools.pnbd.fit import PnbdParams
+
+        values = {"r": 0.75, "alpha": 5.33, "s": 0.28, "beta": 36.25}
+        values.update(overrides)
+        return PnbdParams(
+            **values, log_likelihood=float("nan"), converged=False,
+            n_customers=600,
+        )
+
+    @pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+    def test_a_non_finite_transaction_parameter_is_named(self, data, bad):
+        from clvtools import predict
+
+        with pytest.raises(ValueError, match=r"non-finite parameters \['r'\]"):
+            predict(data, self._pnbd(r=bad))
+
+    def test_the_message_lists_every_offending_parameter(self, data):
+        from clvtools import predict
+
+        nan = float("nan")
+        with pytest.raises(ValueError, match=r"\['r', 'beta'\]"):
+            predict(data, self._pnbd(r=nan, beta=nan))
+
+    def test_and_points_at_the_converged_attribute(self, data):
+        """Which is where the answer is, and which nothing had pointed to."""
+        from clvtools import predict
+
+        with pytest.raises(ValueError, match="did not converge"):
+            predict(data, self._pnbd(s=float("nan")))
+
+    def test_a_non_finite_spending_parameter_is_named_separately(self, data):
+        """The two models are separate fits and separate messages."""
+        from clvtools import predict
+        from clvtools.gg import GgParams
+
+        gg = GgParams(
+            p=3.1, q=float("nan"), gamma=56.5, log_likelihood=float("nan"),
+            converged=False, n_customers=600,
+        )
+        with pytest.raises(ValueError, match=r"the spending model has non-finite"):
+            predict(data, self._pnbd(), gg)
+
+    def test_the_new_customer_path_is_checked_too(self):
+        """It returns a single number, so an all-``NaN`` table cannot warn."""
+        from clvtools import newcustomer, predict
+
+        with pytest.raises(ValueError, match="non-finite parameters"):
+            predict(newcustomer(52), self._pnbd(alpha=float("nan")))
+
+    def test_a_finite_fit_still_predicts(self, data):
+        """The check refuses nothing it should not."""
+        from clvtools import predict
+
+        table = predict(data, self._pnbd())
+        assert np.isfinite(table["PAlive"]).all()

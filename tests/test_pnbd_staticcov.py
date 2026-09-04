@@ -695,3 +695,96 @@ class TestACategoricalCovariateCanBeNamedByItsOwnName:
         )
         built = self._built(base, frame, ["R_c"])
         assert built.names_cov_life == ["R_c"]
+
+
+class TestCovariateNamesThatWereNeverExercised:
+    """Spec `FI-05`, `X-11` and `C-14`, all `absent`.
+
+    Three claims about the *names* covariates arrive under, which the apparel
+    cohort could never have raised: its two covariates are called ``Gender``
+    and ``Channel``, are numeric 0/1, and are each named once. Backlog item 36,
+    round 6.
+    """
+
+    @pytest.fixture(scope="class")
+    def frames(self, apparel_trans, apparel_static_cov):
+        from clvtools import ClvData
+
+        return (
+            ClvData(apparel_trans, time_unit="week", estimation_split=104),
+            apparel_static_cov,
+        )
+
+    def test_a_name_given_twice_is_refused(self, frames):
+        """`FI-05`: it used to build a rank-deficient design in silence.
+
+        ``names_cov_life=["Gender", "Gender"]`` produced a ``(600, 2)`` matrix
+        of two identical columns. The fit then reports two coefficients for one
+        covariate, whose *sum* rather than either one is what the data
+        identifies, each with a standard error the Hessian cannot support. The
+        audit called this "a defect, untested"; it is now refused instead.
+        """
+        from clvtools import ClvDataStaticCov
+
+        data, cov = frames
+        with pytest.raises(ValueError, match="more than once"):
+            ClvDataStaticCov(
+                data, cov,
+                names_cov_life=["Gender", "Gender"],
+                names_cov_trans=["Gender"],
+            )
+
+    def test_the_message_names_the_process_that_repeated(self, frames):
+        """Life and transaction covariates are separate lists and separate bugs."""
+        from clvtools import ClvDataStaticCov
+
+        data, cov = frames
+        with pytest.raises(ValueError, match=r"^trans covariates name"):
+            ClvDataStaticCov(
+                data, cov,
+                names_cov_life=["Gender"],
+                names_cov_trans=["Channel", "Channel"],
+            )
+
+    def test_a_syntactically_illegal_name_works(self, frames):
+        """`X-11`: R needs backticks for these; here they are just strings.
+
+        A column called ``my gender!`` is not a legal R name and CLVTools' own
+        suite tests that it survives ``make.names``. Nothing in this port has a
+        name-mangling step at all, so the claim is that none crept in -- which
+        is worth an assertion precisely because it would be invisible until
+        someone used such a column.
+        """
+        from clvtools import ClvDataStaticCov
+
+        data, cov = frames
+        odd = cov.rename(columns={"Gender": "my gender!", "Channel": "2nd/chan"})
+        built = ClvDataStaticCov(
+            data, odd,
+            names_cov_life=["my gender!", "2nd/chan"],
+            names_cov_trans=["my gender!"],
+        )
+        assert built.names_cov_life == ["my gender!", "2nd/chan"]
+        assert built.names_cov_trans == ["my gender!"]
+        np.testing.assert_array_equal(
+            built._cov_life["my gender!"].to_numpy(),
+            cov.set_index("Id")
+            .loc[built._cov_life.index, "Gender"]
+            .to_numpy(),
+        )
+
+    def test_the_covariate_id_column_can_be_called_something_else(self, frames):
+        """`C-14`: ``name_id`` on the covariate frame, which had no test."""
+        from clvtools import ClvDataStaticCov
+
+        data, cov = frames
+        renamed = cov.rename(columns={"Id": "customer"})
+        built = ClvDataStaticCov(
+            data, renamed, names_cov_life=["Gender"], names_cov_trans=["Gender"],
+            name_id="customer",
+        )
+        plain = ClvDataStaticCov(
+            data, cov, names_cov_life=["Gender"], names_cov_trans=["Gender"],
+        )
+        pd.testing.assert_frame_equal(built._cov_life, plain._cov_life)
+        assert built.names_cov_life == plain.names_cov_life

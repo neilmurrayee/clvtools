@@ -2501,6 +2501,31 @@ the Jacobian, and the absolute `gtol` then returns the **weekly** fit as
 estimates as a tighter oracle than the paper's three. `M-04` and `PMF-04` were
 stale for the same reason.
 
+### Batch 6 — the argument surface: two defects and a missing argument
+
+`PR-14` is **the sixth** argument in this package to have been diagnosed by
+whatever consumed it first. A `PnbdParams` carrying `r = nan` -- what a diverged
+fit returns -- produced a full prediction table whose `PAlive`, `CET` and `DERT`
+were entirely `NaN`, with nothing anywhere to say why. Every check that should
+have caught it is a `<= 0` or `> 0` test, and `nan` fails all of them. That is
+now six: `start`, `start_cov`, `reg_lambdas`, `prediction_end`, `start_m`, and
+this. Six instances is not six bugs; it is one habit, and worth naming as such.
+
+`FI-05` was the other defect: `names_cov_life=["Gender", "Gender"]` built a
+`(600, 2)` design of two identical columns. The fit then reports two
+coefficients for one covariate, whose *sum* rather than either one is what the
+data identifies, each with a standard error the Hessian cannot support. Refused.
+
+`I-03`'s `parm` simply did not exist. It now takes names or 0-based positions
+and returns a `NaN` row for a name the fit does not have, which is R's own
+behaviour and the reason it is not an error: a caller assembling one table
+across several models gets one row per name asked for either way.
+
+`X-11` and `C-14` hold. `X-11` is worth its assertion precisely because this
+port has no name-mangling step at all -- the absence of one is invisible until
+someone uses a column called `my gender!`. `V-03` was stale: item 31's
+`_reject_unknown_options` already refuses an unknown key by name.
+
 *Done when:* every `a` row has been read against the suite as it stands and
 carries either a corrected verdict, a test, or a note saying why nothing covers
 it — the same bar round 5 met, and the same batching, largest section first:

@@ -861,7 +861,21 @@ class ClvDataStaticCov(ClvData):
         so it contributes no dummies and carries no information. That earns its
         own message rather than "not in the data", which would send the reader
         looking for a typo.
+
+        So does a name given **twice**. ``names_cov_life=["Gender", "Gender"]``
+        used to build a ``(600, 2)`` design of two identical columns, which is
+        rank deficient: the fit then reports two coefficients for one covariate,
+        each with a standard error the Hessian cannot support, and their sum
+        rather than either one is what the data identifies. Spec `FI-05`, which
+        the audit called "a defect, untested"; it is refused here instead.
         """
+        seen = {name for name in names if names.count(name) > 1}
+        if seen:
+            raise ValueError(
+                f"{which} covariates name {sorted(seen)!r} more than once, which "
+                "makes the design matrix rank deficient and splits one "
+                "covariate's coefficient across two columns; name each once"
+            )
         out: list[str] = []
         for name in names:
             if name in encoded.columns:
