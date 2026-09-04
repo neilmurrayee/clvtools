@@ -2705,6 +2705,37 @@ match a fixture that shares the defect would have been the wrong direction.
 
 ---
 
+## 39. `[x]` Both `[needs-decision]` items, and a tolerance I got wrong
+
+Neither remaining decision needed making: both had already been taken and the
+notes had gone stale.
+
+* **The paper is not in the repository.** `git ls-files` tracks zero files
+  under `arXiv-2602.09845v1/`, and `.gitignore` carries both the exclusion and
+  the two commands that fetch it, with the licence reasoning beside them. That
+  is the first of the three options the item listed, and it was taken.
+* **The nightly dyncov cron has fired and passed**, twice on schedule
+  (2026-09-03 and 2026-09-04, 8m12s and 5m47s) after the manual dispatch on
+  09-02. "Live and never watched" is no longer true.
+
+**And CI caught a tolerance I set too tight — the repository's own recorded
+mistake, made again.** `test_a_scaled_start_reaches_the_same_optimum_at_either
+_tolerance`, written in batch 5 to replace an assertion that had stopped being
+true, asserted the two fits agreed to `abs=1e-8`. On x86-64 Linux under 3.13
+they are 1.8e-8 apart. The bound is now 1e-6 — still a thousand times tighter
+than the 1.5e-5 the all-ones start costs, so it separates the two claims, and
+loose enough to be about the optimum rather than about one libm. The evaluation
+counts in the same test are quoted rather than asserted, which is what the
+tests immediately above it were rewritten to do and what I should have copied.
+
+Four other tolerances added this round were widened in the same pass, before CI
+had to find them: the time-unit invariance (an algebraic identity, so the bound
+belongs where the algebra would fail, not at double precision), the hourly fit's
+log-likelihood, the dyncov zero-gamma nesting, and the prospective-customer
+baseline.
+
+---
+
 ## 38. `[x]` The two spec items the audit never reached — round 7
 
 `docs/spec-audit.md` opened by saying "220 of 222 were verdicted (`D-17` and

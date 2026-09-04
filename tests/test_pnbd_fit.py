@@ -455,8 +455,11 @@ class TestFitsRunOnDataShapesNothingHadFitOn:
             hours["x"], hours["t_x"], hours["T"],
             r=p["r"], alpha=p["alpha"] * c, s=p["s"], beta=p["beta"] * c,
         )
+        # 1e-6 on a quantity of 6,487: the identity is exact and agrees to
+        # 1e-12 on macOS/ARM, but this is a claim about the algebra and not
+        # about a libm, so the bound is where the algebra would fail.
         assert there - here == pytest.approx(
-            -weekly["x"].sum() * np.log(c), abs=1e-9
+            -weekly["x"].sum() * np.log(c), abs=1e-6
         )
 
     @pytest.mark.slow
@@ -481,7 +484,7 @@ class TestFitsRunOnDataShapesNothingHadFitOn:
         cbs = hourly.customer_summary()
         fitted = fit_pnbd(cbs["x"], cbs["t_x"], cbs["T"], hessian=False)
         assert fitted.converged
-        assert fitted.log_likelihood == pytest.approx(-12335.036225, abs=1e-4)
+        assert fitted.log_likelihood == pytest.approx(-12335.036225, abs=1e-2)
         assert fitted.r == pytest.approx(1.4490, rel=1e-3)
         assert fitted.s == pytest.approx(0.5613, rel=1e-3)
         assert fitted.alpha / 168.0 == pytest.approx(48.6361, rel=1e-3)

@@ -341,21 +341,28 @@ class TestEvaluationsPerFit:
         """And what the scaled start took away from the test above.
 
         Started at ``alpha = beta = mean(T)`` rather than at 1, SciPy's own
-        loose ``ftol`` lands on the same optimum to 1e-9 -- and in 125
-        evaluations, fewer than the 150 the loose fit from all-ones needed.
-        The tolerance is still worth keeping, because a start is a convention
-        and some data will defeat any convention; but on this data it is no
-        longer what finds the optimum, and pretending otherwise would leave a
-        test asserting something that had stopped being true.
+        loose ``ftol`` lands on the same optimum -- and in 125 evaluations on
+        macOS/ARM, fewer than the 150 the loose fit from all-ones needed. The
+        tolerance is still worth keeping, because a start is a convention and
+        some data will defeat any convention; but on this data it is no longer
+        what finds the optimum, and pretending otherwise would leave a test
+        asserting something that had stopped being true.
+
+        The bound is 1e-6, which is a *thousand times* tighter than the 1.5e-5
+        the all-ones start costs and so still separates the two claims, and
+        loose enough to be a statement about the optimum rather than about one
+        libm. It was 1e-8 for one commit, and x86-64 Linux on 3.13 put the two
+        fits 1.8e-8 apart -- the same lesson the evaluation-count bounds above
+        were rewritten to learn, made twice. The counts are quoted here rather
+        than asserted for exactly that reason.
         """
         loose = fit_pnbd(
             apparel_cbs["x"], apparel_cbs["t_x"], apparel_cbs["T"],
             hessian=False, options={"ftol": 1e-8},
         )
         assert loose.log_likelihood == pytest.approx(
-            apparel_fit.log_likelihood, abs=1e-8
+            apparel_fit.log_likelihood, abs=1e-6
         )
-        assert loose.n_evaluations < apparel_fit.evaluations
 
     def test_the_search_is_not_nelder_mead(self, apparel_cbs, apparel_fit):
         """The old upper bound, made portable the same way.

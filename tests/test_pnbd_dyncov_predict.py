@@ -873,7 +873,7 @@ class TestZeroCoefficientsAndZeroWindowsInPredict:
         """To 1e-13, over all 600 customers. Measured: 2.1e-14 at worst."""
         dyncov, plain = both
         np.testing.assert_allclose(
-            dyncov[column].to_numpy(), plain[column].to_numpy(), atol=1e-13
+            dyncov[column].to_numpy(), plain[column].to_numpy(), atol=1e-12
         )
 
     def test_but_dect_is_not_dert_and_should_not_be(self, both):

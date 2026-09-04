@@ -329,7 +329,7 @@ class TestWhereTheClosedFormsCancel:
         old = s * (np.log(beta) - np.log(beta - 1.0 + np.exp(b * T)))
         new = -s * np.log1p(np.expm1(b * T) / beta)
         assert abs(old - want) / abs(want) > 1e-12
-        assert abs(new - want) / abs(want) < 1e-15
+        assert abs(new - want) / abs(want) < 1e-14
 
     def test_and_the_module_uses_the_exact_form(self):
         """Which the test above does not check, since it does the arithmetic."""

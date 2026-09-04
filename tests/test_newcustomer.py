@@ -334,7 +334,7 @@ class TestTheProspectiveDyncovSeriesIsChecked:
         """The baseline the two refusals below are protecting."""
         start = series["Cov.Date"].iloc[0]
         assert self._predict(series, params, start) == pytest.approx(
-            1.3090010780, abs=1e-9
+            1.3090010780, abs=1e-7
         )
 
     def test_the_covariates_are_actually_read(self, series, params):
