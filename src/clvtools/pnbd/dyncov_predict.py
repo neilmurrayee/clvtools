@@ -425,8 +425,26 @@ def new_customer_expectation(
         raise ValueError("the covariate series ends in the first period")
     d_omega = time.elapsed(first_transaction, later[0])
 
-    def multipliers(frame: pd.DataFrame, names, gamma) -> pd.DataFrame:
+    def multipliers(frame: pd.DataFrame, names, gamma, which: str) -> pd.DataFrame:
+        missing = [n for n in names if n not in frame.columns]
+        if missing:
+            raise ValueError(
+                f"the {which} covariate series is missing {missing!r}, which "
+                f"this fit estimated a coefficient for; it carries "
+                f"{[c for c in frame.columns if c != name_date_cov]!r}"
+            )
         frame = frame[frame[name_date_cov] >= start].sort_values(name_date_cov)
+        # The tables are merged on the date below, so a repeated date becomes a
+        # cross product and the period is counted twice: on the apparel series
+        # one duplicated row moves a prospective customer's expectation by 9%,
+        # silently. Spec `NC-13`, and the same shape `C-11` fixed for a cohort.
+        repeated = frame[name_date_cov][frame[name_date_cov].duplicated()]
+        if len(repeated):
+            raise ValueError(
+                f"the {which} covariate series repeats "
+                f"{repeated.iloc[0].date()}; each period needs one row, and a "
+                "repeat is counted twice rather than ignored"
+            )
         values = np.exp(
             frame[list(names)].to_numpy(dtype=float) @ np.asarray(gamma, float)
         )
@@ -434,8 +452,12 @@ def new_customer_expectation(
             {name_date_cov: frame[name_date_cov].to_numpy(), "exp_gX": values}
         )
 
-    life = multipliers(cov_life, params.names_cov_life, params.gamma_life)
-    trans = multipliers(cov_trans, params.names_cov_trans, params.gamma_trans)
+    life = multipliers(
+        cov_life, params.names_cov_life, params.gamma_life, "lifetime"
+    )
+    trans = multipliers(
+        cov_trans, params.names_cov_trans, params.gamma_trans, "transaction"
+    )
     table = life.rename(columns={"exp_gX": "Ci"}).merge(
         trans.rename(columns={"exp_gX": "Ai"}), on=name_date_cov, how="inner"
     )

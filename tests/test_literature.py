@@ -304,7 +304,7 @@ class TestBemmaorGlady2012:
     source              ``b``       ``beta``      ``beta/b``  ``LL``
     ==================  ==========  ============  ==========  ==============
     CLVTools 0.12.1     1.1e-6      1.3e-5        11.82       -9594.9762
-    this port           1.19e-4     1.39e-3       11.64       -9594.9770
+    this port           2.86e-5     3.34e-4       11.66       -9594.9764
     Bemmaor/Glady       2.0e-4      2.6e-3        13.0        -9594.98
     Pareto/NBD          --          11.6684       --          -9594.9762
     ==================  ==========  ============  ==========  ==============
@@ -340,18 +340,20 @@ class TestBemmaorGlady2012:
     def test_but_s_tilts_along_the_ridge_too(self, fitted):
         """Which is why the class asserts three coordinates and not five.
 
-        ``s`` sits at 0.6048 here, 0.60682 in CLVTools, 0.603 in Bemmaor and
+        ``s`` sits at 0.60590 here, 0.60682 in CLVTools, 0.603 in Bemmaor and
         Glady and 0.60623 in the nested Pareto/NBD -- a spread of 0.004 across
         four sources, which is wider than the 0.0015 the published third
         decimal claims. So what is asserted is the spread, not a coordinate:
         every source lies within 0.005 of every other, and no tighter statement
         about ``s`` is available or would survive a change of start.
 
-        This test itself moved: the value here was 0.60577 until the default
-        start became scale-aware (:func:`~clvtools._optimize.start_scale`),
-        which is a change of 0.001 in ``s`` for 9e-7 of log-likelihood. That is
-        the ridge demonstrating itself, and the reason the assertion is shaped
-        the way it is.
+        This test itself moved twice while it was being written: 0.60577
+        before the default start became scale-aware
+        (:func:`~clvtools._optimize.start_scale`), 0.60478 after it, and
+        0.60590 once the survival term stopped cancelling (backlog item 37).
+        Three values within 0.0011 of each other, for changes worth under 1e-6
+        of log-likelihood. That is the ridge demonstrating itself, twice, and
+        the reason the assertion is a spread rather than a coordinate.
         """
         every = [fitted.s, CLVTOOLS_GGOMNBD["s"], BG2012_GGOMNBD["s"],
                  FHL2005_PNBD["s"]]
@@ -375,7 +377,7 @@ class TestBemmaorGlady2012:
     def test_our_optimum_is_no_worse_than_either_published_one(self, fitted, cbs):
         """The claim the coordinate comparison above is standing in for.
 
-        Measured: -9594.977044 here, against -9594.983766 at CLVTools' printed
+        Measured: -9594.976386 here, against -9594.983766 at CLVTools' printed
         parameters and -9595.770963 at Bemmaor and Glady's. Neither published
         pair *reproduces its own published likelihood* -- Bemmaor and Glady
         print -9594.98 and their printed ``(b, beta)`` give -9595.77 -- because

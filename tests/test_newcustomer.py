@@ -17,6 +17,7 @@ neither its fixtures nor its shape.
 from __future__ import annotations
 
 from itertools import pairwise
+from typing import ClassVar
 
 import numpy as np
 import pandas as pd
@@ -273,3 +274,124 @@ class TestNewCustomerAcceptsShortHorizonsAndDateTypes:
             4, covariates, covariates, first_transaction=value
         )
         assert scenario.first_transaction == pd.Timestamp("2011-01-02")
+
+
+class TestTheProspectiveDyncovSeriesIsChecked:
+    """Spec `NC-13`, one of the two rows the audit never reached.
+
+    Eight claims. Six were already pinned above -- ``num_periods`` numeric and
+    non-negative, `NaN` refused, the scenario kind matched against the fit's
+    kind in both directions, missing covariate values named, a spending model
+    required. The two left are the dyncov half, and both were real:
+
+    * **a repeated covariate date moved the answer by 9% in silence.** The
+      lifetime and transaction tables are merged on the date, so a repeat is a
+      cross product and the period is counted twice: 1.3090 becomes 1.4313 on
+      the apparel series. Exactly the shape `C-11` fixed for a cohort, on the
+      path that shares none of that code;
+    * **a missing covariate column raised pandas' own** ``KeyError: "['Gender']
+      not in index"`` -- a question about two objects pandas has never seen
+      together, which is the defect `PR-13` records for the cohort path.
+
+    Backlog item 38.
+    """
+
+    NAMES: ClassVar = ["High.Season", "Gender", "Channel"]
+
+    @pytest.fixture(scope="class")
+    def series(self):
+        from clvtools import load_apparel_dyn_cov
+
+        frame = load_apparel_dyn_cov().copy()
+        frame["Cov.Date"] = pd.to_datetime(frame["Cov.Date"])
+        one = frame[frame["Id"] == frame["Id"].iloc[0]]
+        return one[one["Cov.Date"] >= "2005-06-01"].head(14).copy()
+
+    @pytest.fixture(scope="class")
+    def params(self):
+        from clvtools.pnbd.dyncov import PnbdDynCovParams
+
+        return PnbdDynCovParams(
+            r=1.449, alpha=48.63, s=0.5613, beta=46.88,
+            gamma_life=np.array([0.3, -0.2, 0.1]),
+            gamma_trans=np.array([0.9, 0.2, -0.3]),
+            names_cov_life=self.NAMES, names_cov_trans=self.NAMES,
+            log_likelihood=float("nan"), converged=True, n_customers=600,
+        )
+
+    @staticmethod
+    def _predict(frame, params, start):
+        from clvtools import newcustomer_dynamic, predict
+
+        return float(
+            predict(
+                newcustomer_dynamic(7.89, frame, frame, first_transaction=start),
+                params,
+            )
+        )
+
+    def test_the_complete_series_answers(self, series, params):
+        """The baseline the two refusals below are protecting."""
+        start = series["Cov.Date"].iloc[0]
+        assert self._predict(series, params, start) == pytest.approx(
+            1.3090010780, abs=1e-9
+        )
+
+    def test_the_covariates_are_actually_read(self, series, params):
+        """Without this the refusals could be guarding nothing.
+
+        Flipping ``High.Season`` in any of the first six periods moves the
+        answer, so the series is not being ignored and a duplicated period
+        genuinely double-counts something.
+        """
+        start = series["Cov.Date"].iloc[0]
+        base = self._predict(series, params, start)
+        for k in range(6):
+            flipped = series.copy()
+            column = flipped.columns.get_loc("High.Season")
+            flipped.iloc[k, column] = 1.0 - flipped.iloc[k]["High.Season"]
+            assert self._predict(flipped, params, start) != base
+
+    def test_a_repeated_date_is_refused(self, series, params):
+        """It used to be a 9% change with nothing said."""
+        start = series["Cov.Date"].iloc[0]
+        doubled = pd.concat([series, series.iloc[[1]]]).sort_values("Cov.Date")
+        with pytest.raises(ValueError, match="repeats"):
+            self._predict(doubled, params, start)
+
+    def test_and_the_message_names_the_date(self, series, params):
+        start = series["Cov.Date"].iloc[0]
+        doubled = pd.concat([series, series.iloc[[1]]]).sort_values("Cov.Date")
+        with pytest.raises(ValueError, match="2005-06-12"):
+            self._predict(doubled, params, start)
+
+    def test_a_missing_covariate_column_is_named_by_this_package(
+        self, series, params
+    ):
+        """`PR-13`'s message, on the path that did not have it."""
+        start = series["Cov.Date"].iloc[0]
+        with pytest.raises(ValueError, match=r"missing \['Gender'\]"):
+            self._predict(series.drop(columns=["Gender"]), params, start)
+
+    def test_and_says_what_the_series_does_carry(self, series, params):
+        start = series["Cov.Date"].iloc[0]
+        with pytest.raises(ValueError, match=r"High\.Season"):
+            self._predict(series.drop(columns=["Gender"]), params, start)
+
+    def test_a_prediction_end_alongside_a_scenario_is_refused(self):
+        """The last of `NC-13`'s eight: "passing other parameters is an error".
+
+        The refusal exists -- it is finding 12 of the four-reviewer read -- and
+        `test_predict.py` pins it for the plain scenario. Repeated here because
+        `NC-13` asks it of ``newcustomer`` itself, and because a scenario
+        returns a single number, so an ignored argument leaves no trace.
+        """
+        from clvtools import newcustomer, predict
+        from clvtools.pnbd.fit import PnbdParams
+
+        fit = PnbdParams(
+            r=1.449, alpha=48.63, s=0.5613, beta=46.88,
+            log_likelihood=float("nan"), converged=True, n_customers=600,
+        )
+        with pytest.raises(ValueError, match="cannot be used with a prospective"):
+            predict(newcustomer(7), fit, prediction_end=5)

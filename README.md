@@ -263,7 +263,7 @@ from all-ones it lands 1.5e-5 worse.
 
 **Three published GGompertz/NBD `(b, β)` pairs, four orders of magnitude apart,
 all with the same likelihood.** On CDNOW, CLVTools reports `(1.1e-6, 1.3e-5)`,
-Bemmaor & Glady (2012) `(2.0e-4, 2.6e-3)`, and this port `(1.19e-4, 1.39e-3)` —
+Bemmaor & Glady (2012) `(2.0e-4, 2.6e-3)`, and this port `(2.86e-5, 3.34e-4)` —
 `b` spanning a factor of 180 — while the log-likelihood moves in the fourth
 decimal. The survival term is $(\beta/(\beta - 1 + e^{bT}))^{s}$, and for
 $bT \ll 1$ that is the Pareto/NBD's own survival with $\beta_P = \beta/b$: **the
@@ -726,7 +726,7 @@ which it reported successful convergence on the Gamma-Gamma at a local optimum
 ## Testing
 
 ```bash
-uv run pytest                  # 1,598 tests, including doctests in src/ and docs/
+uv run pytest                  # 1,605 tests, including doctests in src/ and docs/
 uv run pytest -m paper         # 22 numbers printed in the paper
 uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
 uv run pytest -m literature    # 22 numbers published in the CLV literature

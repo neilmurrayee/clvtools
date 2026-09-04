@@ -51,7 +51,7 @@ it with what was measured, and leave items marked `[needs-decision]` alone.
 ## Commands
 
 ```bash
-uv run pytest                  # 1,598 tests inc. doctests in src/ and docs/; ~11:30 on an M-series
+uv run pytest                  # 1,605 tests inc. doctests in src/ and docs/; ~11:30 on an M-series
 uv run pytest -m paper         # 22 numbers printed in the paper
 uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
 uv run pytest -m literature    # 22 numbers published in the CLV literature

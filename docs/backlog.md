@@ -2705,6 +2705,47 @@ match a fixture that shares the defect would have been the wrong direction.
 
 ---
 
+## 38. `[x]` The two spec items the audit never reached — round 7
+
+`docs/spec-audit.md` opened by saying "220 of 222 were verdicted (`D-17` and
+`NC-13` were not reached)". Rounds 5 and 6 worked every row that *had* a
+verdict, so these two were the only spec items in the document that had never
+been looked at at all.
+
+`D-17` was already covered: a previous round wrote
+`TestRepeatTransactionsInTheEstimationPeriod` and did not verdict the row.
+
+**`NC-13` was eight claims, and the two nobody had reached were both real.**
+A repeated covariate date moved a prospective customer's expectation by **9%
+in silence** — 1.3090 to 1.4313 on the apparel series. The lifetime and
+transaction multiplier tables are merged on the date, so a repeated date is a
+cross product and the period is counted twice rather than ignored. That is
+`C-11`'s shape again, on the path that shares none of `C-11`'s code, found one
+batch after it. And a missing covariate column raised pandas' own
+`KeyError: "['Gender'] not in index"` — a question about two objects pandas has
+never seen together, which is exactly the defect `PR-13` records for the cohort
+path. Both are refused by name now.
+
+The test carries a control that the refusals are guarding something: flipping
+`High.Season` in any of the first six periods moves the answer, so the series is
+read and a duplicated period genuinely double-counts.
+
+**And item 37's fix silently closed a loose end.** During round 6 I noticed
+`scipy.integrate.quad` emitting `IntegrationWarning` — "maximum number of
+subdivisions achieved", "roundoff error detected" — on every CDNOW
+GGompertz/NBD fit, and noted it as a candidate rather than chasing it. It was
+the same cancellation: `beta - 1 + exp(b*T)` at `beta = 1.4e-3` made the
+integrand nearly singular, and `quad` could not reach tolerance. With the
+`expm1`/`log1p` form there are **no warnings at all** on that fit, and the
+optimum improved by 6.6e-4 of log-likelihood. The `IntegrationWarning`s left in
+the suite are the deliberate stress tests — heavy buyers at `x = 160` and 400,
+and the marginalisation double integral.
+
+*Verified:* `Appendix 3` is now 186 `c`, 16 `o`, 0 `w`, 0 `a`, 0 unverdicted —
+every one of the spec's 222 items.
+
+---
+
 ## Closed
 
 Both audit rounds. See `docs/audit.md`:

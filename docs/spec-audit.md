@@ -35,7 +35,8 @@ that says what must happen on bad input.
 
 ## Verdicts
 
-Of 222 spec items, 220 were verdicted (D-17 and NC-13 were not reached):
+Of 222 spec items, all 222 are now verdicted (round 7 reached `D-17` and
+`NC-13`, the two the audit did not):
 
 | | As audited | After rounds 5 and 6 |
 |---|---|---|
@@ -402,7 +403,7 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | D-14 | c | re-verdicted 2026-09-03: closed by **B4** — `TestTheColumnRenameActuallyRenames` renames all three columns |
 | D-15 | c | re-verdicted 2026-09-04: **round 6**: `Timestamp`, `str` and `datetime.date` all accepted and agreeing |
 | D-16 | c | `test_cdnow.py:73,95` — incidental but genuine |
-| D-17 | — | not reached by the audit |
+| D-17 | c | verdicted 2026-09-04: **round 7**: covered by `TestRepeatTransactionsInTheEstimationPeriod`, which a previous round wrote and did not verdict. Dropping first transactions and cutting at the split commute, and they commute because the estimation period always contains every customer's first transaction |
 | D-18 | c | re-verdicted 2026-09-03: **round 5**: the sort-order half asserted — shuffling the input rows leaves the summary, the cbs and the transactions identical, which is where an assumed sort would show as a negative interpurchase gap |
 
 ## S2 Time and splits
@@ -586,7 +587,7 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | NC-10 | c | re-verdicted 2026-09-03: **round 5**: the working side asserted, the refusals having been covered already |
 | NC-11 | c | re-verdicted 2026-09-03: **round 5**: `str`, `date`, `datetime` and `Timestamp` all accepted and shown to normalise to the same timestamp |
 | NC-12 | c | |
-| NC-13 | — | not reached by the audit |
+| NC-13 | c | verdicted 2026-09-04: **round 7**: eight claims. Six were already pinned; the two dyncov ones were both real. A repeated covariate date moved a prospective customer's expectation by **9% in silence** -- the lifetime and transaction tables are merged on the date, so a repeat is a cross product and the period is counted twice -- and a missing covariate column raised pandas' own `KeyError`, which is the defect `PR-13` records for the cohort path |
 
 ## S12 Bootstrapping
 
