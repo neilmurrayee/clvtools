@@ -839,3 +839,78 @@ class TestTheRegularizedVcovDisagreementIsPinned:
         assert ours == pytest.approx(1 / np.sqrt(20), rel=0.05)
         assert theirs == pytest.approx(0.087067, abs=1e-5)
         assert ours / theirs == pytest.approx(2.56, rel=0.05)
+
+
+class TestTheCorrelationStartValueIsChecked:
+    """Spec X-13, `absent` — and its `[-1, 1]` half is a misreading.
+
+    ``m`` is **not** a correlation. It is S6.5.2's Sarmanov mixing parameter,
+    and :func:`~clvtools.pnbd.correlation.correlation_bounds` gives its
+    admissible interval: ``[-1.042, 34.822]`` at the paper's own parameters, and
+    *moving with them* during the search. What lies in ``[-1, 1]`` is
+    :func:`~clvtools.pnbd.correlation.correlation_coefficient`, which is what
+    CLVTools prints as ``Cor(life,trans)``. A test written to the audit's
+    reading would have rejected ``start_m=1.5``, which is perfectly admissible
+    and which the fit accepts, converging inside the bounds.
+
+    What was real: a ``NaN`` start reached the objective and came back as "the
+    correlated Pareto/NBD objective is not finite" -- the **fifth** argument in
+    this package to be diagnosed by whatever consumed it first, after `V-01`,
+    `V-02`, `X-14` and `PR-15`. And a start far outside the bounds earned the
+    same message, where the bounds are computable at the start point and say
+    exactly what is wrong. Backlog item 36, round 6.
+    """
+
+    @pytest.fixture(scope="class")
+    def inputs(self, cbs_estimation):
+        return (
+            cbs_estimation["x"].to_numpy(dtype=float),
+            cbs_estimation["t.x"].to_numpy(dtype=float),
+            cbs_estimation["T.cal"].to_numpy(dtype=float),
+        )
+
+    @pytest.mark.parametrize("bad", [float("nan"), float("inf")])
+    def test_a_non_finite_start_names_itself(self, inputs, bad):
+        from clvtools.pnbd import fit_pnbd_correlated
+
+        with pytest.raises(ValueError, match="start_m must be a finite"):
+            fit_pnbd_correlated(*inputs, start_m=bad, hessian=False)
+
+    def test_a_start_that_is_not_a_number_says_so(self, inputs):
+        from clvtools.pnbd import fit_pnbd_correlated
+
+        with pytest.raises(TypeError, match="start_m must be a single number"):
+            fit_pnbd_correlated(*inputs, start_m=[0.1], hessian=False)
+
+    def test_a_start_outside_the_sarmanov_interval_is_refused_by_name(
+        self, inputs
+    ):
+        """Where eq. (11) goes negative, and the message says which interval."""
+        from clvtools.pnbd import fit_pnbd_correlated
+
+        with pytest.raises(ValueError, match="admissible interval"):
+            fit_pnbd_correlated(*inputs, start_m=-50.0, hessian=False)
+
+    def test_and_the_message_corrects_the_misreading(self, inputs):
+        """`m` is the mixing parameter; the correlation is derived from it."""
+        from clvtools.pnbd import fit_pnbd_correlated
+
+        with pytest.raises(ValueError, match="not the correlation"):
+            fit_pnbd_correlated(*inputs, start_m=-50.0, hessian=False)
+
+    @pytest.mark.slow
+    @pytest.mark.parametrize("start_m", [0.0, 0.2, 1.5, -1.0])
+    def test_admissible_starts_are_accepted_and_stay_inside_the_bounds(
+        self, inputs, start_m
+    ):
+        """Including 1.5, which the audit's reading would have rejected."""
+        from clvtools.pnbd import fit_pnbd_correlated
+        from clvtools.pnbd.correlation import correlation_bounds
+
+        fitted = fit_pnbd_correlated(
+            *inputs, start_m=start_m, hessian=False, options={"maxiter": 1}
+        )
+        lower, upper = correlation_bounds(
+            fitted.r, fitted.alpha, fitted.s, fitted.beta
+        )
+        assert lower <= fitted.m <= upper

@@ -2432,6 +2432,40 @@ partial periods — the same choice already recorded for a fractional
 one-day holdout is accepted), `T-12`, `T-13` and `T-16` were untested and are
 now pinned; `T-07` was stale, closed by **A5**.
 
+### Batch 4 — the `X` and `NC` sections: a misreading, and a fifth instance
+
+**`X-13`'s "[-1, 1] check" is a misreading, and writing the test would have
+broken a working fit.** `m` is not a correlation — it is S6.5.2's Sarmanov
+*mixing* parameter, and `correlation_bounds` gives its admissible interval:
+**[-1.042, 34.822]** at the paper's own parameters, *moving with them* during
+the search. What lies in [-1, 1] is `correlation_coefficient`, which is what
+CLVTools prints as `Cor(life,trans)`. A test to the audit's reading would have
+rejected `start_m=1.5`, which is admissible and which the fit accepts,
+converging inside the bounds.
+
+What *was* real is the rest of the row, and it is **the fifth argument** whose
+non-finite value was diagnosed by whatever consumed it first — after `V-01`,
+`V-02`, `X-14` and `PR-15`. A start far outside the bounds earned the same
+message, where the bounds are computable at the start point and say exactly
+what is wrong. Both now named, and the message corrects the misreading for the
+next reader.
+
+**Five `X`/`NC` rows were stale**, three of them (`X-01`, `X-04`, `X-05`)
+covered by `TestZeroCovariatesRecoverThePlainModel` since item 25's D5/D6 work,
+and `X-07`/`X-08` by **D2**. Round 6 adds the direction those do not take:
+**zero covariate data with coefficients that are not zero**, which is what
+round 5 established for the likelihood in `X-02`, now carried out to `predict`
+and to the prospective-customer path (`NC-03`, `NC-04`, `NC-05`). A path that
+read the coefficients where it should read the product would pass the
+gamma-zero test and fail this one.
+
+**And I wrote a self-comparing test on the way**, asserting `pnbd.pmf(...)`
+equalled `pnbd.pmf(...)` — the exact shape of finding B3 and of the CDNOW
+generator's `check("coef r", cf[["r"]], coef(fit)[["r"]])`, both of which this
+project has already caught. Removed once I noticed the claim it was meant to
+carry was covered elsewhere. Worth recording: that shape is easy to produce and
+invisible once written, which is why it has now appeared three times here.
+
 *Done when:* every `a` row has been read against the suite as it stands and
 carries either a corrected verdict, a test, or a note saying why nothing covers
 it — the same bar round 5 met, and the same batching, largest section first:

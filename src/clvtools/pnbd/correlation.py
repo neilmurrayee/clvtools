@@ -248,6 +248,43 @@ class PnbdCorrelatedParams(Fitted):
         return correlation_coefficient(self.m, self.r, self.alpha, self.s, self.beta)
 
 
+def _validated_start_m(start_m, start: np.ndarray) -> float:
+    """S6.5.2's mixing parameter's start value, checked before the search.
+
+    Spec `X-13` asks for a "single-value/NA/[-1,1] check". The last of those
+    misreads what ``m`` is: it is **not** a correlation, and
+    :func:`correlation_bounds` gives its admissible interval -- ``[-1.042,
+    34.822]`` at the paper's own parameters, and moving with them during the
+    search. :func:`correlation_coefficient` is the thing that lives in
+    ``[-1, 1]``, and CLVTools prints *that* as ``Cor(life,trans)``.
+
+    What is real is the rest. A ``NaN`` reached the objective and came back as
+    "the correlated Pareto/NBD objective is not finite at the point the search
+    started" -- the model blamed for the argument, which is the fifth place this
+    package did that (see `V-01`, `V-02`, `X-14` and `PR-15`). And a start well
+    outside the bounds, ``-50``, earned the same message where the bounds
+    themselves are computable at the start point and say so exactly.
+    """
+    try:
+        value = float(start_m)
+    except (TypeError, ValueError) as error:
+        raise TypeError(
+            f"start_m must be a single number, not {type(start_m).__name__}"
+        ) from error
+    if not np.isfinite(value):
+        raise ValueError(f"start_m must be a finite number, got {start_m!r}")
+    lower, upper = correlation_bounds(*start)
+    if not lower <= value <= upper:
+        raise ValueError(
+            f"start_m={value} is outside the Sarmanov density's admissible "
+            f"interval at the start parameters, [{lower:.4g}, {upper:.4g}]: "
+            f"outside it eq. (11) goes negative somewhere. Note `m` is the "
+            f"mixing parameter, not the correlation -- "
+            f"`correlation_coefficient` is what lies in [-1, 1]"
+        )
+    return value
+
+
 def fit_pnbd_correlated(
     x: ArrayLike,
     t_x: ArrayLike,
@@ -310,6 +347,7 @@ def fit_pnbd_correlated(
     w = None if weights is None else np.asarray(weights, dtype=float).ravel()
 
     start_arr = start_values(start, count=4, parameters="values (r, alpha, s, beta)")
+    start_m = _validated_start_m(start_m, start_arr)
 
     x0 = np.concatenate([np.log(start_arr), [float(start_m)]])
 

@@ -455,3 +455,77 @@ class TestZeroCovariatesMatchTheNoCovariateModelForAnyGamma:
             assert float(covaried) == pytest.approx(plain, rel=1e-15), (
                 f"{family} moved for gamma={gamma}"
             )
+
+
+class TestZeroCovariatesNestThroughPredictAndNewCustomer:
+    """Spec X-01, X-04, X-05, NC-03 and NC-04 — round 6's nesting `absent` rows.
+
+    :class:`TestZeroCovariatesRecoverThePlainModel` above already covers `X-01`,
+    `X-04` and `X-05` with **zero coefficients**, which is how those rows read;
+    checking them is what showed those three verdicts to be stale. What this
+    adds is the other direction, and it is the one round 5 established for the
+    likelihood in `X-02`: **zero covariate data with coefficients that are not
+    zero**. ``exp(gamma'0)`` is 1 for every gamma, so the nesting must hold for
+    an arbitrary one, and a path that read the coefficients where it should read
+    the product would pass the gamma-zero test and fail this.
+
+    `NC-03` and `NC-04` are the prospective-customer path, which shares no code
+    with ``predict()`` over a cohort -- "a second, independent claim", as the
+    audit puts it.
+
+    Bit-identical rather than close, for the same reason as `X-02`: ``exp(0)``
+    is 1 to the bit, so any difference at all would be a covariate model
+    reaching something the plain one does not. Backlog item 36, round 6.
+    """
+
+    GAMMA_LIFE: ClassVar[np.ndarray] = np.array([0.7])
+    GAMMA_TRANS: ClassVar[np.ndarray] = np.array([-0.3])
+
+    @pytest.fixture(scope="class")
+    def paired(self, apparel_trans):
+        """A plain fit and a covariate one over identically-zero covariates."""
+        from clvtools import ClvData, ClvDataStaticCov
+        from clvtools.pnbd import fit_pnbd
+        from clvtools.pnbd.staticcov import PnbdStaticCovParams
+
+        base = ClvData(apparel_trans, time_unit="week", estimation_split=104)
+        frame = pd.DataFrame(
+            {"Id": sorted(apparel_trans["Id"].unique()), "Zero": 0.0}
+        )
+        covariate_data = ClvDataStaticCov(
+            base, frame, names_cov_life=["Zero"], names_cov_trans=["Zero"]
+        )
+        cbs = base.customer_summary()
+        plain = fit_pnbd(cbs["x"], cbs["t_x"], cbs["T"], hessian=False)
+        covariate = PnbdStaticCovParams(
+            r=plain.r, alpha=plain.alpha, s=plain.s, beta=plain.beta,
+            gamma_life=self.GAMMA_LIFE, gamma_trans=self.GAMMA_TRANS,
+            names_cov_life=["Zero"], names_cov_trans=["Zero"],
+            names_cov_constr=[], log_likelihood=float("nan"),
+            unpenalised_log_likelihood=None, converged=True, n_customers=600,
+        )
+        return base, plain, covariate_data, covariate
+
+    @pytest.mark.slow
+    @pytest.mark.parametrize("column", ["PAlive", "CET", "DERT"])
+    def test_predict_gives_the_plain_models_columns(self, paired, column):
+        """X-04, and note the coefficients are *not* zero -- the data is."""
+        from clvtools import predict
+
+        base, plain, covariate_data, covariate = paired
+        without = predict(base, plain, prediction_end=10)
+        with_zeros = predict(covariate_data, covariate, prediction_end=10)
+        np.testing.assert_array_equal(
+            without[column].to_numpy(), with_zeros[column].to_numpy()
+        )
+
+    @pytest.mark.slow
+    def test_the_prospective_customer_agrees_too(self, paired):
+        """NC-03 and NC-04: a second path, and an independent claim."""
+        from clvtools import newcustomer, newcustomer_static, predict
+
+        _base, plain, _data, covariate = paired
+        scenario = {"Zero": 0.0}
+        assert predict(newcustomer(52), plain) == predict(
+            newcustomer_static(52, scenario, scenario), covariate
+        )

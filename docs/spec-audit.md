@@ -495,19 +495,19 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 
 | | | evidence / note |
 |---|---|---|
-| X-01 | a | no fit ever run on identically-zero covariate data |
+| X-01 | c | re-verdicted 2026-09-04: **round 6**: already covered by `TestZeroCovariatesRecoverThePlainModel` — the verdict was stale. Round 6 adds the other direction, zero *data* with non-zero coefficients |
 | X-02 | c | re-verdicted 2026-09-03: **round 5**: eight seeded random gammas over [-40, 40], all three families, and bit-exact (`np.array_equal`) for the Pareto/NBD — the randomness being the claim |
 | X-03 | c | |
-| X-04 | a | no γ=0 `predict()` comparison in any of the three forms |
-| X-05 | a | no γ=0 plot/pmf/pmf-plot comparison |
+| X-04 | c | re-verdicted 2026-09-04: **round 6**: stale, as `X-01`; `predict`'s three columns now also checked with zero data and arbitrary gamma, bit for bit |
+| X-05 | c | re-verdicted 2026-09-04: **round 6**: stale — the pmf and tracking frames are covered by the same class, from item 25's D5/D6 work |
 | X-06 | c | re-verdicted 2026-09-03: closed by **B6** — the coefficient vector and the summary table, not one scalar |
-| X-07 | a | nothing shuffles covariate rows (**D2**) |
-| X-08 | a | nothing reverses covariate columns (**D2**) |
+| X-07 | c | re-verdicted 2026-09-04: closed by **D2** — `test_pnbd_staticcov.py` permutes covariate rows |
+| X-08 | c | re-verdicted 2026-09-04: closed by **D2** — and columns |
 | X-09 | c ! | re-verdicted 2026-09-03: closed by **A7** — `test_estimate.py:244` pins correlation + covariates raising |
 | X-10 | c | |
 | X-11 | a | no syntactically illegal covariate name |
 | X-12 | c | re-verdicted 2026-09-03: **round 5**: `start_m` given a non-default value and shown to reach the search |
-| X-13 | a | `start_m` has no single-value/NA/[-1,1] check, no warning when `use_cor=False` |
+| X-13 | c ! | re-verdicted 2026-09-04: **round 6**: the `[-1, 1]` half is a *misreading* — `m` is the Sarmanov mixing parameter, whose admissible interval is `correlation_bounds`, [-1.042, 34.822] at the paper's parameters and moving with them; `correlation_coefficient` is what lies in [-1, 1]. The rest was real: a `NaN` start reached the objective (the fifth such argument), and a start outside the bounds earned the same message where the bounds are computable at the start point. Both now named |
 | X-14 | c | re-verdicted 2026-09-03: **round 5**: a `NaN` lambda was accepted and surfaced later as "objective is not finite"; now refused, as is a non-numeric pair |
 | X-15 | c | re-verdicted 2026-09-03: **round 5**: three of six landed badly — a bare string was iterated character by character, a duplicate was accepted, and an unknown name was blamed on "both processes". All three now name the actual problem |
 
@@ -568,9 +568,9 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 |---|---|---|
 | NC-01 | c | all four constructors exercised |
 | NC-02 | a ! | raises where R returns **1**; refusal pinned at `test_predict.py:564` (**A1**) |
-| NC-03 | a | γ=0 nesting pinned for the likelihood, never for the new-customer path — which is a second, independent rate builder (`predict.py:262`) |
-| NC-04 | a | same gap for zero covariate data |
-| NC-05 | a | holds by construction (`row()` looks up by name); no test perturbs column order |
+| NC-03 | c | re-verdicted 2026-09-04: **round 6**: the prospective-customer path, which shares no code with `predict` over a cohort |
+| NC-04 | c | re-verdicted 2026-09-04: **round 6**: covered with `NC-03`, at zero data rather than zero coefficients |
+| NC-05 | c | re-verdicted 2026-09-04: **round 6**: holds by construction — `row()` looks up by name — and the arbitrary-gamma nesting above exercises it |
 | NC-06 | c | re-verdicted 2026-09-03: closed by **B1** — the test predicts four scenarios and asserts the spread |
 | NC-07 | a | no test varies `first_transaction` on an effectively static path |
 | NC-08 | c | `test_pnbd_dyncov_predict.py:277,334`, rel 1e-12, both branches |
