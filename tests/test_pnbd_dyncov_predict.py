@@ -696,3 +696,134 @@ class TestDyncovPredictionOnNewData:
         data, params = fitted
         with pytest.raises(ValueError, match="does not reach the prediction"):
             predict(data, params, prediction_end=400)
+
+
+class TestTheAbcdTableUnderZeroAndSharedCoefficients:
+    """Spec DY-02, DY-04 and DY-05 — round 6's `absent` rows, and two of them
+    are claims this suite should *not* try to satisfy.
+
+    `DY-02` holds and is worth having: with every covariate zero, ``exp(gamma'x)``
+    is 1, so ``Ai`` and ``Ci`` are 1 exactly. That is the multiplier's identity,
+    checked bit for bit because ``exp(0)`` is 1 to the bit.
+
+    `DY-04` and `DY-05` do **not** hold as the audit states them, and the reason
+    is structural rather than a defect. ``Bbar_i`` and ``Dbar_i`` integrate the
+    same multiplier over **different spans**: ``Bbar`` runs from the estimation
+    end, offset by ``-T_cal - d1 - (i - 2)``, and ``Dbar`` from the customer's
+    birth, offset by ``-d_omega``. With identical covariate data and identical
+    coefficients ``Ai == Ci`` bit for bit -- and ``Bbar_i`` is -140 where
+    ``Dbar_i`` is +17, because they are not the same integral.
+
+    Both columns are already compared against CLVTools' own
+    ``pnbd_dyncov_ABCD`` at ``rtol=1e-10`` by
+    :class:`TestAbcdAgainstTheOracle` above, and they pass -- so the asymmetry
+    is CLVTools' too, and a test written to the audit's one-line reading would
+    fail against the oracle it is meant to agree with. `docs/spec.md` already
+    warns about exactly this pair: "two tables in the R file share column names
+    and disagree at ``i = 1`` ... check bodies, not titles". Recorded rather
+    than chased. Backlog item 36, round 6.
+    """
+
+    @pytest.fixture(scope="class")
+    def zeroed(self, apparel_trans):
+        data = ClvDataDynCov(
+            ClvData(apparel_trans, time_unit="week", estimation_split=104),
+            load_apparel_dyn_cov(), names_cov_life=NAMES, names_cov_trans=NAMES,
+        )
+        params = _params("dyncov_fit")
+        zero = replace(
+            params,
+            gamma_life=np.zeros(len(NAMES)), gamma_trans=np.zeros(len(NAMES)),
+        )
+        return abcd(data, zero, pd.Timestamp("2007-06-30"))
+
+    def test_zero_covariates_make_both_multipliers_exactly_one(self, zeroed):
+        """DY-02: `exp(0)` is 1 to the bit, so this needs no tolerance."""
+        assert np.array_equal(zeroed["Ai"].to_numpy(), np.ones(len(zeroed)))
+        assert np.array_equal(zeroed["Ci"].to_numpy(), np.ones(len(zeroed)))
+
+    def test_the_integrated_columns_are_not_the_same_integral(
+        self, apparel_trans
+    ):
+        """DY-04 and DY-05, pinned as the asymmetry they are.
+
+        Written so that a future reader who reaches for the audit's reading
+        finds the reason it is wrong, rather than a failing test.
+        """
+        data = ClvDataDynCov(
+            ClvData(apparel_trans, time_unit="week", estimation_split=104),
+            load_apparel_dyn_cov(), names_cov_life=NAMES, names_cov_trans=NAMES,
+        )
+        shared = np.array([0.4, -0.2, 0.3])
+        params = replace(
+            _params("dyncov_fit"), gamma_life=shared, gamma_trans=shared
+        )
+        table = abcd(data, params, pd.Timestamp("2007-06-30"))
+
+        # Identical data and identical coefficients: the multipliers agree...
+        assert np.array_equal(table["Ai"].to_numpy(), table["Ci"].to_numpy())
+        # ...and their integrals do not, because the spans differ.
+        assert not np.allclose(table["Bbar_i"], table["Dbar_i"])
+
+    def test_and_the_first_period_is_zero_only_where_the_covariates_are(
+        self, zeroed, apparel_trans
+    ):
+        """`DY-04` says `Bbar_i = Dbar_i = 0` at `i = 1`. Neither half is general.
+
+        Under **zero** covariates `Dbar_i` is 0 at `i = 1` and `Bbar_i` is not.
+        Under non-zero ones neither is -- which the first draft of the test
+        above asserted, having carried the zero-covariate result across to a
+        regime it does not hold in.
+        """
+        first_zeroed = zeroed[zeroed["i"] == 1]
+        assert (first_zeroed["Dbar_i"] == 0).all()
+        assert not (first_zeroed["Bbar_i"] == 0).all()
+
+        data = ClvDataDynCov(
+            ClvData(apparel_trans, time_unit="week", estimation_split=104),
+            load_apparel_dyn_cov(), names_cov_life=NAMES, names_cov_trans=NAMES,
+        )
+        shared = np.array([0.4, -0.2, 0.3])
+        table = abcd(
+            data,
+            replace(_params("dyncov_fit"), gamma_life=shared, gamma_trans=shared),
+            pd.Timestamp("2007-06-30"),
+        )
+        first = table[table["i"] == 1]
+        assert not (first["Dbar_i"] == 0).any()
+
+
+class TestExtraCovariatePeriodsDoNotMoveTheLikelihood:
+    """Spec DY-09, `absent`: "LL never evaluated on both a split and an unsplit
+    build".
+
+    The claim is that the likelihood is the same whether or not there are *more
+    covariates than required*. It has to be: the walks stop at the estimation
+    end, so a series running years past it describes periods no walk reaches.
+    A likelihood that moved would mean the walks were reading past their own
+    end -- silently, and only on data whose covariates happen to run long,
+    which the apparel cohort's do.
+
+    Bit-exact, since this is the same arithmetic over the same intervals.
+    """
+
+    def test_trimming_the_series_to_the_estimation_end_changes_nothing(
+        self, apparel_trans
+    ):
+        from clvtools.pnbd.dyncov import log_likelihood
+
+        full = load_apparel_dyn_cov()
+        trimmed = full[full["Cov.Date"] <= pd.Timestamp("2007-01-31")]
+        model = {"r": 1.9777, "alpha": 115.178, "s": 2.0127, "beta": 158.182}
+        zero = [0.0, 0.0, 0.0]
+
+        values = []
+        for covariates in (full, trimmed):
+            data = ClvDataDynCov(
+                ClvData(apparel_trans, time_unit="week", estimation_split=104),
+                covariates, names_cov_life=NAMES, names_cov_trans=NAMES,
+            )
+            values.append(log_likelihood(
+                data.walks(), **model, gamma_life=zero, gamma_trans=zero
+            ))
+        assert values[0] == values[1]

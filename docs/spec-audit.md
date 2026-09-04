@@ -515,19 +515,19 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 
 | | | evidence / note |
 |---|---|---|
-| DY-01 | a | `d_omega = d_1` never asserted, and `d_omega ≡ 1` makes the oracle degenerate (**B5**) |
-| DY-02 | a | nothing sets covariate *data* to zero |
+| DY-01 | c | re-verdicted 2026-09-04: closed by **B5** — `TestDOmegaOffTheBoundary`, four synthetic births reaching 7/7, 4/7, 2/7 and 1/7 |
+| DY-02 | c | re-verdicted 2026-09-04: **round 6**: zero covariates make `Ai` and `Ci` exactly 1, bit for bit |
 | DY-03 | c | re-verdicted 2026-09-03: closed by **B7** — `test_pnbd_dyncov.py:374`, all 600 customers and all four walks |
-| DY-04 | a | nothing asserts at `i = 1` in the expectation table |
-| DY-05 | a | same γ never passed to both processes, so `Bbar_i = Dbar_i` never holds |
+| DY-04 | o ! | re-verdicted 2026-09-04: **round 6**: does not hold as stated, and should not. `Bbar_i` is 0 at `i = 1` only under *zero* covariates; `Dbar_i` never is. `docs/spec.md` already warns that the two R tables share column names and disagree here — 'check bodies, not titles'. Both columns are pinned against `pnbd_dyncov_ABCD` at rtol 1e-10, which is the stronger check |
+| DY-05 | o ! | re-verdicted 2026-09-04: **round 6**: does not hold as stated. `Bbar` integrates from the estimation end and `Dbar` from the customer's birth, so with identical data *and* identical coefficients `Ai == Ci` bit for bit while `Bbar_i` is -140 where `Dbar_i` is +17. Both are oracle-pinned at 1e-10, so the asymmetry is CLVTools' too and a test to the audit's reading would fail against the oracle it means to agree with |
 | DY-06 | c | re-verdicted 2026-09-03: closed by **B7** — `test_pnbd_dyncov_predict.py:125`, over all 600 |
-| DY-07 | a | the static-as-dynamic cross-check does not exist (**D1**) |
+| DY-07 | c | re-verdicted 2026-09-04: closed by **D1** — the static-as-dynamic cross-check, `test_pnbd_dyncov_predict.py:482` |
 | DY-08 | c | `test_pnbd_dyncov.py:194` — 30 columns × 2 parameter vectors × 600 customers, rtol 1e-8. The strongest item in the audit |
-| DY-09 | a | LL never evaluated on both a split and an unsplit build |
+| DY-09 | c | re-verdicted 2026-09-04: **round 6**: trimming the covariate series to the estimation end leaves the likelihood *bit-identical*, so the walks are not reading past their own end |
 | DY-10 | c | re-verdicted 2026-09-03: closed by **D3** — `test_pnbd_dyncov.py:935` takes the `alpha = beta` arm |
 | DY-11 | a | no γ=0 predict-vs-nocov comparison |
 | DY-12 | a ! | zero-length window refused where R gives `CET = 0` (**A1**) |
-| DY-13 | a | untested, and its oracle `dyncov_palive.csv` is committed and orphaned (`backlog.md:1101`) |
+| DY-13 | c | re-verdicted 2026-09-04: **round 6**: its orphaned oracle was deleted by item 25 as bit-identical to the `PAlive` column already checked at rtol 1e-11; the claim is covered by that comparison |
 | DY-14 | c | `test_pnbd_dyncov.py:476,495,456`, atol 1e-12 |
 | DY-15 | c | re-verdicted 2026-09-03: closed by **B5** — four synthetic births reach `d_omega` of 7/7, 4/7, 2/7, 1/7 |
 | DY-16 | c | incidental — exactly one of 600 customers has `t_x == T_cal` with `x > 0` |
@@ -536,7 +536,7 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | DY-19 | o | **decided 2026-09-03**, was `w` and undecided: claims 1-2 are pinned, and the epsilon-apart claim is unreachable by construction — S6.1's day aggregation makes two purchases an epsilon apart *one* transaction, so there is no second walk to lose. The aggregation step is asserted instead, being the thing that could regress. Same shape as `T-01` |
 | DY-20 | c | re-verdicted 2026-09-03: **round 5**: the round-trip is asserted for all 600, bit for bit, at gamma != 0 |
 | DY-21 | c | `test_pnbd_dyncov.py:484,495` |
-| DY-22 | a | every dyncov test uses `estimation_split=104` — zero of seven weekdays (**D4**) |
+| DY-22 | c | re-verdicted 2026-09-04: closed by **D4** — `TestEveryWeekdaySplit`, all seven alignments against the closed-form nesting |
 | DY-23 | a | no epsilon-interval construction; `_to_days` collapses to whole days |
 | DY-24 | c | re-verdicted 2026-09-03: **round 5**: the three uncovered claims pinned — 1- and 2-period horizons (issue #128), a 20-customer sample, and a horizon past the covariates refused by name |
 | DY-25 | a | no partially-empty estimation/holdout, and no dyncov plotting test anywhere |

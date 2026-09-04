@@ -2376,6 +2376,35 @@ order not mattering (which the audit says it "verified" and left unasserted), an
 integer `Price`, the caller's frame unmodified, and a `Date` given as strings or
 `datetime.date`.
 
+### Batch 2 — the `DY` section, and two claims that should not be satisfied
+
+Four were stale, closed by findings whose verdicts nobody updated: `DY-01`
+(**B5**), `DY-07` (**D1**), `DY-22` (**D4**), and `DY-13`, whose orphaned oracle
+item 25 deleted as bit-identical to a column already checked at rtol 1e-11.
+
+`DY-02` and `DY-09` hold and are now pinned. `DY-09` is the one with teeth:
+trimming the covariate series to the estimation end leaves the likelihood
+**bit-identical**, which is what says the walks are not reading past their own
+end — a thing that would only ever show on data whose covariates run long, as
+the apparel cohort's do.
+
+**`DY-04` and `DY-05` do not hold as stated, and writing tests to satisfy them
+would have been the mistake.** `Bbar_i` integrates from the estimation end and
+`Dbar_i` from the customer's birth, so with identical covariate data *and*
+identical coefficients `Ai == Ci` bit for bit while `Bbar_i` is **-140** where
+`Dbar_i` is **+17**. They are not the same integral. Both columns are already
+compared against CLVTools' own `pnbd_dyncov_ABCD` at rtol 1e-10 and pass — so
+the asymmetry is CLVTools' too, and a test written to the audit's one-line
+reading would fail against the oracle it is meant to agree with. `docs/spec.md`
+already warned about this exact pair: "two tables in the R file share column
+names and disagree at `i = 1` ... check bodies, not titles." Re-verdicted `o !`
+and pinned as the asymmetry they are, so the next reader finds the reason
+rather than a failing test.
+
+I got the regime wrong once on the way: `Dbar_i` is 0 at `i = 1` only under
+*zero* covariates, and I carried that across to the shared-coefficient case. The
+test now states both regimes separately.
+
 *Done when:* every `a` row has been read against the suite as it stands and
 carries either a corrected verdict, a test, or a note saying why nothing covers
 it — the same bar round 5 met, and the same batching, largest section first:
