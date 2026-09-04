@@ -7,6 +7,8 @@ evaluating the same function before any model is built on top of it.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 import numpy as np
 import pytest
 from conftest import fixture_csv
@@ -230,3 +232,111 @@ class TestKummerUAgainstGslsHyp2f0:
         assert len(grid) == 18
         assert grid["z"].min() == -2.0
         assert grid["z"].max() == -0.05
+
+
+class TestWhereTheClosedFormsCancel:
+    r"""Backlog item 37: the shape item 32 found, looked for everywhere else.
+
+    Item 32 found that ``aggregate.pmf`` was **wrong in the third decimal**
+    before it was visibly wrong at all -- 1.0e-3 at ``k = 16``, against a
+    50-digit reference, three counts before the ``NaN`` anyone would have
+    noticed. Nothing had looked for that shape elsewhere, and the conditions
+    that produce it are known: a difference of two nearly-equal quantities, a
+    sum with alternating signs, or a ratio whose parts both underflow.
+
+    The four candidates were measured against a 60-digit ``mpmath`` reference
+    across their ranges, not at the fixtures' own points. The numbers below are
+    from that sweep, and the constants are ceilings rather than targets -- what
+    they guard is that a future change does not make any of these *worse*.
+    ``mpmath`` is not a dependency; the reference values are transcribed.
+    """
+
+    #: ``a_tilde`` at ``x = 5``, ``T = 104``, alpha = 48.6361, beta = 46.8844,
+    #: as ``t_x`` closes on ``T``. Generated at 60 digits.
+    A_TILDE: ClassVar = {
+        100.0: 1.729938562971e-01,
+        103.0: 4.585546678144e-02,
+        103.9: 4.667170196663e-03,
+        103.99: 4.675421496463e-04,
+        103.999: 4.676247521827e-05,
+    }
+
+    @pytest.mark.parametrize("t_x", list(A_TILDE))
+    def test_the_pareto_nbd_a_tilde_holds_to_1e_9(self, t_x):
+        r"""The difference of two ``2F1``s, which cancels as ``t_x -> T``.
+
+        The relative error grows from 1.4e-15 at ``t_x = 100`` to 1.1e-11 at
+        ``t_x = 103.999`` and 6.5e-11 a decade later -- real, progressive, and
+        **below 1e-9 everywhere a date-based data object can reach**, because
+        ``t_x`` is built from whole days: one day short of a 104-week window is
+        ``t_x = 103.857``, where the error is 4.7e-14. One *hour* short on
+        hourly data is 1.5e-12. So the shape is here and does not bite; that is
+        a measurement, not an assumption, and this test is what keeps it one.
+        """
+        r, s, x = 1.449, 0.5613, 5
+        alpha, beta, T = 48.6361, 46.8844, 104.0
+        rsx = r + s + x
+        hi, gap = max(alpha, beta), abs(alpha - beta)
+        b = s + 1.0 if alpha >= beta else r + x
+        ratio = (hi + t_x) / (hi + T)
+        got = float(
+            hyp2f1_ratio(rsx, b, gap / (hi + t_x))
+            - hyp2f1_ratio(rsx, b, gap / (hi + T)) * ratio**rsx
+        )
+        want = self.A_TILDE[t_x]
+        assert abs(got - want) / want < 1e-9
+
+    #: ``U(s, s, z)``, the DERT integral's confluent hypergeometric, at 60
+    #: digits. ``z = delta * (beta + T)`` is about 0.3 in ordinary use.
+    KUMMER: ClassVar = {
+        (0.28, 0.01): 1.229489568911225,
+        (0.5613, 0.0001): 1.979325692274827,
+        (0.5613, 1.0): 0.7345345173209364,
+        (0.5613, 10.0): 0.2611302606490090,
+        (0.5613, 10000.0): 0.005685591146662542,
+        (2.0, 10.0): 0.008436666060211918,
+    }
+
+    @pytest.mark.parametrize("key", list(KUMMER))
+    def test_kummer_u_holds_to_1e_9(self, key):
+        """Worst measured 7.9e-11, at ``s = 2``, ``z = 10``.
+
+        Below the 1e-9 the item names, and far from the ``z ~ 0.3`` an actual
+        discount factor produces: CLVTools' default annual 0.1 over a weekly
+        ``beta + T`` of about 150 gives ``z = 0.27``.
+        """
+        s, z = key
+        got = float(kummer_u(s, s, z))
+        want = self.KUMMER[key]
+        assert abs(got - want) / want < 1e-9
+
+    def test_the_ggomnbd_survival_term_is_exact_where_it_used_to_cancel(self):
+        r"""The one candidate that *was* losing precision, and is now fixed.
+
+        :math:`s\log\frac{\beta}{\beta - 1 + e^{bT}}` was formed as a
+        difference of two logs. On CDNOW the GGompertz/NBD sits at
+        ``beta = 1.39e-3`` with ``expm1(bT) = 1.2e-2``, so the two logs are
+        close and their difference cancels: measured at 2.2e-10 relative, where
+        ``-s*log1p(expm1(bT)/beta)`` is exact to 2.2e-16 -- **a factor of a
+        million**, on the parameters an actual published fit lands at.
+
+        It cost one thing, recorded at
+        ``TestCurvatureAgainstTheOracle``: the GGom/NBD's ``s`` standard error
+        moved 6e-5 and crossed a tolerance boundary it was already sitting on.
+        """
+        s, beta, b, T = 0.6048, 1.39e-3, 1e-6, 52.0
+        want = -0.02221323309434130  # 60 digits, transcribed
+        old = s * (np.log(beta) - np.log(beta - 1.0 + np.exp(b * T)))
+        new = -s * np.log1p(np.expm1(b * T) / beta)
+        assert abs(old - want) / abs(want) > 1e-12
+        assert abs(new - want) / abs(want) < 1e-15
+
+    def test_and_the_module_uses_the_exact_form(self):
+        """Which the test above does not check, since it does the arithmetic."""
+        import inspect
+
+        import clvtools.ggomnbd as module
+
+        source = inspect.getsource(module)
+        assert "np.log1p(np.expm1(b * T_flat) / beta_flat)" in source
+        assert "beta_flat - 1.0 + np.exp(" not in source

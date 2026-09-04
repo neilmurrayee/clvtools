@@ -550,6 +550,32 @@ is partial by construction). The capability is kept and the divergence recorded
 rather than silently inherited, because code moving from R gets a different
 window with no warning. Spec T-22.
 
+**The GGompertz/NBD's survival term was a difference of two logs that cancel.**
+$s\log\frac{\beta}{\beta - 1 + e^{bT}}$ was formed as $\log\beta - \log(\beta - 1
++ e^{bT})$. On CDNOW the model sits at $\beta = 1.39\times10^{-3}$ with
+$e^{bT} - 1 = 1.2\times10^{-2}$, so the two logs are close and their difference
+loses digits: measured against a 60-digit reference it is wrong by
+$2.2\times10^{-10}$ relative, where $-s\,\mathrm{log1p}(\mathrm{expm1}(bT)/\beta)$
+is exact to $2.2\times10^{-16}$ — a factor of a million, at the parameters a
+published fit actually lands on. The exact form is now used throughout. It cost
+one thing: the GGom/NBD's `s` standard error moved by $6\times10^{-5}$ and
+crossed an oracle tolerance it was already sitting on the edge of, so that one
+gate is 3e-3 rather than 2e-3 with the measurement recorded at the site. The
+oracle cannot arbitrate here — CLVTools arranges the same arithmetic and cancels
+in the same place, so its fixtures agree with the degraded form by construction.
+
+**Three other closed forms were swept for the same shape and are clean.** The
+Pareto/NBD's $\tilde A$ is a difference of two ${}_2F_1$s that cancels as
+$t_x \to T$: its relative error grows from $1.4\times10^{-15}$ at $t_x = T/2$ to
+$6.5\times10^{-10}$ at one ten-thousandth of a period short, which is real and
+progressive and **never reached**, because $t_x$ is built from whole days — one
+day short of a 104-week window gives $4.7\times10^{-14}$, and one *hour* short
+on hourly data $1.5\times10^{-12}$. The DERT integral's $U(s,s,z)$ loses at most
+$7.9\times10^{-11}$ over $z \in [10^{-4}, 10^4]$, against the $z \approx 0.3$ an
+actual discount factor produces. Measured, not assumed, and pinned by
+`TestWhereTheClosedFormsCancel` so that a future change cannot make them worse
+in silence. Backlog item 37.
+
 **Periods after the last transaction are zeros here and `NA` in R.** With a
 `data_end` past the end of the log, CLVTools' tracking plot reports `NA` for
 every period between the last transaction and `data.end`, without a warning;
