@@ -833,15 +833,52 @@ class ClvDataStaticCov(ClvData):
             if names_cov_trans is not None
             else self._cov_trans.columns
         )
-        for names, frame, which in (
-            (self.names_cov_life, self._cov_life, "life"),
-            (self.names_cov_trans, self._cov_trans, "trans"),
-        ):
-            missing = [n for n in names if n not in frame.columns]
-            if missing:
-                raise ValueError(f"{which} covariates not in the data: {missing}")
+        self.names_cov_life = self._resolved(
+            self.names_cov_life, self._cov_life, data_cov_life, "life"
+        )
+        self.names_cov_trans = self._resolved(
+            self.names_cov_trans, self._cov_trans, data_cov_trans, "trans"
+        )
 
         self.customers = customers
+
+    @staticmethod
+    def _resolved(
+        names: list[str], encoded: pd.DataFrame, source: pd.DataFrame, which: str
+    ) -> list[str]:
+        """The requested covariates, as the *encoded* frame names them.
+
+        S6.4 turns a categorical covariate into k-1 dummies, so a column
+        ``Region`` with three levels becomes ``Region_b`` and ``Region_c`` and
+        the name the caller asked for is gone. This used to compare the
+        requested names against the encoded frame directly and report
+        ``covariates not in the data: ['Region']`` -- of a column plainly in the
+        data they passed. Naming a categorical covariate by its own name was
+        impossible; only the apparel cohort's 0/1 numeric covariates, which keep
+        their names, made that survivable. Spec `C-09`.
+
+        A **single-category** column is the case worth separating: k-1 is zero,
+        so it contributes no dummies and carries no information. That earns its
+        own message rather than "not in the data", which would send the reader
+        looking for a typo.
+        """
+        out: list[str] = []
+        for name in names:
+            if name in encoded.columns:
+                out.append(name)
+                continue
+            dummies = [c for c in encoded.columns if c.startswith(f"{name}_")]
+            if dummies:
+                out.extend(dummies)
+                continue
+            if name in source.columns:
+                raise ValueError(
+                    f"{which} covariate {name!r} takes one value for every "
+                    f"customer, so it carries no information and k-1 dummies is "
+                    f"none of them; drop it from the selection"
+                )
+            raise ValueError(f"{which} covariates not in the data: [{name!r}]")
+        return out
 
     @staticmethod
     def _prepare(

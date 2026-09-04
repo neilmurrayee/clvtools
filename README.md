@@ -401,6 +401,22 @@ were wrong in the fourth digit; at a *relative* 1e-4 they agree with
 GGom/NBD's `b = 8.1e-07` from being stepped negative, where the likelihood does
 not exist.
 
+**A categorical covariate could not be selected by its own name.** S6.4 turns
+one into k-1 dummies, so a column `Region` with three levels becomes `Region_b`
+and `Region_c` — and the requested names were checked against the *encoded*
+frame, so `names_cov_life=["Region"]` reported "covariates not in the data" of a
+column plainly in the data. Nothing caught it because every covariate in the
+apparel cohort is 0/1 **numeric** and keeps its name through the encoding, and
+every test here uses that cohort. A name now expands to its dummies, a
+single-level column says it carries no information rather than that it is
+absent, and a genuinely missing one still says so. Spec C-09.
+
+**A fractional `estimation_split` is honoured and not warned about.**
+`estimation_split=37.5` ends the estimation period at 12:00 on its day; R warns
+about partial periods. It is the same choice recorded above for a fractional
+`prediction_end`, and for the same reason — this package carries partial periods
+elsewhere — so it is listed rather than fixed. Spec T-05 and T-10.
+
 **Three input-checking places where R is stricter, and one where it is not.**
 `start_cov` is a **single scalar** applied to every covariate coefficient, where
 CLVTools takes a named vector with one entry per covariate — so five of the

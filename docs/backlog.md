@@ -2405,6 +2405,33 @@ I got the regime wrong once on the way: `Dbar_i` is 0 at `i = 1` only under
 *zero* covariates, and I carried that across to the shared-coefficient case. The
 test now states both regimes separately.
 
+### Batch 3 — the `T` and `C` sections, and a covariate you could not name
+
+**`C-09` is a defect, and larger than the row describes.** It reads
+"single-category covariate silently accepted → `(600, 0)` design". What was
+actually true is that **no categorical covariate could be selected by its own
+name at all**: S6.4 turns one into k-1 dummies, so `Region` becomes `Region_b`
+and `Region_c`, and the requested names were checked against the *encoded*
+frame. `names_cov_life=["Region"]` reported "covariates not in the data" — of a
+column plainly in the data the caller passed.
+
+Nothing caught it because **every covariate in the apparel cohort is 0/1
+numeric** and keeps its name through the encoding, and every test in this
+repository uses that cohort. A fixture that is convenient in one respect can
+hide a whole class of input, which is worth remembering the next time a suite
+rests on one dataset.
+
+Names now expand to their dummies; a single-level column says it carries no
+information rather than that it is absent; a genuinely missing one still says
+that. Three failure modes, three messages.
+
+The `T` rows all hold. `T-05` and `T-10` are a divergence rather than a gap: a
+fractional `estimation_split` is honoured and **silent**, where R warns about
+partial periods — the same choice already recorded for a fractional
+`prediction_end` under `T-22`, and now in the README beside it. `T-09` (a
+one-day holdout is accepted), `T-12`, `T-13` and `T-16` were untested and are
+now pinned; `T-07` was stale, closed by **A5**.
+
 *Done when:* every `a` row has been read against the suite as it stands and
 carries either a corrected verdict, a test, or a note saying why nothing covers
 it — the same bar round 5 met, and the same batching, largest section first:

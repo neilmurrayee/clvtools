@@ -819,3 +819,79 @@ class TestIdsAndColumnTypesAreAcceptedAsGiven:
         before = frame.copy(deep=True)
         ClvData(frame, time_unit="week", estimation_split=4)
         pd.testing.assert_frame_equal(frame, before)
+
+
+class TestSplitSpellingsAndBoundaries:
+    """Spec T-05, T-09, T-10, T-12, T-13 and T-16 — round 6's `absent` `T` rows.
+
+    All hold; four were merely untested and two are divergences worth naming.
+
+    `T-05` and `T-10`: a **fractional** split gives a mid-day estimation end --
+    ``estimation_split=37.5`` ends at 12:00 on 2005-09-21 -- and R warns about
+    partial periods where this says nothing. That is the same choice the README
+    already records for a fractional ``prediction_end`` under spec `T-22`: the
+    fraction is honoured rather than truncated, because this package carries
+    partial periods elsewhere. Silence rather than a warning is the part worth
+    pinning, since it is what a reader coming from R will not expect.
+
+    `T-09`: a one-day holdout is accepted where R has a minimum. `T-12`:
+    ``data_end`` at the last transaction gives the same object as omitting it.
+    `T-13`/`T-16`: the split takes an int, a string, a ``date`` and a
+    ``Timestamp``, and only ``datetime64[ns]`` was ever passed. Backlog item 36,
+    round 6.
+    """
+
+    @pytest.fixture(scope="class")
+    def transactions(self):
+        from clvtools import load_apparel_trans
+
+        return load_apparel_trans()
+
+    def test_a_fractional_split_keeps_its_fraction(self, transactions):
+        """T-05 and T-10: honoured, not truncated, and not warned about."""
+        import warnings as warnings_module
+
+        with warnings_module.catch_warnings(record=True) as caught:
+            warnings_module.simplefilter("always")
+            data = ClvData(transactions, time_unit="week", estimation_split=37.5)
+        assert data.estimation_end == pd.Timestamp("2005-09-21 12:00:00")
+        assert not caught, "a partial period is deliberately silent here"
+
+    def test_and_a_smaller_fraction_gives_an_earlier_end(self, transactions):
+        """So the fraction reaches the timestamp rather than being rounded off."""
+        half = ClvData(transactions, time_unit="week", estimation_split=37.5)
+        whole = ClvData(transactions, time_unit="week", estimation_split=37.0)
+        assert half.estimation_end > whole.estimation_end
+        assert not half.customer_summary().equals(whole.customer_summary())
+
+    def test_a_one_day_holdout_is_accepted(self, transactions):
+        """T-09: R imposes a minimum; here the holdout may be a single day."""
+        data = ClvData(
+            transactions, time_unit="week", estimation_split="2010-12-19"
+        )
+        assert data.has_holdout
+        assert data.holdout_start == data.data_end
+
+    def test_data_end_at_the_last_transaction_changes_nothing(self, transactions):
+        """T-12, over the whole object rather than a spot check."""
+        omitted = ClvData(transactions, time_unit="week", estimation_split=104)
+        given = ClvData(
+            transactions, time_unit="week", estimation_split=104,
+            data_end="2010-12-20",
+        )
+        assert omitted.customer_summary().equals(given.customer_summary())
+        assert omitted.summary().equals(given.summary())
+
+    @pytest.mark.parametrize("spelling", ["int", "str", "date", "timestamp"])
+    def test_the_split_takes_every_spelling(self, transactions, spelling):
+        """T-13 and T-16: only `datetime64[ns]` was ever passed."""
+        import datetime as dt
+
+        value = {
+            "int": 104,
+            "str": "2006-12-31",
+            "date": dt.date(2006, 12, 31),
+            "timestamp": pd.Timestamp("2006-12-31"),
+        }[spelling]
+        data = ClvData(transactions, time_unit="week", estimation_split=value)
+        assert data.estimation_end == pd.Timestamp("2006-12-31")

@@ -614,3 +614,84 @@ class TestCategoricalCovariatesBecomeDummies:
     def test_numeric_only_data_produces_no_dummies(self):
         frame = pd.DataFrame({"Id": self.IDS, "Num": [1.0, 2.0, 3.0, 4.0]})
         assert self._built(frame).names_cov_life == ["Num"]
+
+
+class TestACategoricalCovariateCanBeNamedByItsOwnName:
+    """Spec C-09, `absent` — and a bigger gap than the row describes.
+
+    S6.4 turns a categorical covariate into k-1 dummies, so a column ``Region``
+    with three levels becomes ``Region_b`` and ``Region_c``. The requested names
+    were compared against the **encoded** frame, so naming a categorical
+    covariate by its own name reported ``covariates not in the data:
+    ['Region']`` -- of a column plainly in the data the caller passed. Selecting
+    one was impossible; you had to know the dummy spelling.
+
+    Nothing caught it because the apparel cohort's covariates are 0/1 **numeric**
+    and keep their names through the encoding. Every test in this repository
+    uses them.
+
+    `C-09` itself is the single-category case, which now earns its own message:
+    k-1 is zero, so the column contributes no dummies and carries no
+    information -- "not in the data" would send the reader hunting a typo.
+    Backlog item 36, round 6.
+    """
+
+    @pytest.fixture(scope="class")
+    def base(self, apparel_trans):
+        from clvtools import ClvData
+
+        return ClvData(apparel_trans, time_unit="week", estimation_split=104)
+
+    @staticmethod
+    def _built(base, frame, names):
+        from clvtools import ClvDataStaticCov
+
+        return ClvDataStaticCov(
+            base, frame, names_cov_life=names, names_cov_trans=names
+        )
+
+    def test_two_levels_resolve_to_the_one_dummy(self, base, apparel_static_cov):
+        frame = apparel_static_cov.assign(
+            Two=["a", "b"] * (len(apparel_static_cov) // 2)
+        )
+        built = self._built(base, frame, ["Two"])
+        assert built.names_cov_life == ["Two_b"]
+        assert built.design_life().shape == (600, 1)
+
+    def test_three_levels_resolve_to_both(self, base, apparel_static_cov):
+        frame = apparel_static_cov.assign(
+            R=["a", "b", "c"] * (len(apparel_static_cov) // 3)
+        )
+        built = self._built(base, frame, ["R"])
+        assert built.names_cov_life == ["R_b", "R_c"]
+        assert built.design_life().shape == (600, 2)
+
+    def test_a_numeric_covariate_keeps_its_own_name(self, base, apparel_static_cov):
+        """Which is why nothing here ever exercised the branch above."""
+        built = self._built(base, apparel_static_cov, ["Gender"])
+        assert built.names_cov_life == ["Gender"]
+
+    def test_a_single_level_column_says_it_carries_no_information(
+        self, base, apparel_static_cov
+    ):
+        """C-09 proper, and not "not in the data"."""
+        frame = apparel_static_cov.assign(Const="same")
+        with pytest.raises(ValueError, match="carries no information"):
+            self._built(base, frame, ["Const"])
+
+    def test_and_a_genuinely_absent_one_still_says_that(
+        self, base, apparel_static_cov
+    ):
+        """The three failure modes have to stay distinguishable."""
+        with pytest.raises(ValueError, match="not in the data"):
+            self._built(base, apparel_static_cov, ["Nope"])
+
+    def test_the_dummy_name_may_still_be_given_directly(
+        self, base, apparel_static_cov
+    ):
+        """Selecting one level of a categorical, which the expansion must allow."""
+        frame = apparel_static_cov.assign(
+            R=["a", "b", "c"] * (len(apparel_static_cov) // 3)
+        )
+        built = self._built(base, frame, ["R_c"])
+        assert built.names_cov_life == ["R_c"]
