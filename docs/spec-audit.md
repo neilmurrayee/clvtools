@@ -380,9 +380,9 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 |---|---|---|
 | D-01 | c | `test_data.py:174` |
 | D-02 | c | `test_data.py:185`, exact `[10.0, 25.0]` |
-| D-03 | a | every synthetic frame is midnight; the hour unit's floor path is untested end to end |
+| D-03 | c | re-verdicted 2026-09-04: **round 6**: offsetting the whole log by 37 minutes gives the identical customer summary, which is the claim the hour floor exists to make. No committed date is anything but midnight, so nothing had run it end to end |
 | D-04 | c | re-verdicted 2026-09-04: **round 6**: input row order asserted not to matter, which the audit verified and left unasserted |
-| D-05 | a | the synthetic duplicate is on the customer's *second* day; no fixture has two records on a first day |
+| D-05 | c | re-verdicted 2026-09-04: **round 6**: a duplicate on the *first* day, which is the one that sets `t_x`'s origin -- an aggregation slip there moves every subsequent recency rather than one row. Prices sum, as CLVTools' same-day aggregation does |
 | D-06 | c | `test_data.py:152`, `test_descriptives.py:327` |
 | D-07 | c | `test_data.py:124`, rtol 1e-12 |
 | D-08 | c ! | re-verdicted 2026-09-04: **round 6**: a *defect*, not a non-port — a float `Id` column spelled customer 1 as `"1.0"` where R gives `"1"`, and pandas types a numeric id column as float the moment it holds one `NaN`. Fixed; a genuinely fractional id keeps its point |
@@ -420,7 +420,7 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | T-17 | c | re-verdicted 2026-09-03: **round 5**: idempotence on a boundary for all five units, plus that `week` floors to the *day* on purpose |
 | T-18 | c | re-verdicted 2026-09-03: **round 5**: all four combinations build — and a grid stopping short of the estimation end raised a bare `IndexError` from numpy; now a named `ValueError` |
 | T-19 | c | re-verdicted 2026-09-03: **round 5**: 1- and 2-period horizons, numeric and as a date, and the two spellings agree |
-| T-20 | a ! | `prediction_end=0` raises; pinned opposite at `test_predict.py:349` (**A1**) |
+| T-20 | c | re-verdicted 2026-09-04: **round 6**: stale -- `A1` was fixed and recorded in the README's findings; `predict(prediction_end=0)` now returns `CET = 0` as R does |
 | T-21 | c | |
 | T-22 | c ! | re-verdicted 2026-09-03: **round 5**: the divergence had a README finding and no test; now pinned three ways |
 
@@ -434,7 +434,7 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | S-04 | c | |
 | S-05 | c ! | re-verdicted 2026-09-03: **round 5**: the values agree — a no-holdout customer's holdout column is empty — and the spelling differs, R printing `-` where pandas prints `NaN`/`NaT`. Recorded rather than reformatted |
 | S-06 | c | |
-| S-07 | a | copy holds on pandas 3.0.5, nothing asserts it |
+| S-07 | c | re-verdicted 2026-09-04: **round 6**: mutating the caller's frame afterwards -- `Price`, `Date` and whole rows -- leaves the data object unchanged. A defensive copy is the sort of thing an optimisation removes, and the failure is silent and remote |
 | S-08 | c | |
 | S-09 | o | no coercion generic; `ClvData()` is the only constructor |
 | S-10 | c | |
@@ -549,7 +549,7 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | PR-02 | c | re-verdicted 2026-09-03: **round 5**: the `level=0.9` and `num_boots=100` defaults pinned beside the `log(1.1)` one |
 | PR-03 | o | no `newdata` parameter — the data object is the first positional argument |
 | PR-04 | c | re-verdicted 2026-09-03: **round 5**: one row per customer in the data given, and the sampled customers' `PAlive`, `CET` and `DERT` bit-identical either way |
-| PR-05 | a ! | raises where R gives `CET = 0`; refusal pinned at `test_predict.py:349` (**A1**) |
+| PR-05 | c | re-verdicted 2026-09-04: **round 6**: stale, with `T-20` -- the same fix, the same finding |
 | PR-06 | c | `test_predict.py:100` — genuinely pinned, but incidentally: apparel id 262 has a transaction on the estimation end, and `>=` would give 21 not 20 |
 | PR-07 | c | `test_predict.py:267`, strict `<` for every customer |
 | PR-08 | c | `test_predict.py:78`, rtol 1e-12 — though structurally unfalsifiable: one code path, not two |
@@ -567,7 +567,7 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | | | evidence / note |
 |---|---|---|
 | NC-01 | c | all four constructors exercised |
-| NC-02 | a ! | raises where R returns **1**; refusal pinned at `test_predict.py:564` (**A1**) |
+| NC-02 | c | re-verdicted 2026-09-04: **round 6**: stale -- `predict(newcustomer(0))` returns exactly 1.0 |
 | NC-03 | c | re-verdicted 2026-09-04: **round 6**: the prospective-customer path, which shares no code with `predict` over a cohort |
 | NC-04 | c | re-verdicted 2026-09-04: **round 6**: covered with `NC-03`, at zero data rather than zero coefficients |
 | NC-05 | c | re-verdicted 2026-09-04: **round 6**: holds by construction — `row()` looks up by name — and the arbitrary-gamma nesting above exercises it |
@@ -587,14 +587,14 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | B-01 | c | re-verdicted 2026-09-03: **round 5**: the `num_boots=100` default pinned |
 | B-02 | c | re-verdicted 2026-09-03: closed by **D6** — the bootstrap identity over the full id list, `test_invariants.py` |
 | B-03 | c | |
-| B-04 | a | holdout rows do survive; nothing asserts it |
+| B-04 | c | re-verdicted 2026-09-04: **round 6**: the split is a *date*, so it survives only if the rebuild carries it; asserted on both ends, on the holdout rows themselves, and on a draw with repeats, where a customer picked twice must contribute their holdout twice |
 | B-05 | c | |
 | B-06 | c | |
 | B-07 | c | |
 | B-08 | c | re-verdicted 2026-09-03: **round 5**: every design row asserted to carry its own customer's covariates, through `bootstrap_apply` and under duplicated ids — the `(600, 2)` shape a wrongly ordered matrix would also satisfy |
-| B-09 | a ! | **`ClvDataDynCov` subclasses `ClvData`, so the resample branch never fires — the dyncov bootstrap silently refits without covariates** (**A2**) |
+| B-09 | c | re-verdicted 2026-09-04: **round 6**: stale -- fixed and tested at `test_diagnostics.py:816`, and in the CHANGELOG |
 | B-10 | o | the library never holds a specification: `apply` does its own fitting, so nothing can drop `use_cor` or lambdas. Architectural, not tested — and B-09 breaks the dyncov arm regardless |
-| B-11 | a | no all-customers refit compared to the original coefficients (**D6**) |
+| B-11 | c | re-verdicted 2026-09-04: **round 6**: stale -- `TestDrawingEveryCustomerOnce` refits the whole pool and compares coefficients |
 | B-12 | c | re-verdicted 2026-09-03: **round 5**: every resampled draw keeps the cohort's estimation and data ends, so the interval is built from answers to one question |
 | B-13 | c | |
 | B-14 | o | re-verdicted 2026-09-03: **round 5**: `predict` takes no `uncertainty=` argument — intervals are composed by the caller from `bootstrap_apply` and `confidence_intervals`, the same choice the README records for `clv.bootstrapped.apply`. Pinned as a divergence |

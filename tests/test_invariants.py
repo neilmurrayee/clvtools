@@ -529,3 +529,58 @@ class TestZeroCovariatesNestThroughPredictAndNewCustomer:
         assert predict(newcustomer(52), plain) == predict(
             newcustomer_static(52, scenario, scenario), covariate
         )
+
+
+class TestABootstrapResampleKeepsTheHoldout:
+    """Spec `B-04`, `absent`: "holdout rows do survive; nothing asserts it".
+
+    A resample rebuilds a :class:`~clvtools.data.ClvData` from selected
+    customers' transactions, and the estimation split is a *date*, not a row
+    count -- so it survives only if the rebuild carries it. Nothing had said so,
+    and the failure would be quiet in exactly the wrong way: a bootstrap whose
+    draws had no holdout still produces intervals, of a different quantity.
+    Backlog item 36, round 6.
+    """
+
+    @pytest.fixture(scope="class")
+    def data(self, apparel_trans):
+        return ClvData(apparel_trans, time_unit="week", estimation_split=104)
+
+    @pytest.fixture(scope="class")
+    def drawn(self, data):
+        from clvtools.bootstrap import bootstrap_data
+
+        ids = list(data.customer_summary()["Id"][:25])
+        return bootstrap_data(data, ids=ids)
+
+    def test_the_split_and_both_ends_survive(self, data, drawn):
+        assert drawn.has_holdout
+        assert drawn.estimation_end == data.estimation_end
+        assert drawn.data_end == data.data_end
+
+    def test_the_holdout_rows_are_the_drawn_customers_holdout_rows(
+        self, data, drawn
+    ):
+        """Not merely non-empty: the same transactions, for those customers."""
+        want = data.as_data_frame(sample="holdout")
+        want = want[want["Id"].isin(set(drawn.as_data_frame()["Id"]))]
+        got = drawn.as_data_frame(sample="holdout")
+        assert len(got) == len(want)
+        assert set(got["Id"]) == set(want["Id"])
+        assert got["Price"].sum() == pytest.approx(want["Price"].sum())
+
+    def test_a_draw_with_repeats_repeats_the_holdout_too(self, data):
+        """The half of `B-04` a distinct-id draw cannot see.
+
+        A bootstrap draws *with replacement*, so a customer picked twice must
+        contribute their holdout twice -- otherwise the estimation and holdout
+        halves of a draw describe different cohorts.
+        """
+        from clvtools.bootstrap import bootstrap_data
+
+        first = data.customer_summary()["Id"].iloc[0]
+        once = bootstrap_data(data, ids=[first])
+        twice = bootstrap_data(data, ids=[first, first])
+        assert len(twice.as_data_frame(sample="holdout")) == 2 * len(
+            once.as_data_frame(sample="holdout")
+        )

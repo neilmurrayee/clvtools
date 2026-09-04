@@ -2526,6 +2526,33 @@ port has no name-mangling step at all -- the absence of one is invisible until
 someone uses a column called `my gender!`. `V-03` was stale: item 31's
 `_reject_unknown_options` already refuses an unknown key by name.
 
+### Batch 7 — claims the committed data could not raise
+
+Five rows about shapes of input no fixture contains, and five that were stale.
+
+**`S-07`, `D-03` and `D-05` share a cause:** both bundled datasets are
+midnight-stamped and duplicate-free, so the sub-day floor never ran end to end
+and the one synthetic duplicate sits on a customer's *second* day. The first day
+is the one that sets `t_x`'s origin, which makes it the case where an
+aggregation slip moves every subsequent recency rather than one row. `S-07`'s
+defensive copy is the kind of thing an optimisation removes, and its failure is
+silent and remote -- the data object simply reports different numbers than it
+did a moment ago.
+
+**`B-04`'s split is a date, not a row count**, so it survives a resample only if
+the rebuild carries it. Asserted on both ends and on the holdout rows
+themselves, and then on the half a distinct-id draw cannot see: a bootstrap
+draws with replacement, so a customer picked twice must contribute their
+holdout twice, or a draw's estimation and holdout halves describe different
+cohorts.
+
+**Five rows were stale**, four of them one fix: `A1`'s zero-length window was
+repaired and recorded in the README, which settles `T-20`, `PR-05` and `NC-02`
+together. `B-09` was fixed and is tested at `test_diagnostics.py:816`; `B-11` is
+`TestDrawingEveryCustomerOnce`. Round 6 has now found nine stale rows against
+eight real defects, which is roughly the rate round 5 found and is the argument
+for re-reading an audit rather than trusting it.
+
 *Done when:* every `a` row has been read against the suite as it stands and
 carries either a corrected verdict, a test, or a note saying why nothing covers
 it — the same bar round 5 met, and the same batching, largest section first:

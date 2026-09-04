@@ -895,3 +895,85 @@ class TestSplitSpellingsAndBoundaries:
         }[spelling]
         data = ClvData(transactions, time_unit="week", estimation_split=value)
         assert data.estimation_end == pd.Timestamp("2006-12-31")
+
+
+class TestFramesTheFixturesNeverContained:
+    """Spec `S-07`, `D-03` and `D-05`, all `absent`.
+
+    Three claims the committed data cannot raise. Every date in both bundled
+    datasets is midnight-stamped, so the sub-day floor paths never run on real
+    input; the one synthetic duplicate is on a customer's *second* day, so the
+    first-day branch has no fixture; and nothing had ever mutated a caller's
+    frame after handing it over. Backlog item 36, round 6.
+    """
+
+    def test_the_caller_s_frame_is_copied_not_borrowed(self):
+        """`S-07`: mutating the source afterwards must not reach the data object.
+
+        A defensive copy is the sort of thing that holds until someone
+        optimises it away, and the failure is silent and remote -- the data
+        object simply reports different numbers than it did a moment ago.
+        Asserted on ``Price`` and on ``Date``, which take different paths in
+        the constructor.
+        """
+        from clvtools import ClvData
+
+        source = load_apparel_trans()
+        data = ClvData(source, time_unit="week", estimation_split=104)
+        before = data.as_data_frame().copy()
+
+        source.loc[source.index[0], "Price"] = -999.0
+        source.loc[source.index[1], "Date"] = pd.Timestamp("1999-01-01")
+        source.iloc[2:20, :] = source.iloc[0]
+
+        pd.testing.assert_frame_equal(data.as_data_frame(), before)
+
+    def test_the_hour_unit_floors_a_sub_hour_timestamp(self):
+        """`D-03`: tested at the ``timeunit`` layer, never end to end.
+
+        Every date in both datasets is midnight, so no committed input has ever
+        exercised the floor. Offsetting the whole log by 37 minutes must give
+        the identical customer summary, which is the claim the floor exists to
+        make.
+        """
+        from clvtools import ClvData
+
+        trans = load_apparel_trans()
+        exact = ClvData(trans, time_unit="hour", estimation_split=104 * 168)
+
+        shifted = trans.copy()
+        shifted["Date"] = shifted["Date"] + pd.Timedelta(minutes=37)
+        offset = ClvData(shifted, time_unit="hour", estimation_split=104 * 168)
+
+        pd.testing.assert_frame_equal(
+            offset.customer_summary(), exact.customer_summary()
+        )
+        assert exact.customer_summary()["T"].max() == 104 * 168
+
+    def test_two_records_on_a_customer_s_first_day_become_one(self):
+        """`D-05`: the synthetic duplicate has always been on the second day.
+
+        The first day is the one that sets ``t_x``'s origin, so a duplicate
+        there is the case where an aggregation slip would move every subsequent
+        recency rather than one row. The two prices sum, as CLVTools' own
+        same-day aggregation does.
+        """
+        from clvtools import ClvData
+
+        trans = load_apparel_trans()
+        one = trans[trans["Id"] == trans["Id"].iloc[0]].copy()
+        doubled = pd.concat(
+            [one, one.iloc[[0]].assign(Price=5.0)], ignore_index=True
+        )
+
+        plain = ClvData(one, time_unit="week")
+        with_dup = ClvData(doubled, time_unit="week")
+
+        assert len(doubled) == len(one) + 1
+        assert len(with_dup.as_data_frame()) == len(plain.as_data_frame())
+        assert with_dup.as_data_frame().iloc[0]["Price"] == pytest.approx(
+            plain.as_data_frame().iloc[0]["Price"] + 5.0
+        )
+        summary, before = with_dup.customer_summary(), plain.customer_summary()
+        assert summary["x"].iloc[0] == before["x"].iloc[0]
+        assert summary["t_x"].iloc[0] == pytest.approx(before["t_x"].iloc[0])
