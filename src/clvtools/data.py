@@ -57,6 +57,32 @@ DATA_DIR = Path(__file__).resolve().parent / "data"
 #: calendar arithmetic the month and year units need.
 
 
+def _as_id_strings(values: pd.Series) -> pd.Series:
+    """Customer ids as strings, without pandas' float spelling.
+
+    ``Id`` is a string everywhere in this package -- reading it as an integer
+    silently reorders rows relative to the oracle, which ``tests/conftest.py``
+    enforces on every fixture. Coercing with ``astype(str)`` alone has the
+    mirror problem: a **float** column spells customer 1 as ``"1.0"``, and
+    pandas types a numeric id column as float whenever it contains a single
+    ``NaN`` anywhere. Those ids then match nothing -- not a covariate frame,
+    not a fixture, not the caller's own lookup -- while looking perfectly
+    ordinary in a printed table. R gives ``"1"``. Spec `D-08`.
+
+    A genuinely fractional id keeps its point, since ``"1.5"`` is then the
+    honest spelling and nothing else could be meant by it.
+    """
+    if not pd.api.types.is_float_dtype(values):
+        return values.astype(str)
+    spelled = values.astype(str)
+    whole = values == values.round()
+    if whole.any():
+        # Only the whole ones: casting the column would raise on a mixed frame
+        # where some ids are genuinely fractional.
+        spelled[whole] = values[whole].astype("int64").astype(str)
+    return spelled
+
+
 def load_apparel_trans() -> pd.DataFrame:
     """The apparel retailer's transaction log used throughout S6.
 
@@ -166,7 +192,7 @@ def _identified(df: pd.DataFrame) -> pd.DataFrame:
                 f"{column}; drop or repair those rows before modelling them"
             )
 
-    df["Id"] = df["Id"].astype(str)
+    df["Id"] = _as_id_strings(df["Id"])
     parsed = pd.to_datetime(df["Date"], errors="coerce")
     if getattr(parsed.dtype, "tz", None) is not None:
         # Half-supported is worse than unsupported, which is what this was: a
@@ -829,7 +855,7 @@ class ClvDataStaticCov(ClvData):
         if name_id not in frame.columns:
             raise ValueError(f"{which} covariate data has no {name_id!r} column")
         out = frame.copy()
-        out[name_id] = out[name_id].astype(str)
+        out[name_id] = _as_id_strings(out[name_id])
         out = out.set_index(name_id)
 
         missing = customers.difference(out.index)

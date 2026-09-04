@@ -23,6 +23,7 @@ Two details of S6.1 that the arithmetic depends on:
 from __future__ import annotations
 
 import pathlib
+from typing import ClassVar
 
 import numpy as np
 import pandas as pd
@@ -726,3 +727,95 @@ class TestDataEndIsRefusedWhenItWouldDiscardTransactions:
                 apparel_trans, time_unit="week", estimation_split=104,
                 data_end="2007-06-01",
             )
+
+
+class TestIdsAndColumnTypesAreAcceptedAsGiven:
+    """Spec D-04, D-08, D-09, D-10, D-13 and D-15 — round 6's `absent` rows.
+
+    `D-08` was a defect and the reason this batch went first. ``Id`` is a string
+    everywhere in this package -- ``tests/conftest.py`` enforces it on every
+    fixture, because reading it as an integer silently reorders rows relative to
+    the oracle. Coercing with ``astype(str)`` alone has the mirror problem: a
+    **float** column spells customer 1 as ``"1.0"``, and pandas types a numeric
+    id column as float the moment it contains a single ``NaN`` anywhere. Those
+    ids then match nothing -- not a covariate frame, not a fixture, not the
+    caller's own lookup -- while looking perfectly ordinary in a printed table.
+    R gives ``"1"``.
+
+    The rest hold and were untested: an integer ``Price``, a ``Date`` given as
+    strings or ``datetime.date``, and the results not depending on input row
+    order. Backlog item 36, round 6.
+    """
+
+    @staticmethod
+    def _log(ids, dates=None, price=None):
+        when = [pd.Timestamp("2005-01-03") + pd.Timedelta(weeks=w)
+                for w in (0, 2, 6, 0, 3, 6)]
+        frame = pd.DataFrame({"Id": ids, "Date": dates if dates is not None else when})
+        if price is not None:
+            frame["Price"] = price
+        return frame
+
+    IDS: ClassVar[list] = ["a", "a", "a", "b", "b", "b"]
+
+    @pytest.mark.parametrize("ids,expected", [
+        ([1, 1, 1, 2, 2, 2], ["1", "2"]),
+        ([1.0, 1.0, 1.0, 2.0, 2.0, 2.0], ["1", "2"]),
+        (["1", "1", "1", "2", "2", "2"], ["1", "2"]),
+    ], ids=["int", "float", "str"])
+    def test_a_numeric_id_is_spelled_as_r_spells_it(self, ids, expected):
+        data = ClvData(self._log(ids), time_unit="week", estimation_split=4)
+        assert sorted(data.customer_summary()["Id"]) == expected
+
+    def test_but_a_genuinely_fractional_id_keeps_its_point(self):
+        """`"1.5"` is then the honest spelling; nothing else could be meant."""
+        ids = [1.5, 1.5, 1.5, 2.0, 2.0, 2.0]
+        data = ClvData(self._log(ids), time_unit="week", estimation_split=4)
+        assert sorted(data.customer_summary()["Id"]) == ["1.5", "2"]
+
+    def test_an_integer_price_gives_the_same_spending_as_a_float_one(self):
+        """D-09."""
+        ints = ClvData(
+            self._log(self.IDS, price=[10, 20, 30, 40, 50, 60]),
+            time_unit="week", estimation_split=4,
+        )
+        floats = ClvData(
+            self._log(self.IDS, price=[10.0, 20.0, 30.0, 40.0, 50.0, 60.0]),
+            time_unit="week", estimation_split=4,
+        )
+        pd.testing.assert_frame_equal(
+            ints.spending_summary(), floats.spending_summary()
+        )
+
+    @pytest.mark.parametrize("spelling", ["timestamp", "str", "date"])
+    def test_a_date_column_is_taken_in_any_of_its_spellings(self, spelling):
+        """D-15."""
+
+        when = [pd.Timestamp("2005-01-03") + pd.Timedelta(weeks=w)
+                for w in (0, 2, 6, 0, 3, 6)]
+        dates = {
+            "timestamp": when,
+            "str": [str(t.date()) for t in when],
+            "date": [t.date() for t in when],
+        }[spelling]
+        data = ClvData(
+            self._log(self.IDS, dates=dates), time_unit="week", estimation_split=4
+        )
+        assert data.estimation_end == pd.Timestamp("2005-01-31")
+        assert len(data.as_data_frame()) == 6
+
+    def test_the_result_does_not_depend_on_input_row_order(self):
+        """D-04 and D-10, which the audit verified and left unasserted."""
+        ordered = self._log(self.IDS)
+        jumbled = ordered.sample(frac=1.0, random_state=5).reset_index(drop=True)
+        a = ClvData(ordered, time_unit="week", estimation_split=4)
+        b = ClvData(jumbled, time_unit="week", estimation_split=4)
+        assert a.customer_summary().equals(b.customer_summary())
+        assert a.transactions.equals(b.transactions)
+
+    def test_the_caller_s_frame_is_not_modified(self):
+        """D-13: `.copy()` holds and nothing asserted it."""
+        frame = self._log([1, 1, 1, 2, 2, 2])
+        before = frame.copy(deep=True)
+        ClvData(frame, time_unit="week", estimation_split=4)
+        pd.testing.assert_frame_equal(frame, before)

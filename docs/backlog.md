@@ -25,7 +25,13 @@ hold, or divergences that needed recording rather than fixing. Appendix 3 now
 carries **no `weak` row at all** — 119 covered, 69 absent, 12 out-of-scope.
 Items 34 and 35.
 
-**Nothing is open.** Every item, 1 to 35, is done, and no item carries
+**Round 6 is open**, on the **69 `absent` verdicts** — the class round 5 did
+not touch. `absent` was never a defect list: the audit's own caveat says "much
+of it is" deliberate non-ports. But it was never checked *individually* either,
+and the first batch found that at least one row is a defect rather than a
+decision. Item 36.
+
+**Every other item, 1 to 35, is done**, and no item carries
 `[needs-decision]` — item 16 was the last. That phrase survives on two settled
 sub-bullets inside closed items 13 and 22, which say so where they stand. A new
 round starts a new list, with the evidence that raised it.
@@ -2345,6 +2351,66 @@ default, constrained, regularized, and both together.
 Note the cost before starting: a dyncov fit is ~2:53 since item 30, so a test
 matrix over four configurations is not something to put on the default path —
 `dyncov_fit` and its nightly workflow are where it belongs.
+
+## 36. `[ ]` Check the 69 `absent` verdicts individually — round 6
+
+`docs/spec-audit.md`'s Appendix 3 carries **69 `a` rows**: claims nothing in the
+suite covers. Its own caveat is careful about them — "`absent` is not a defect
+list: much of it is" deliberately not ported — and that is true, which is
+exactly why nobody went through them. The same was true of the `weak` rows, and
+round 5 found 20 defects in those.
+
+**The first batch settles the question.** `D-08` reads "no numeric/categorical
+`Id` test; `astype(str)` gives `"1.0"` for a float id where R gives `"1"`". That
+is not a non-port. `Id` is a string everywhere here — `tests/conftest.py`
+enforces it on every fixture, because reading it as an integer silently reorders
+rows against the oracle — and coercing with `astype(str)` has the mirror
+problem: pandas types a numeric id column as float the moment it holds a single
+`NaN`, and customer 1 becomes `"1.0"`, matching nothing. Not the covariate
+frame, not a fixture, not the caller's own lookup, while printing perfectly
+ordinarily. Fixed, with a genuinely fractional id keeping its point since
+`"1.5"` is then the honest spelling.
+
+`D-04`, `D-09`, `D-10`, `D-13` and `D-15` hold and were untested: input row
+order not mattering (which the audit says it "verified" and left unasserted), an
+integer `Price`, the caller's frame unmodified, and a `Date` given as strings or
+`datetime.date`.
+
+*Done when:* every `a` row has been read against the suite as it stands and
+carries either a corrected verdict, a test, or a note saying why nothing covers
+it — the same bar round 5 met, and the same batching, largest section first:
+`DY` 13, `D` 8, `T` 8, `C` 7, `X` 7, `F` 5, `NC` 5, `B` 3, `FI` 3, `S` 2,
+`PMF` 2, `PR` 2, `V` 2, `M` 1, `I` 1.
+
+## 37. `[ ]` Sweep for the shape item 32 found, wherever else it can hide
+
+**Item 32 is closed**; this is the successor it opened, and it is worth stating
+separately because the finding was not about the `pmf`.
+
+What item 32 found is that a closed form can degrade **silently and
+progressively** long before it fails visibly. `aggregate.pmf` was returning
+`NaN` from `k = 18`, which is where anyone would have noticed — and against a
+50-digit reference it was already wrong by 2.4e-8 at `k = 10`, 6.5e-5 at
+`k = 14` and **1.0e-3 at `k = 16`**: finite, plausible, and wrong in the third
+decimal. The `NaN` was a courtesy.
+
+Nothing has looked for that shape anywhere else, and the conditions that
+produce it are known: a difference of two nearly-equal quantities, a sum of
+terms with alternating signs, or a ratio whose numerator and denominator both
+underflow. This package has several — `hyp2f1_ratio`, the DERT integral, the
+GGom/NBD's lifetime term, the Sarmanov correlation's mixing.
+
+*Done when:* each closed form in `src/` that could cancel is measured against a
+high-precision reference across its parameter range, not merely at the
+fixtures' own points; the regimes where it loses more than the oracle's
+tolerance are recorded in `docs/performance.md` or the README's findings; and
+anything wrong by more than 1e-9 in a regime a user could reach is fixed or
+documented with the range named.
+
+Note the oracle cannot help here, which is the whole difficulty: CLVTools
+arranges the same arithmetic and cancels in the same places, so its fixtures
+agree with a degraded implementation by construction. `mpmath` under `uvx`, as
+item 32 used it, is the reference — it stays out of the project's dependencies.
 
 ---
 

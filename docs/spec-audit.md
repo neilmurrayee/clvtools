@@ -381,18 +381,18 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | D-01 | c | `test_data.py:174` |
 | D-02 | c | `test_data.py:185`, exact `[10.0, 25.0]` |
 | D-03 | a | every synthetic frame is midnight; the hour unit's floor path is untested end to end |
-| D-04 | a | no test varies input row order; all four orderings verified to agree |
+| D-04 | c | re-verdicted 2026-09-04: **round 6**: input row order asserted not to matter, which the audit verified and left unasserted |
 | D-05 | a | the synthetic duplicate is on the customer's *second* day; no fixture has two records on a first day |
 | D-06 | c | `test_data.py:152`, `test_descriptives.py:327` |
 | D-07 | c | `test_data.py:124`, rtol 1e-12 |
-| D-08 | a ! | no numeric/categorical `Id` test; `astype(str)` gives `"1.0"` for a float id where R gives `"1"` |
-| D-09 | a | integer `Price` never tested |
-| D-10 | a | no shuffled-input test; verified equal |
+| D-08 | c ! | re-verdicted 2026-09-04: **round 6**: a *defect*, not a non-port — a float `Id` column spelled customer 1 as `"1.0"` where R gives `"1"`, and pandas types a numeric id column as float the moment it holds one `NaN`. Fixed; a genuinely fractional id keeps its point |
+| D-09 | c | re-verdicted 2026-09-04: **round 6**: an integer `Price` gives the same spending summary as a float one |
+| D-10 | c | re-verdicted 2026-09-04: **round 6**: covered by the same shuffle test as `D-04` |
 | D-11 | c | `test_data.py:338`, `test_descriptives.py:178` — flag *and* descriptives consequence |
 | D-12 | c | `test_descriptives.py:67`, rel 1e-12 |
-| D-13 | a | `.copy()` holds; nothing asserts it |
+| D-13 | c | re-verdicted 2026-09-04: **round 6**: the caller's frame is asserted unmodified |
 | D-14 | c | re-verdicted 2026-09-03: closed by **B4** — `TestTheColumnRenameActuallyRenames` renames all three columns |
-| D-15 | a | strings and `datetime.date` work, untested |
+| D-15 | c | re-verdicted 2026-09-04: **round 6**: `Timestamp`, `str` and `datetime.date` all accepted and agreeing |
 | D-16 | c | `test_cdnow.py:73,95` — incidental but genuine |
 | D-17 | — | not reached by the audit |
 | D-18 | c | re-verdicted 2026-09-03: **round 5**: the sort-order half asserted — shuffling the input rows leaves the summary, the cbs and the transactions identical, which is where an assumed sort would show as a negative interpurchase gap |
