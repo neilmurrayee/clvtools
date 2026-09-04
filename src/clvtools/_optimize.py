@@ -27,7 +27,7 @@ import inspect
 
 import numpy as np
 
-__all__ = ["options_for"]
+__all__ = ["options_for", "start_scale"]
 
 #: Convergence tolerances well inside SciPy's defaults. These likelihoods are
 #: flat near their optima -- the Pareto/NBD's ridge moves 3e-5 for a change of
@@ -160,3 +160,53 @@ def options_for(
         _reject_unknown_options(method, overrides)
         options.update(overrides)
     return options
+
+
+def start_scale(T: np.ndarray, weights: np.ndarray | None = None) -> float:
+    r"""The size of a time unit in the data, for scaling a default start.
+
+    Every likelihood here is *exactly* invariant to the unit time is measured
+    in. Multiply :math:`t_x` and :math:`T` by :math:`c`, and the Pareto/NBD
+    satisfies
+
+    .. math::
+        \ell(x, c\,t_x, c\,T \mid r, c\alpha, s, c\beta)
+            = \ell(x, t_x, T \mid r, \alpha, s, \beta) - \Big(\sum_i x_i\Big)\log c
+
+    -- the same distribution, re-expressed, plus the Jacobian of the change of
+    variable. The BG/NBD is the same with :math:`\alpha` alone carrying the
+    unit, and the GGompertz/NBD with :math:`\alpha` and :math:`1/b`.
+
+    The optimiser is *not* invariant, because its start is not. CLVTools starts
+    every parameter at 1, and on weekly data ``alpha`` is around 49, so the
+    search begins four e-folds out and gets there. On the same data read hourly
+    it is around 8,171, and it does not: **L-BFGS-B stops 223 log-units short of
+    the optimum and reports** ``converged = True``, at a degenerate
+    ``s = 0.0011``. The GGompertz/NBD is louder and raises; the BG/NBD, with a
+    single mis-scaled coordinate rather than three, is fine. Spec `F-12` asks
+    that fits work on hourly data, and one of the three did.
+
+    So the *default* start puts the scale parameters at the average observation
+    window rather than at 1 -- which is the scale :math:`\alpha` and
+    :math:`\beta` live on, and which is 1 exactly when CLVTools' own convention
+    was already right. A start the caller gives is left alone. Rescaling the
+    data instead would be exact rather than a convention, and was tried: it also
+    divides the objective's magnitude by the Jacobian, and the absolute ``gtol``
+    in :data:`_TOLERANCES` then stops the weekly fit at ``ABNORMAL`` on the same
+    optimum. Moving the start moves nothing else.
+
+    >>> float(start_scale(np.array([100.0, 104.0, 108.0])))
+    104.0
+
+    Degenerate windows fall back to CLVTools' own 1 rather than dividing by
+    zero:
+
+    >>> float(start_scale(np.array([0.0, 0.0])))
+    1.0
+    """
+    if weights is None:
+        scale = float(np.mean(T))
+    else:
+        total = float(np.sum(weights))
+        scale = float(np.dot(weights, T) / total) if total > 0 else 0.0
+    return scale if np.isfinite(scale) and scale > 0.0 else 1.0

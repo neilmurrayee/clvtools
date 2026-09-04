@@ -25,7 +25,7 @@ import numpy as np
 from numpy.typing import ArrayLike
 from scipy import optimize
 
-from clvtools._optimize import options_for
+from clvtools._optimize import options_for, start_scale
 from clvtools._validate import customer_history, finished, start_values
 from clvtools.inference import Fitted, numerical_hessian
 from clvtools.pnbd.aggregate import log_likelihood
@@ -34,8 +34,6 @@ __all__ = ["PnbdParams", "fit_pnbd"]
 
 #: S6.4: "If not given, the start values are set to 0.1 for all covariates";
 #: for the model parameters CLVTools starts every one at 1.
-_DEFAULT_START = (1.0, 1.0, 1.0, 1.0)
-
 _NAMES = ("r", "alpha", "s", "beta")
 
 
@@ -97,7 +95,7 @@ def fit_pnbd(
     t_x: ArrayLike,
     T: ArrayLike,
     weights: ArrayLike | None = None,
-    start: tuple[float, float, float, float] = _DEFAULT_START,
+    start: tuple[float, float, float, float] | None = None,
     method: str = "L-BFGS-B",
     maxiter: int = 10_000,
     hessian: bool = True,
@@ -113,7 +111,11 @@ def fit_pnbd(
     weights
         Row multiplicities, for compressed customer tables.
     start
-        Starting :math:`(r, \alpha, s, \beta)`; all ones, as CLVTools does.
+        Starting :math:`(r, \alpha, s, \beta)` **in the caller's own time
+        unit**, converted to the unit the search normalises to. The default is
+        CLVTools' all-ones, taken in that normalised unit --
+        :func:`~clvtools._optimize.time_scale` explains why, and what the
+        alternative costs on hourly data.
     method
         Any method ``scipy.optimize.minimize`` accepts. S6.2.1 recommends
         ``"Nelder-Mead"`` when ``"L-BFGS-B"`` struggles.
@@ -178,9 +180,18 @@ def fit_pnbd(
     x, t_x, T = (np.asarray(v, dtype=float).ravel() for v in (x, t_x, T))
     x, t_x, T = customer_history(x, t_x, T)
 
-    start_arr = start_values(start, count=4, parameters="values (r, alpha, s, beta)")
-
     w = None if weights is None else np.asarray(weights, dtype=float).ravel()
+
+    # alpha and beta are rates per period, so a start of 1 means something
+    # different in every time unit -- and on hourly data means something four
+    # orders of magnitude wrong. See :func:`clvtools._optimize.start_scale`.
+    if start is None:
+        scale = start_scale(T, w)
+        start_arr = np.array([1.0, scale, 1.0, scale])
+    else:
+        start_arr = start_values(
+            start, count=4, parameters="values (r, alpha, s, beta)"
+        )
     evaluations = 0
 
     def negative_ll(log_params: np.ndarray) -> float:
@@ -202,18 +213,18 @@ def fit_pnbd(
     )
     result = finished(result, "Pareto/NBD")
 
+    r, alpha, s, beta = (float(v) for v in np.exp(result.x))
+
     hess = None
     if hessian:
         with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
             # The Hessian of the log-likelihood in the *natural* parameters is
             # what standard errors refer to, so it is differenced there rather
             # than in the log coordinates the search used.
-            natural = np.exp(result.x)
+            natural = np.array([r, alpha, s, beta])
             hess = numerical_hessian(
                 lambda p: -log_likelihood(x, t_x, T, *p, weights=w), natural
             )
-
-    r, alpha, s, beta = (float(v) for v in np.exp(result.x))
     return PnbdParams(
         r=r,
         alpha=alpha,

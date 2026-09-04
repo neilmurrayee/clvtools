@@ -238,6 +238,42 @@ tests keep estimation and evaluation apart for exactly this reason.
 Working through the paper turned up several things worth recording. Each is
 covered by a test rather than left in a comment.
 
+**A start value of 1 is a claim about the time unit, and on hourly data it is
+four orders of magnitude wrong.** CLVTools starts every parameter at 1, and this
+port did too. On weekly data the Pareto/NBD's $\alpha$ is about 49, so the
+search starts four e-folds out and gets there; on the *same data read hourly* it
+is about 8,171, and L-BFGS-B **stops 223 log-units short of the optimum, at a
+degenerate $s = 0.0011$, and reports `converged = True`**. The GGompertz/NBD was
+louder and raised; the BG/NBD, with one mis-scaled coordinate rather than three,
+was fine. Spec item `F-12` asks that fits work on hourly data, and one of the
+three did.
+
+The likelihoods are *exactly* invariant to the unit — scale $t_x$ and $T$ by $c$
+and the log-likelihood moves by $-(\sum_i x_i)\log c$, verified to the twelfth
+decimal — so the optimum is knowable in advance and the failure is the
+optimiser's alone. The fix puts the default start's scale parameters at the
+average observation window instead of at 1, which is 1 exactly when CLVTools'
+convention was already right; a start the caller gives is left alone.
+Normalising the *data* instead was tried and is more principled, but it divides
+the objective's magnitude by that same Jacobian, and the absolute `gtol` then
+returns the weekly fit as `ABNORMAL` on the identical optimum. A better start
+also subsumes part of what the tight `ftol` was doing: from the scaled start,
+SciPy's own loose `ftol` reaches the same optimum in fewer evaluations, where
+from all-ones it lands 1.5e-5 worse.
+
+**Three published GGompertz/NBD `(b, β)` pairs, four orders of magnitude apart,
+all with the same likelihood.** On CDNOW, CLVTools reports `(1.1e-6, 1.3e-5)`,
+Bemmaor & Glady (2012) `(2.0e-4, 2.6e-3)`, and this port `(1.19e-4, 1.39e-3)` —
+`b` spanning a factor of 180 — while the log-likelihood moves in the fourth
+decimal. The survival term is $(\beta/(\beta - 1 + e^{bT}))^{s}$, and for
+$bT \ll 1$ that is the Pareto/NBD's own survival with $\beta_P = \beta/b$: **the
+identified quantity is the ratio**, and all three agree on it within 11% and
+with the nested Pareto/NBD's $\beta = 11.67$. Neither published pair reproduces
+its own published likelihood, because rounding to two significant figures is a
+5% move along this direction. So the tests assert the ratio and the likelihood
+and not the coordinates, and `s` is asserted only as a spread — it tilts along
+the same ridge, moving 0.001 for 9e-7 of log-likelihood.
+
 **Three transcription errors in the printed equations.** Eq. (14) writes the
 per-transaction spending density with $z_i^{r-1}$, using the Pareto/NBD's $r$
 where the shape $p$ belongs. Eq. (17)'s integral writes $\nu{q-1}$ for

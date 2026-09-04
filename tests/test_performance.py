@@ -304,26 +304,58 @@ class TestEvaluationsPerFit:
 
     @pytest.mark.oracle
     def test_the_tolerance_buys_a_better_optimum_than_scipy_s_default(
-        self, apparel_cbs, apparel_fit
+        self, apparel_cbs
     ):
         """Why ``_optimize`` tightens ``ftol`` at all, asserted rather than said.
 
         The old lower bound existed to catch a relaxed ``ftol``. It caught it
         by *counting*, which made it a statement about one libm. The same
         regression is visible in the objective, and that comparison is
-        portable: run the same fit at SciPy's own 1e-8 and it stops earlier
-        and lands worse.
+        portable: run the same fit at SciPy's own 1e-8 and it stops earlier and
+        lands worse.
 
-        Measured on macOS/ARM: 210 evaluations against 150, and a
-        log-likelihood of -5848.097826903 against -5848.097841543 -- 1.5e-5
-        better, on a ridge where 1e-10 of log-likelihood is 3e-5 of ``beta``.
+        The comparison is from CLVTools' own all-ones start, which is where the
+        tolerance still earns its keep and which is not the default any more --
+        see :func:`~clvtools._optimize.start_scale`, and
+        :meth:`test_a_scaled_start_reaches_the_same_optimum_at_either_tolerance`
+        for what changed. Measured on macOS/ARM from that start: 210
+        evaluations against 150, and -5848.097826903 against -5848.097841543 --
+        1.5e-5 better, on a ridge where 1e-10 of log-likelihood is 3e-5 of
+        ``beta``.
+        """
+        ones = (1.0, 1.0, 1.0, 1.0)
+        tight = fit_pnbd(
+            apparel_cbs["x"], apparel_cbs["t_x"], apparel_cbs["T"],
+            hessian=False, start=ones,
+        )
+        loose = fit_pnbd(
+            apparel_cbs["x"], apparel_cbs["t_x"], apparel_cbs["T"],
+            hessian=False, start=ones, options={"ftol": 1e-8},
+        )
+        assert tight.log_likelihood > loose.log_likelihood + 1e-6
+        assert tight.n_evaluations > loose.n_evaluations
+
+    def test_a_scaled_start_reaches_the_same_optimum_at_either_tolerance(
+        self, apparel_cbs, apparel_fit
+    ):
+        """And what the scaled start took away from the test above.
+
+        Started at ``alpha = beta = mean(T)`` rather than at 1, SciPy's own
+        loose ``ftol`` lands on the same optimum to 1e-9 -- and in 125
+        evaluations, fewer than the 150 the loose fit from all-ones needed.
+        The tolerance is still worth keeping, because a start is a convention
+        and some data will defeat any convention; but on this data it is no
+        longer what finds the optimum, and pretending otherwise would leave a
+        test asserting something that had stopped being true.
         """
         loose = fit_pnbd(
             apparel_cbs["x"], apparel_cbs["t_x"], apparel_cbs["T"],
             hessian=False, options={"ftol": 1e-8},
         )
-        assert apparel_fit.log_likelihood > loose.log_likelihood + 1e-6
-        assert apparel_fit.evaluations > loose.n_evaluations
+        assert loose.log_likelihood == pytest.approx(
+            apparel_fit.log_likelihood, abs=1e-8
+        )
+        assert loose.n_evaluations < apparel_fit.evaluations
 
     def test_the_search_is_not_nelder_mead(self, apparel_cbs, apparel_fit):
         """The old upper bound, made portable the same way.

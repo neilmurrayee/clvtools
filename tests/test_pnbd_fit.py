@@ -393,3 +393,177 @@ class TestFitsRunUnderOptimiserMethodsBeyondTheTwoInUse:
         table = predict(data, fitted).select_dtypes("number")
         offending = [c for c in table.columns if not np.isfinite(table[c]).all()]
         assert not offending
+
+
+class TestFitsRunOnDataShapesNothingHadFitOn:
+    """Spec `F-12` and `F-13`, both `absent`.
+
+    Two runability claims from CLVTools' own `helper_testthat_runability_nocov.R`
+    that this port had covered one layer too low. Hourly time units were tested
+    at the ``timeunit`` layer -- ``add``, ``floor``, the period count -- and no
+    fit had ever been run on hourly data, where the numbers a fit sees are
+    ~4,000 periods rather than ~100 and ``alpha`` lands three orders of
+    magnitude away. And nothing fitted a model on data carrying no ``Price`` at
+    all, then predicted on data that does: the two objects meet only inside
+    :func:`~clvtools.predict.predict`, so a fit that had quietly remembered
+    something about spending would have gone unnoticed. Backlog item 36,
+    round 6.
+    """
+
+    @pytest.fixture(scope="class")
+    def hourly(self, apparel_trans):
+        """The apparel log read at one-hour resolution.
+
+        Its dates are midnight-stamped, so every transaction falls on hour 0 of
+        its day and the cohort is the same one; what changes is the *scale* the
+        optimiser searches on, which is the point.
+        """
+        from clvtools import ClvData
+
+        return ClvData(apparel_trans, time_unit="hour", estimation_split=104 * 168)
+
+    def test_the_likelihood_is_exactly_invariant_to_the_time_unit(
+        self, apparel_trans, hourly
+    ):
+        r"""The identity the rest of the class rests on, to 1e-12.
+
+        .. math::
+            \ell(x, c\,t_x, c\,T \mid r, c\alpha, s, c\beta)
+                = \ell(x, t_x, T \mid r, \alpha, s, \beta)
+                  - \Big(\sum_i x_i\Big)\log c
+
+        -- the same distribution re-expressed, plus the Jacobian of the change
+        of variable. Measured on the apparel cohort at :math:`c = 168`: the
+        difference is ``-6486.938398`` and :math:`\sum_i x_i \log 168` is
+        ``6486.938398``, agreeing to the twelfth decimal. Nothing here had ever
+        asserted a scale invariance, and it is the cheapest possible oracle --
+        no R, no fixture, no published number.
+        """
+        from clvtools import ClvData
+        from clvtools.pnbd import log_likelihood
+
+        weekly = ClvData(
+            apparel_trans, time_unit="week", estimation_split=104
+        ).customer_summary()
+        hours = hourly.customer_summary()
+        c = 168.0
+        np.testing.assert_allclose(hours["t_x"], c * weekly["t_x"], rtol=1e-12)
+
+        p = {"r": 1.4489, "alpha": 48.6348, "s": 0.5613, "beta": 46.8837}
+        here = log_likelihood(weekly["x"], weekly["t_x"], weekly["T"], **p)
+        there = log_likelihood(
+            hours["x"], hours["t_x"], hours["T"],
+            r=p["r"], alpha=p["alpha"] * c, s=p["s"], beta=p["beta"] * c,
+        )
+        assert there - here == pytest.approx(
+            -weekly["x"].sum() * np.log(c), abs=1e-9
+        )
+
+    @pytest.mark.slow
+    def test_a_fit_on_hourly_data_finds_the_weekly_fit_rescaled(self, hourly):
+        r"""``alpha`` and ``beta`` are rates per period, so both scale by 168.
+
+        ``r`` and ``s`` are shapes and do not move. By the invariance above the
+        hourly optimum *is* the weekly one rescaled, so this is an equality and
+        not an approximation of one -- which is what makes it a test of the
+        optimiser rather than a smoke run.
+
+        It failed when written. With CLVTools' all-ones start, ``alpha`` began
+        four orders of magnitude from 8,171 and **L-BFGS-B stopped 223
+        log-units short at a degenerate** ``s = 0.0011`` **and reported**
+        ``converged = True``. The GGompertz/NBD raised instead, and the
+        BG/NBD -- one mis-scaled coordinate rather than three -- was fine.
+        :func:`~clvtools._optimize.start_scale` is the fix and says why it is
+        the start that moved and not the data.
+        """
+        from clvtools.pnbd import fit_pnbd
+
+        cbs = hourly.customer_summary()
+        fitted = fit_pnbd(cbs["x"], cbs["t_x"], cbs["T"], hessian=False)
+        assert fitted.converged
+        assert fitted.log_likelihood == pytest.approx(-12335.036225, abs=1e-4)
+        assert fitted.r == pytest.approx(1.4490, rel=1e-3)
+        assert fitted.s == pytest.approx(0.5613, rel=1e-3)
+        assert fitted.alpha / 168.0 == pytest.approx(48.6361, rel=1e-3)
+        assert fitted.beta / 168.0 == pytest.approx(46.8844, rel=1e-3)
+
+    @pytest.mark.slow
+    @pytest.mark.parametrize("family", ["bgnbd", "ggomnbd"])
+    def test_the_other_two_families_fit_hourly_data_too(self, hourly, family):
+        """F-12 is a claim about every family, and one of three used to hold."""
+        import importlib
+
+        cbs = hourly.customer_summary()
+        module = importlib.import_module(f"clvtools.{family}")
+        fitted = getattr(module, f"fit_{family}")(
+            cbs["x"], cbs["t_x"], cbs["T"], hessian=False
+        )
+        assert fitted.converged
+        expected = {"bgnbd": -12343.958147, "ggomnbd": -12335.0368}[family]
+        assert fitted.log_likelihood == pytest.approx(expected, abs=1e-2)
+
+    @pytest.fixture(scope="class")
+    def priceless(self, apparel_trans):
+        """The same log with ``Price`` never read -- ``name_price=None``."""
+        from clvtools import ClvData
+
+        return ClvData(
+            apparel_trans.drop(columns=["Price"]),
+            time_unit="week", estimation_split=104, name_price=None,
+        )
+
+    def test_data_without_spending_says_so(self, priceless):
+        assert not priceless.has_spending
+        with pytest.raises(ValueError, match="no Price column"):
+            priceless.spending_summary()
+
+    @pytest.mark.slow
+    def test_a_fit_without_spending_predicts_on_data_that_has_it(
+        self, priceless, apparel_trans
+    ):
+        """F-13: the transaction model never needed ``Price``, and this proves it.
+
+        The fit is compared against the one on the identical log *with* prices
+        -- bit for bit, since the customer summary a Pareto/NBD consumes is
+        ``(x, t_x, T)`` and nothing else. Then the parameters are carried onto
+        the priced data and asked for the spending columns, which only the
+        Gamma-Gamma can supply.
+        """
+        from clvtools import ClvData, predict
+        from clvtools.gg import fit_gg
+        from clvtools.pnbd import fit_pnbd
+
+        priced = ClvData(apparel_trans, time_unit="week", estimation_split=104)
+        without = priceless.customer_summary()
+        with_ = priced.customer_summary()
+        for column in ("x", "t_x", "T"):
+            np.testing.assert_array_equal(without[column], with_[column])
+
+        fitted = fit_pnbd(without["x"], without["t_x"], without["T"],
+                          hessian=False)
+        spending = priced.spending_summary()
+        gg = fit_gg(spending["x"], spending["Spending"], hessian=False)
+
+        table = predict(priced, fitted, gg)
+        assert "predicted.mean.spending" in table.columns
+        assert np.isfinite(table["predicted.CLV"]).all()
+        assert (table["predicted.CLV"] > 0).all()
+
+    def test_and_predicting_spending_on_priceless_data_is_refused(
+        self, priceless
+    ):
+        """F-14's other half: the refusal names the missing column."""
+        from clvtools import predict
+        from clvtools.gg import GgParams
+        from clvtools.pnbd.fit import PnbdParams
+
+        fitted = PnbdParams(
+            r=0.75, alpha=5.33, s=0.28, beta=36.25,
+            log_likelihood=float("nan"), converged=True, n_customers=250,
+        )
+        gg = GgParams(
+            p=3.1, q=5.65, gamma=56.5,
+            log_likelihood=float("nan"), converged=True, n_customers=250,
+        )
+        with pytest.raises(ValueError, match="no Price column"):
+            predict(priceless, fitted, gg)

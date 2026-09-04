@@ -2466,6 +2466,41 @@ project has already caught. Removed once I noticed the claim it was meant to
 carry was covered elsewhere. Worth recording: that shape is easy to produce and
 invisible once written, which is why it has now appeared three times here.
 
+### Batch 5 — the `F` section: a fit that was wrong and said it converged
+
+`F-12` asks that fits work on hourly data. **They did not, and the Pareto/NBD
+did not say so**: with CLVTools' all-ones start, `alpha` begins four orders of
+magnitude from 8,171 and L-BFGS-B stops **223 log-units short** at a degenerate
+`s = 0.0011`, reporting `converged = True`. The GGompertz/NBD raised; the
+BG/NBD, with one mis-scaled coordinate rather than three, was fine.
+
+The reason it is knowable at all is that these likelihoods are *exactly*
+invariant to the time unit — scale time by `c` and the log-likelihood moves by
+`-(sum x) log c`, verified to the twelfth decimal — so the hourly optimum *is*
+the weekly one rescaled, and no oracle is needed to say what the answer should
+have been. That invariance is now a test in its own right, and it is the
+cheapest oracle in the repository: no R, no fixture, no published number.
+
+The fix scales the *default start*, not the data. Normalising the data is more
+principled and was written first; it also divides the objective's magnitude by
+the Jacobian, and the absolute `gtol` then returns the **weekly** fit as
+`ABNORMAL` on the identical optimum. Two consequences worth keeping:
+
+* `test_performance.py`'s "the tolerance buys a better optimum" test **stopped
+  being true**. From the scaled start, SciPy's loose `ftol` lands on the same
+  optimum in fewer evaluations. The test now demonstrates the tolerance from
+  CLVTools' all-ones start, where it still buys 1.5e-5, and a second test
+  records what the start took away. A test whose premise has quietly expired is
+  worse than no test.
+* `F-07`'s GGompertz/NBD `s` moved by 0.001 for 9e-7 of log-likelihood when the
+  start changed — which is the ridge that whole row is about, demonstrating
+  itself mid-batch.
+
+`F-01` and `F-08` were **stale**: round 4's `test_literature.py` fits CDNOW at
+`estimation_split="1997-09-30"` for both. `F-01` gains CLVTools' own four-decimal
+estimates as a tighter oracle than the paper's three. `M-04` and `PMF-04` were
+stale for the same reason.
+
 *Done when:* every `a` row has been read against the suite as it stands and
 carries either a corrected verdict, a test, or a note saying why nothing covers
 it — the same bar round 5 met, and the same batching, largest section first:

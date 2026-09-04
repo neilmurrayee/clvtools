@@ -39,7 +39,7 @@ from scipy import integrate, optimize, special
 # signatures are usable downstream. Neither module reaches back here, so
 # this closes no cycle; the covariate fit still imports
 # `fit_static_covariates` inside the function, where it is needed.
-from clvtools._optimize import options_for
+from clvtools._optimize import options_for, start_scale
 from clvtools._staticcov import DelegatesToCovariates, StaticCovResult, design
 from clvtools._validate import customer_history, finished
 from clvtools.data import ClvDataStaticCov
@@ -438,7 +438,7 @@ class GgomnbdParams(Fitted):
 def fit_ggomnbd(
     x: ArrayLike, t_x: ArrayLike, T: ArrayLike,
     weights: ArrayLike | None = None,
-    start: tuple[float, float, float, float, float] = (1.0, 1.0, 1.0, 1.0, 1.0),
+    start: tuple[float, float, float, float, float] | None = None,
     method: str = "L-BFGS-B",
     maxiter: int = 10_000,
     hessian: bool = True,
@@ -452,18 +452,27 @@ def fit_ggomnbd(
     x, t_x, T = (np.asarray(v, dtype=float).ravel() for v in (x, t_x, T))
     x, t_x, T = customer_history(x, t_x, T)
 
-    start_arr = np.asarray(start, dtype=float)
-    if start_arr.shape != (5,):
-        raise ValueError("start must give five values (r, alpha, b, s, beta)")
-    if np.any(start_arr <= 0):
-        raise ValueError("start values must be strictly positive")
-
     w = None if weights is None else np.asarray(weights, dtype=float).ravel()
+
+    # See :func:`clvtools._optimize.start_scale`. Here ``alpha`` carries the
+    # unit and ``b`` its reciprocal -- it multiplies time inside the Gompertz
+    # exponent -- while ``s`` and ``beta`` are dimensionless.
+    if start is None:
+        scale = start_scale(T, w)
+        start_arr = np.array([1.0, scale, 1.0 / scale, 1.0, 1.0])
+    else:
+        start_arr = np.asarray(start, dtype=float)
+        if start_arr.shape != (5,):
+            raise ValueError("start must give five values (r, alpha, b, s, beta)")
+        if np.any(start_arr <= 0):
+            raise ValueError("start values must be strictly positive")
 
     def negative_ll(log_params: np.ndarray) -> float:
         r_, alpha_, b_, s_, beta_ = np.exp(log_params)
         with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
-            value = log_likelihood(x, t_x, T, r_, alpha_, b_, s_, beta_, weights=w)
+            value = log_likelihood(
+                x, t_x, T, r_, alpha_, b_, s_, beta_, weights=w
+            )
         return np.inf if not np.isfinite(value) else -value
 
     result = optimize.minimize(

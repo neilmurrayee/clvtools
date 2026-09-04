@@ -469,7 +469,7 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | | | evidence / note |
 |---|---|---|
 | M-01..M-03 | c | per-customer oracles |
-| M-04 | a | the `PAlive` NaN regression case exists nowhere; verified finite `[0.99960, 0.99956, 0.74949, 0.99426]` (**C**) |
+| M-04 | c | re-verdicted 2026-09-04: **round 6**: stale -- `TestNumericalStabilityCases` has pinned the four heavy buyers since round 4 |
 | M-05..M-08 | c | |
 | M-09 | c ! | re-verdicted 2026-09-03: **round 5**: the post-erratum `CET` was pinned to 1e-6 with no record of *which* value or why — a deviation with a test and no findings entry. Both halves now exist |
 | M-10..M-12 | c | |
@@ -477,18 +477,18 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | PMF-01 | c | re-verdicted 2026-09-03: **round 5**: partial sums over k = 0..20, strictly increasing and never exceeding 1 |
 | PMF-02 | c | re-verdicted 2026-09-03: **round 5**: every value in [0, 1], no NaN, over the whole range rather than one scalar T |
 | PMF-03 | c | holds structurally — `pmf(k,T,params)` cannot see `x`/`t_x` |
-| PMF-04 | a | `P(X=0)` monotone in `T` asserted for no family; verified to hold (**C**) |
+| PMF-04 | c | re-verdicted 2026-09-04: **round 6**: stale -- asserted for all three families in the same class |
 | PMF-05 | a | no fitted-object `pmf()` generic, no `pmf.x.<k>` frame |
 | PMF-06 | c | re-verdicted 2026-09-03: **round 5**: a non-integer `k` was silently truncated — `pmf(2.7, ...)` returned `pmf(2, ...)`, a different question answered confidently. Now refused |
-| F-01 | a | the port's only cdnow fit uses `estimation_split=37`, not `"1997-09-30"` |
+| F-01 | c | re-verdicted 2026-09-04: **round 6**: stale -- `test_literature.py` has fitted CDNOW at the date split since round 4. Gains CLVTools' own four-decimal estimates, a tighter oracle than the paper's three |
 | F-02..F-06 | a | no literature value pinned; BG/NBD and GGomNBD never fitted on cdnow at all (**C**) |
-| F-07 | a ! | Bemmaor/Glady comparison absent, and the port's own `b`/`β` divergence unrecorded |
-| F-08 | a | `test_gg.py:183` pins the paper's *apparel* fit, not cdnow (**C**) |
+| F-07 | c ! | re-verdicted 2026-09-04: **round 6**: the comparison cannot be made coordinate by coordinate. Three sources' `(b, beta)` span four orders of magnitude at the same likelihood; the identified quantity is `beta/b`, which is the nested Pareto/NBD's `beta`, and all three agree on it within 11%. `s` tilts along the same ridge. Asserted as ratio, likelihood and spread; recorded in the README |
+| F-08 | c | re-verdicted 2026-09-04: **round 6**: stale -- `TestFaderHardie2013` fits the Gamma-Gamma on CDNOW, not apparel |
 | F-09 | c | re-verdicted 2026-09-03: **round 5**: the finiteness sweep — estimates, standard errors and every numeric column of `predict()` |
 | F-10 | c | |
 | F-11 | c | re-verdicted 2026-09-03: **round 5**: Powell run alongside Nelder-Mead and L-BFGS-B, since 'accepted' and 'works' were two claims and only the first was covered |
-| F-12 | a | hourly tested at the timeunit layer; no fit runs on hourly data |
-| F-13 | a | nothing fits without spending then predicts on spending-bearing data |
+| F-12 | c ! | re-verdicted 2026-09-04: **round 6**: it did not work. The Pareto/NBD stopped **223 log-units short** at a degenerate `s = 0.0011` and reported `converged = True`; the GGom/NBD raised; the BG/NBD was fine. Fixed by scaling the default start (`_optimize.start_scale`), and the exact time-unit invariance that makes the true optimum knowable is now a test of its own |
+| F-13 | c | re-verdicted 2026-09-04: **round 6**: fit on a log read with `name_price=None`, then predicted on the priced one; the customer summaries are compared row by row first, so the claim is that the two agree and not merely that neither raised |
 | F-14, F-15 | c | |
 
 ## S8 Covariate fits

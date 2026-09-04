@@ -35,7 +35,7 @@ from scipy import optimize, special
 # signatures are usable downstream. Neither module reaches back here, so
 # this closes no cycle; the covariate fit still imports
 # `fit_static_covariates` inside the function, where it is needed.
-from clvtools._optimize import options_for
+from clvtools._optimize import options_for, start_scale
 from clvtools._staticcov import DelegatesToCovariates, StaticCovResult, design
 from clvtools._validate import customer_history, finished, start_values
 from clvtools.data import ClvDataStaticCov
@@ -357,7 +357,7 @@ class BgnbdParams(Fitted):
 def fit_bgnbd(
     x: ArrayLike, t_x: ArrayLike, T: ArrayLike,
     weights: ArrayLike | None = None,
-    start: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0),
+    start: tuple[float, float, float, float] | None = None,
     method: str = "L-BFGS-B",
     maxiter: int = 10_000,
     hessian: bool = True,
@@ -382,9 +382,16 @@ def fit_bgnbd(
     x, t_x, T = (np.asarray(v, dtype=float).ravel() for v in (x, t_x, T))
     x, t_x, T = customer_history(x, t_x, T)
 
-    start_arr = start_values(start, count=4, parameters="values (r, alpha, a, b)")
-
     w = None if weights is None else np.asarray(weights, dtype=float).ravel()
+
+    # See :func:`clvtools._optimize.start_scale`. ``a`` and ``b`` are the shapes
+    # of a Beta distribution and carry no unit, so ``alpha`` alone is scaled.
+    if start is None:
+        start_arr = np.array([1.0, start_scale(T, w), 1.0, 1.0])
+    else:
+        start_arr = start_values(
+            start, count=4, parameters="values (r, alpha, a, b)"
+        )
 
     def negative_ll(log_params: np.ndarray) -> float:
         r_, alpha_, a_, b_ = np.exp(log_params)

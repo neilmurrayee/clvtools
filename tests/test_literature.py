@@ -53,6 +53,27 @@ FHL2005_BGNBD_LL = -9582.4
 FH2013_GG = {"p": 6.25, "q": 3.74, "gamma": 15.44}
 FH2013_GG_LL = -4055.9177
 
+#: CLVTools 0.12.1's own Pareto/NBD estimates on the same data, to four
+#: decimals rather than the paper's three -- spec `F-01`, a tighter oracle than
+#: `FHL2005_PNBD` for the same optimum. Its suite compares them at a *relative*
+#: 0.001, which is what ``rtol`` below is.
+CLVTOOLS_PNBD = {"r": 0.5532, "alpha": 10.5763, "s": 0.6063, "beta": 11.6715}
+CLVTOOLS_PNBD_LL = -9594.976
+
+#: And its GGompertz/NBD, spec `F-06`. ``b`` and ``beta`` are given to two
+#: significant figures because that is all CLVTools prints; see
+#: :class:`TestBemmaorGlady2012`, which is about why they are not comparable.
+CLVTOOLS_GGOMNBD = {
+    "r": 0.55313, "alpha": 10.5758, "b": 0.0000011, "s": 0.60682,
+    "beta": 0.000013,
+}
+
+#: Bemmaor & Glady (2012), Table 2, p. 1018 -- spec `F-07`.
+BG2012_GGOMNBD = {
+    "r": 0.553, "alpha": 10.578, "b": 0.0002, "s": 0.603, "beta": 0.0026,
+}
+BG2012_GGOMNBD_LL = -9594.98
+
 #: CLVTools 0.12.1's standard errors for the Pareto/NBD fit above, which its
 #: own suite asserts to 0.001.
 CLVTOOLS_PNBD_SE = {
@@ -241,3 +262,139 @@ class TestNumericalStabilityCases:
             float(module.pmf(0, T, **parameters)) for T in windows
         ])
         assert np.all(np.diff(p0) < 0), p0
+
+
+class TestClvToolsOwnCdnowEstimates:
+    """Spec `F-01`, `absent`: the same optimum, to one more decimal.
+
+    :class:`TestFaderHardieLee2005` compares against a paper that printed three
+    decimals, so :func:`published_tol` allows 0.0015 -- 2.7e-4 of ``r``. The R
+    package prints four and its own suite asserts them at a relative 0.001, and
+    that is a *different* oracle of a different strength for the same fit: it
+    pins this port against the implementation it is a port of rather than
+    against the article both implement. Backlog item 36, round 6.
+    """
+
+    @pytest.fixture(scope="class")
+    def fitted(self, cbs):
+        """From CLVTools' own start, ``(1, 1, 1, 1)``, which is not the default."""
+        return fit_pnbd(
+            cbs["x"], cbs["t_x"], cbs["T"],
+            start=np.ones(4), hessian=False,
+        )
+
+    def test_the_estimates_match(self, fitted):
+        for name, want in CLVTOOLS_PNBD.items():
+            assert getattr(fitted, name) == pytest.approx(want, rel=1e-3), name
+
+    def test_the_log_likelihood_matches(self, fitted):
+        """Printed to three decimals; measured here at -9594.976179."""
+        assert fitted.log_likelihood == pytest.approx(CLVTOOLS_PNBD_LL, abs=5e-4)
+
+
+class TestBemmaorGlady2012:
+    r"""Spec `F-07`, `absent !`: three published ``(b, beta)`` four orders apart.
+
+    The audit asked for the comparison and for this port's own divergence to be
+    recorded. Both are here, and the finding is that **the comparison cannot be
+    made coordinate by coordinate, and the spec is right to call it a deviation
+    to pin rather than a target to hit**. On CDNOW:
+
+    ==================  ==========  ============  ==========  ==============
+    source              ``b``       ``beta``      ``beta/b``  ``LL``
+    ==================  ==========  ============  ==========  ==============
+    CLVTools 0.12.1     1.1e-6      1.3e-5        11.82       -9594.9762
+    this port           1.19e-4     1.39e-3       11.64       -9594.9770
+    Bemmaor/Glady       2.0e-4      2.6e-3        13.0        -9594.98
+    Pareto/NBD          --          11.6684       --          -9594.9762
+    ==================  ==========  ============  ==========  ==============
+
+    ``b`` spans a factor of 180 and ``beta`` a factor of 200, while the
+    log-likelihood moves in the fourth decimal. The reason is in the survival
+    term: :math:`(\beta / (\beta - 1 + e^{bT}))^{s}`, and for :math:`bT \ll 1`,
+    :math:`e^{bT} - 1 \to bT`, so it becomes
+    :math:`((\beta/b) / ((\beta/b) + T))^{s}` -- the Pareto/NBD's own survival
+    with :math:`\beta_{P} = \beta/b`. **The identified quantity is the ratio**,
+    and all three sources agree on it to within 11%, and this port's is the
+    closest of the three to the Pareto/NBD's ``beta``. Individually ``b`` and
+    ``beta`` are a ridge, which is why CDNOW's GGompertz/NBD is the one fit
+    whose ``kkt2`` CLVTools' own suite expects to be false (spec `F-09`).
+
+    So what is asserted is the ratio and the likelihood, not the coordinates.
+    Backlog item 36, round 6.
+    """
+
+    @pytest.fixture(scope="class")
+    def fitted(self, cbs):
+        from clvtools.ggomnbd import fit_ggomnbd
+
+        return fit_ggomnbd(cbs["x"], cbs["t_x"], cbs["T"], hessian=False)
+
+    def test_the_identified_parameters_match_the_published_ones(self, fitted):
+        """``r`` and ``alpha`` are identified, and agree with everyone."""
+        for name in ("r", "alpha"):
+            assert getattr(fitted, name) == pytest.approx(
+                BG2012_GGOMNBD[name], abs=published_tol(BG2012_GGOMNBD[name])
+            ), name
+
+    def test_but_s_tilts_along_the_ridge_too(self, fitted):
+        """Which is why the class asserts three coordinates and not five.
+
+        ``s`` sits at 0.6048 here, 0.60682 in CLVTools, 0.603 in Bemmaor and
+        Glady and 0.60623 in the nested Pareto/NBD -- a spread of 0.004 across
+        four sources, which is wider than the 0.0015 the published third
+        decimal claims. So what is asserted is the spread, not a coordinate:
+        every source lies within 0.005 of every other, and no tighter statement
+        about ``s`` is available or would survive a change of start.
+
+        This test itself moved: the value here was 0.60577 until the default
+        start became scale-aware (:func:`~clvtools._optimize.start_scale`),
+        which is a change of 0.001 in ``s`` for 9e-7 of log-likelihood. That is
+        the ridge demonstrating itself, and the reason the assertion is shaped
+        the way it is.
+        """
+        every = [fitted.s, CLVTOOLS_GGOMNBD["s"], BG2012_GGOMNBD["s"],
+                 FHL2005_PNBD["s"]]
+        assert max(every) - min(every) < 5e-3
+        assert min(every) > 0.60
+        assert max(every) < 0.61
+
+    def test_the_gompertz_scale_ratio_matches_the_pareto_nbd_beta(self, fitted):
+        """What ``b`` and ``beta`` jointly identify, and separately do not."""
+        ratio = fitted.beta / fitted.b
+        assert ratio == pytest.approx(FHL2005_PNBD["beta"], rel=0.05)
+        for source in (CLVTOOLS_GGOMNBD, BG2012_GGOMNBD):
+            assert source["beta"] / source["b"] == pytest.approx(ratio, rel=0.15)
+
+    def test_the_log_likelihood_matches(self, fitted):
+        """Printed to two decimals, and this port lands inside them."""
+        assert fitted.log_likelihood == pytest.approx(
+            BG2012_GGOMNBD_LL, abs=0.005
+        )
+
+    def test_our_optimum_is_no_worse_than_either_published_one(self, fitted, cbs):
+        """The claim the coordinate comparison above is standing in for.
+
+        Measured: -9594.977044 here, against -9594.983766 at CLVTools' printed
+        parameters and -9595.770963 at Bemmaor and Glady's. Neither published
+        pair *reproduces its own published likelihood* -- Bemmaor and Glady
+        print -9594.98 and their printed ``(b, beta)`` give -9595.77 -- because
+        rounding to two significant figures is, along this direction, a 5%
+        move. That is the ridge, seen from the other side.
+        """
+        from clvtools.ggomnbd import log_likelihood as ggomnbd_log_likelihood
+
+        x, t_x, T = cbs["x"], cbs["t_x"], cbs["T"]
+        ours = {k: getattr(fitted, k) for k in BG2012_GGOMNBD}
+        here = ggomnbd_log_likelihood(x, t_x, T, **ours)
+        for published in (CLVTOOLS_GGOMNBD, BG2012_GGOMNBD):
+            assert here >= ggomnbd_log_likelihood(x, t_x, T, **published)
+
+    def test_the_ggomnbd_barely_improves_on_the_pareto_nbd_here(self, fitted):
+        """It nests it at ``b -> 0``, and on CDNOW that is where it goes.
+
+        Two extra effective parameters buy 8e-5 of log-likelihood over
+        :data:`FHL2005_PNBD_LL`. The Gompertz term is not identified by this
+        data, which is the substance of the whole class.
+        """
+        assert abs(fitted.log_likelihood - FHL2005_PNBD_LL) < 0.05
