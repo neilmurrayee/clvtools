@@ -33,7 +33,12 @@ from numpy.typing import ArrayLike, NDArray
 from scipy import optimize, special
 
 from clvtools._optimize import options_for
-from clvtools._validate import finished, spending_history, start_values
+from clvtools._validate import (
+    finished,
+    single_logical,
+    spending_history,
+    start_values,
+)
 from clvtools.inference import Fitted, numerical_hessian
 
 __all__ = [
@@ -302,6 +307,7 @@ def fit_gg(
     x, z_bar = (np.asarray(v, dtype=float).ravel() for v in (x, z_bar))
     x, z_bar = spending_history(x, z_bar)
 
+    hessian = single_logical(hessian, "hessian")
     start_arr = start_values(start, count=3, parameters="values (p, q, gamma)")
 
     w = None if weights is None else np.asarray(weights, dtype=float).ravel()

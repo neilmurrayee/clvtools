@@ -567,3 +567,56 @@ class TestFitsRunOnDataShapesNothingHadFitOn:
         )
         with pytest.raises(ValueError, match="no Price column"):
             predict(priceless, fitted, gg)
+
+
+class TestASingleLogicalIsCheckedLikeR:
+    """Spec `V-05`, `absent`: "no single-logical validation exists anywhere".
+
+    CLVTools has a ``check_userinput_single_logical`` applied throughout, which
+    fails for ``NULL``, ``NA``, a disallowed type, or a vector longer than one.
+    Python's truthiness accepts all four, and the failure is that the argument
+    *works*: ``hessian="no"`` computes a Hessian, ``hessian=None`` skips one,
+    and neither says anything. Applied to ``hessian``, which is the
+    single-logical argument on every fit here and the one whose misreading
+    silently changes what the caller gets back. Backlog item 36, round 6.
+    """
+
+    @pytest.fixture(scope="class")
+    def cbs(self, cbs_estimation):
+        return (
+            cbs_estimation["x"], cbs_estimation["t.x"], cbs_estimation["T.cal"],
+        )
+
+    @pytest.mark.parametrize("family", ["pnbd", "bgnbd", "ggomnbd"])
+    @pytest.mark.parametrize("bad", [None, "no", 1, 0])
+    def test_a_non_logical_is_refused_by_every_family(self, cbs, family, bad):
+        import importlib
+
+        module = importlib.import_module(f"clvtools.{family}")
+        with pytest.raises(ValueError, match="must be True or False"):
+            getattr(module, f"fit_{family}")(*cbs, hessian=bad)
+
+    def test_a_vector_says_how_many_it_got(self, cbs):
+        from clvtools.pnbd import fit_pnbd
+
+        with pytest.raises(ValueError, match="not 2 values"):
+            fit_pnbd(*cbs, hessian=[True, False])
+
+    def test_numpy_s_own_booleans_are_accepted(self, cbs):
+        """``np.True_`` is not a ``bool``, and refusing it would be wrong.
+
+        It is what a comparison on an array yields, so it reaches this argument
+        from perfectly ordinary calling code.
+        """
+        from clvtools.pnbd import fit_pnbd
+
+        fitted = fit_pnbd(*cbs, hessian=np.False_)
+        assert fitted.hessian is None
+
+    def test_the_spending_model_checks_it_too(self):
+        from clvtools import ClvData, load_apparel_trans
+        from clvtools.gg import fit_gg
+
+        spending = ClvData(load_apparel_trans()).spending_summary()
+        with pytest.raises(ValueError, match="must be True or False"):
+            fit_gg(spending["x"], spending["Spending"], hessian="yes")

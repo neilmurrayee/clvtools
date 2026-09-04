@@ -37,12 +37,20 @@ that says what must happen on bad input.
 
 Of 222 spec items, 220 were verdicted (D-17 and NC-13 were not reached):
 
-| | Count |
-|---|---|
-| `covered` — the claim is genuinely pinned | 64 |
-| `weak` — touched but not pinned | 76 |
-| `absent` — nothing covers it | 75 |
-| `out-of-scope` — deliberately not ported | 6 |
+| | As audited | After rounds 5 and 6 |
+|---|---|---|
+| `covered` — the claim is genuinely pinned | 64 | **184** |
+| `weak` — touched but not pinned | 76 | **0** |
+| `absent` — nothing covers it | 75 | **0** |
+| `out-of-scope` or a recorded divergence | 6 | **16** |
+
+Round 5 (`docs/backlog.md`, item 34) worked the 76 `weak` rows and round 6
+(item 36) the 69 `absent` ones that remained after it. Between them, **23 rows
+were stale** — the behaviour was already pinned, by work done after the audit
+was written — and **19 were real defects**, of which the largest is `F-12`: on
+hourly data the Pareto/NBD stopped 223 log-units short of the optimum and
+reported `converged = True`. The per-row notes below say which was which; the
+narrative is in `docs/backlog.md`.
 
 Read those numbers carefully. `absent` is not a defect list: much of it is
 behaviour this port has and simply never asserts, and a good deal of it passes
@@ -439,7 +447,7 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | S-09 | o | no coercion generic; `ClvData()` is the only constructor |
 | S-10 | c | |
 | S-11 | c | |
-| S-12 | a ! | periods between last transaction and `data_end` report `0.0` where R gives `NA` (**A7**) |
+| S-12 | o | re-verdicted 2026-09-04: **round 6**: a divergence, recorded rather than matched. R reports `NA` between the last transaction and `data.end`; this reports `0.0`. `data_end` is an argument the caller supplies rather than something inferred from the log, so "you told me the window runs here and nobody bought" is what was asked for, and an `NA` would discard a real observation -- and hide the weeks where the model predicted transactions and none happened, which is the part of a tracking plot a reader most wants |
 | S-13 | c ! | re-verdicted 2026-09-03: closed by **A7** — `test_descriptives.py:388`, pinned as agreement with R |
 | S-14 | c | |
 | S-15 | c | |
@@ -532,14 +540,14 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | DY-15 | c | re-verdicted 2026-09-03: closed by **B5** — four synthetic births reach `d_omega` of 7/7, 4/7, 2/7, 1/7 |
 | DY-16 | c | incidental — exactly one of 600 customers has `t_x == T_cal` with `x > 0` |
 | DY-17 | c | re-verdicted 2026-09-03: **round 5**: the 2-period auxiliary walk is constructed (birth +21d, `T` on a week start, no real life walk), with the surrounding 5/4/3/2 lengths so the 2 is not a coincidence |
-| DY-18 | a | the setup exists but asserts a predict-time error, not that aux walks survived |
+| DY-18 | c | re-verdicted 2026-09-04: **round 6**: CLVTools issue #134. With the series cut at the estimation end -- the shortest `T-18` accepts -- all 600 customers still have finite aux walks on both processes |
 | DY-19 | o | **decided 2026-09-03**, was `w` and undecided: claims 1-2 are pinned, and the epsilon-apart claim is unreachable by construction — S6.1's day aggregation makes two purchases an epsilon apart *one* transaction, so there is no second walk to lose. The aggregation step is asserted instead, being the thing that could regress. Same shape as `T-01` |
 | DY-20 | c | re-verdicted 2026-09-03: **round 5**: the round-trip is asserted for all 600, bit for bit, at gamma != 0 |
 | DY-21 | c | `test_pnbd_dyncov.py:484,495` |
 | DY-22 | c | re-verdicted 2026-09-04: closed by **D4** — `TestEveryWeekdaySplit`, all seven alignments against the closed-form nesting |
-| DY-23 | a | no epsilon-interval construction; `_to_days` collapses to whole days |
+| DY-23 | c | re-verdicted 2026-09-04: **round 6**: `_to_days` floors, so an epsilon and a `shift()` build the same half-open interval by construction. Asserted with a control (a step back over the boundary *does* move a day), since a `_to_days` returning a constant would pass the first half |
 | DY-24 | c | re-verdicted 2026-09-03: **round 5**: the three uncovered claims pinned — 1- and 2-period horizons (issue #128), a 20-customer sample, and a horizon past the covariates refused by name |
-| DY-25 | a | no partially-empty estimation/holdout, and no dyncov plotting test anywhere |
+| DY-25 | c | re-verdicted 2026-09-04: **round 6**: covered by the extreme-split runs -- a one-week estimation period leaves 590 of 600 customers at `x = 0` and the likelihood and prediction stay finite |
 
 ## S10 Prediction
 
@@ -642,7 +650,7 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | V-02 | c | re-verdicted 2026-09-03: **round 5**: `start_cov` is a single scalar, so 5 of 7 claims cannot arise — the divergence is now in the README's findings — and the two that can are pinned; a `NaN` reached the objective and no longer does |
 | V-03 | c | re-verdicted 2026-09-04: **round 6**: stale -- item 31's `_reject_unknown_options` refuses an unknown key by name and lists what the method accepts |
 | V-04 | o | re-verdicted 2026-09-03: **round 5**: `**kwargs` forwarding lands an unknown argument at the inner signature. Recorded rather than reworked — the message names a private function, which is the cost of the forwarding, and item 31's `options` validation is the precedent for checking where it is given |
-| V-05 | a | no single-logical validation exists anywhere |
+| V-05 | c ! | re-verdicted 2026-09-04: **round 6**: nothing existed. Python's truthiness took `None`, `'no'`, `1` and `[True, False]` as `hessian`, and the failure is that the argument *works* -- `hessian='no'` computes a Hessian and says nothing. `single_logical` now refuses all four across the four fits; `np.True_` is accepted, since that is what a comparison on an array yields |
 | V-06 | c ! | re-verdicted 2026-09-03: closed by **A4** — `TestBadInputIsLoud`, `TestATransactionMustSayWhoAndWhen` |
 | V-07 | o | re-verdicted 2026-09-03: **round 5**: `time_unit` defaults to `"week"` where R requires it — a divergence, now in the README's findings |
 | V-08 | o | re-verdicted 2026-09-03: **round 5**: `label`, `other.models` and `annotate.ids` have no counterpart because `diagnostics` returns frames and leaves rendering to the caller — recorded in the README's findings as a smaller surface rather than a gap |

@@ -792,3 +792,75 @@ class TestTheTwoDynamicSeriesMayRunToDifferentDates:
                 data, full, short,
                 names_cov_life=["High.Season"], names_cov_trans=["High.Season"],
             )
+
+
+class TestTheWalkIntervalsAreHalfOpenDays:
+    """Spec `DY-18` and `DY-23`, both `absent`.
+
+    `DY-23` asks that an interval built with an epsilon equals one built with
+    ``shift()``. In R those are two idioms for the same half-open interval and
+    the test exists because they can disagree at a boundary. Here
+    :func:`~clvtools.pnbd.dyncov_walks._to_days` floors to whole days -- which
+    it does so that ``d1`` and ``tjk`` cancel exactly, rather than being off by
+    4e-13 and breaking ``F2.2`` -- so the two constructions coincide by
+    construction. That is worth asserting rather than assuming: it is a property
+    of the flooring, and a change to nanosecond arithmetic would break it
+    silently while every likelihood test still passed.
+
+    `DY-18` is CLVTools' issue #134: aux walks lost when the covariate series
+    stops at the calibration end. Backlog item 36, round 6.
+    """
+
+    def test_an_epsilon_does_not_move_a_day(self):
+        from clvtools.pnbd.dyncov_walks import _to_days
+
+        dates = pd.to_datetime(["2005-01-02", "2005-01-09", "2005-01-16"])
+        plain = _to_days(dates)
+        np.testing.assert_array_equal(
+            _to_days(dates + pd.Timedelta(microseconds=1)), plain
+        )
+        np.testing.assert_array_equal(
+            _to_days(dates + pd.Timedelta(hours=23, minutes=59)), plain
+        )
+
+    def test_but_a_step_back_over_the_boundary_does(self):
+        """The control: the interval is ``[start, next)``, closed on the left.
+
+        Without this, a ``_to_days`` that returned a constant would pass the
+        test above.
+        """
+        from clvtools.pnbd.dyncov_walks import _to_days
+
+        dates = pd.to_datetime(["2005-01-02", "2005-01-09"])
+        np.testing.assert_array_equal(
+            _to_days(dates - pd.Timedelta(microseconds=1)), _to_days(dates) - 1
+        )
+
+    def test_aux_walks_survive_a_series_that_stops_at_the_split(
+        self, apparel_trans
+    ):
+        """`DY-18`, CLVTools issue #134.
+
+        The auxiliary walks cover the holdout, and the covariate series here
+        stops at the estimation end -- which is the shortest series `T-18`
+        accepts, since a covariate date describes the period *starting* there.
+        Every one of the 600 customers must still have a finite aux walk; the
+        bug this pins had them dropped.
+        """
+        from clvtools import ClvData, ClvDataDynCov, load_apparel_dyn_cov
+
+        names = ["High.Season", "Gender", "Channel"]
+        base = ClvData(apparel_trans, time_unit="week", estimation_split=104)
+        series = load_apparel_dyn_cov().copy()
+        series["Cov.Date"] = pd.to_datetime(series["Cov.Date"])
+        cut = series[series["Cov.Date"] <= base.estimation_end]
+        assert len(cut) < len(series)
+
+        walks = ClvDataDynCov(
+            base, cut, names_cov_life=names, names_cov_trans=names
+        ).walks()
+
+        assert np.isfinite(walks.walkinfo_aux_life).all(axis=1).sum() == 600
+        assert np.isfinite(walks.walkinfo_aux_trans[:, :2]).all(axis=1).sum() == 600
+        assert walks.covdata_aux_life.shape[0] > 0
+        assert walks.covdata_aux_trans.shape[0] > 0

@@ -550,6 +550,19 @@ is partial by construction). The capability is kept and the divergence recorded
 rather than silently inherited, because code moving from R gets a different
 window with no warning. Spec T-22.
 
+**Periods after the last transaction are zeros here and `NA` in R.** With a
+`data_end` past the end of the log, CLVTools' tracking plot reports `NA` for
+every period between the last transaction and `data.end`, without a warning;
+this reports `0.0`. The two answer different questions — R's `NA` says "the log
+ends here and I cannot tell you", the `0.0` says "you told me the observation
+window runs to `data_end`, and in these weeks nobody bought". `data_end` is an
+argument the caller supplies rather than something inferred from the log, so the
+second is what was asked for, and an `NA` would discard a real observation: it
+hides the weeks in which the model predicted transactions and none happened,
+which is the part of a tracking plot a reader most wants to see. A plot moving
+from R gets a line at zero where it used to get a gap, so the divergence is
+pinned rather than silently inherited. Spec S-12.
+
 **Zero-length horizons are answers, not errors.** `predict(prediction_end=0)`
 and `newcustomer(0)` both raised where CLVTools returns a zero-length window
 with `CET = 0` and the value `1` respectively — the latter being §6.3.4's "+1 to

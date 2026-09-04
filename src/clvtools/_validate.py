@@ -241,3 +241,43 @@ def finished(result, family: str):
             stacklevel=3,
         )
     return result
+
+
+def single_logical(value, name: str) -> bool:
+    """One ``True`` or ``False``, refusing everything R's own helper refuses.
+
+    Spec `V-05`: CLVTools has a ``check_userinput_single_logical`` applied
+    throughout, which fails for ``NULL``, ``NA``, a disallowed type, or a vector
+    of length greater than one. Python's truthiness accepts all four silently,
+    and the failure is that the argument *works* -- ``hessian="no"`` computes a
+    Hessian, ``hessian=None`` skips it, and neither says anything.
+
+    >>> single_logical(True, "hessian")
+    True
+    >>> single_logical(np.True_, "hessian")
+    True
+    >>> single_logical(None, "hessian")
+    Traceback (most recent call last):
+        ...
+    ValueError: hessian must be True or False, not None
+    >>> single_logical("no", "hessian")
+    Traceback (most recent call last):
+        ...
+    ValueError: hessian must be True or False, not 'no'
+    >>> single_logical([True, False], "hessian")
+    Traceback (most recent call last):
+        ...
+    ValueError: hessian must be a single True or False, not 2 values
+
+    ``1`` and ``0`` are refused too, which is stricter than R: R's own helper
+    takes only ``logical``, and a numeric flag here is far more likely to be a
+    count that reached the wrong argument.
+    """
+    if isinstance(value, (bool, np.bool_)):
+        return bool(value)
+    length = getattr(value, "__len__", None)
+    if length is not None and not isinstance(value, str):
+        raise ValueError(
+            f"{name} must be a single True or False, not {len(value)} values"
+        )
+    raise ValueError(f"{name} must be True or False, not {value!r}")

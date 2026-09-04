@@ -37,7 +37,12 @@ from scipy import optimize, special
 # `fit_static_covariates` inside the function, where it is needed.
 from clvtools._optimize import options_for, start_scale
 from clvtools._staticcov import DelegatesToCovariates, StaticCovResult, design
-from clvtools._validate import customer_history, finished, start_values
+from clvtools._validate import (
+    customer_history,
+    finished,
+    single_logical,
+    start_values,
+)
 from clvtools.data import ClvDataStaticCov
 from clvtools.inference import Fitted, numerical_hessian
 
@@ -382,6 +387,7 @@ def fit_bgnbd(
     x, t_x, T = (np.asarray(v, dtype=float).ravel() for v in (x, t_x, T))
     x, t_x, T = customer_history(x, t_x, T)
 
+    hessian = single_logical(hessian, "hessian")
     w = None if weights is None else np.asarray(weights, dtype=float).ravel()
 
     # See :func:`clvtools._optimize.start_scale`. ``a`` and ``b`` are the shapes

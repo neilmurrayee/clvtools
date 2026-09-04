@@ -26,7 +26,12 @@ from numpy.typing import ArrayLike
 from scipy import optimize
 
 from clvtools._optimize import options_for, start_scale
-from clvtools._validate import customer_history, finished, start_values
+from clvtools._validate import (
+    customer_history,
+    finished,
+    single_logical,
+    start_values,
+)
 from clvtools.inference import Fitted, numerical_hessian
 from clvtools.pnbd.aggregate import log_likelihood
 
@@ -180,6 +185,7 @@ def fit_pnbd(
     x, t_x, T = (np.asarray(v, dtype=float).ravel() for v in (x, t_x, T))
     x, t_x, T = customer_history(x, t_x, T)
 
+    hessian = single_logical(hessian, "hessian")
     w = None if weights is None else np.asarray(weights, dtype=float).ravel()
 
     # alpha and beta are rates per period, so a start of 1 means something

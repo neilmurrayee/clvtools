@@ -2610,6 +2610,35 @@ answers, not three, because two of them see `High.Season` at zero throughout the
 for the S6.2.2 plot and cannot say what *this* customer's probability of buying
 twice is. `pmf_table` does.
 
+### Batch 10 — the last five, and what an argument that "works" costs
+
+`V-05` closes the round on the same note it opened: **nothing existed**, and the
+failure mode is that the argument *works*. Python's truthiness took `None`,
+`"no"`, `1` and `[True, False]` as `hessian` — `hessian="no"` computed a
+Hessian, `hessian=None` skipped one, and neither said anything. That is the
+seventh instance of round 5 and 6's recurring shape, and the first where the
+wrong value produces a *plausible* result rather than a `nan`. `np.True_` is
+accepted, because that is what a comparison on an array yields and refusing it
+would be wrong.
+
+`S-12` is the round's one deliberate divergence. R reports `NA` between the last
+transaction and `data.end`; this reports `0.0`. `data_end` is an argument the
+caller supplies, not something inferred from the log, so "you told me the window
+runs here and nobody bought" is what was asked for — and an `NA` hides the weeks
+in which the model predicted transactions and none happened, which is the part
+of a tracking plot a reader most wants. Recorded in the README's findings.
+
+`DY-18`, `DY-23` and `DY-25` hold. `DY-23` is a property of `_to_days`' flooring
+rather than of the walk builder, and is asserted with a control — a `_to_days`
+that returned a constant would pass the first half — because a change to
+nanosecond arithmetic would break it silently while every likelihood test still
+passed.
+
+**Round 6 is complete: 69 `absent` rows, 0 remaining.** Fourteen were stale,
+eleven were real defects, one is a recorded divergence, two were missing
+features, and one — `F-12`'s hourly fit — was a wrong answer reported as
+convergence. Appendix 3 now stands at 184 `c`, 16 `o`, 0 `w`, 0 `a`.
+
 *Done when:* every `a` row has been read against the suite as it stands and
 carries either a corrected verdict, a test, or a note saying why nothing covers
 it — the same bar round 5 met, and the same batching, largest section first:

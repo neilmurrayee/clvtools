@@ -1062,3 +1062,66 @@ class TestThePerCustomerPmfTable:
 
         with pytest.raises(ValueError, match="at least one count"):
             pmf_table(data, self._pmf, x=[])
+
+
+class TestTrackingPastTheLastTransaction:
+    """Spec `S-12`, `absent !`: a divergence, recorded rather than matched.
+
+    CLVTools' tracking plot reports ``NA`` for every period between the last
+    transaction and ``data.end``, with no warning. This package reports
+    ``0.0``. Both are defensible and they answer different questions: R's
+    ``NA`` says "the log ends here and I cannot tell you"; the ``0.0`` here
+    says "you told me the observation window runs to ``data_end``, and in these
+    weeks nobody bought". Since ``data_end`` is an argument the caller supplies
+    -- it is not inferred from the log -- the second reading is the one that
+    matches what was asked for, and an ``NA`` would discard a real observation.
+
+    Pinned rather than silently inherited, because a plot moving from R gets a
+    line at zero where it used to get a gap. Backlog item 36, round 6.
+    """
+
+    @pytest.fixture(scope="class")
+    def extended(self, apparel_trans):
+        from clvtools import ClvData
+
+        few = apparel_trans[
+            apparel_trans["Id"].isin(apparel_trans["Id"].unique()[:20])
+        ]
+        return ClvData(
+            few, time_unit="week", estimation_split=104,
+            data_end=pd.Timestamp(few["Date"].max()) + pd.Timedelta(weeks=8),
+        )
+
+    @pytest.fixture(scope="class")
+    def tracked(self, extended):
+        from clvtools.diagnostics import tracking_data
+        from clvtools.pnbd import expectation, fit_pnbd
+
+        cbs = extended.customer_summary()
+        fit = fit_pnbd(cbs["x"], cbs["t_x"], cbs["T"], hessian=False)
+        return tracking_data(
+            extended,
+            lambda periods: expectation(
+                periods, fit.r, fit.alpha, fit.s, fit.beta
+            ),
+        )
+
+    def test_the_trailing_periods_are_zero_and_not_missing(self, tracked):
+        actual = tracked[tracked["variable"] == "Actual"]["value"]
+        assert actual.notna().all()
+        assert (actual.tail(6) == 0.0).all()
+
+    def test_and_the_expected_series_keeps_rising_through_them(self, tracked):
+        """Which is why the zero is informative: the two series diverge.
+
+        An ``NA`` would hide the eight weeks in which the model predicted
+        transactions and none happened -- the part of a tracking plot a reader
+        most wants to see.
+        """
+        expected = tracked[tracked["variable"] != "Actual"]["value"]
+        assert expected.notna().all()
+        assert (expected.tail(6) > 0).all()
+
+    def test_the_two_series_still_cover_the_same_periods(self, tracked):
+        counts = set(tracked.groupby("variable").size())
+        assert len(counts) == 1
