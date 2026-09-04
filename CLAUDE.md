@@ -51,12 +51,12 @@ it with what was measured, and leave items marked `[needs-decision]` alone.
 ## Commands
 
 ```bash
-uv run pytest                  # 1,244 tests inc. doctests in src/ and docs/; ~4:00 on an M-series
+uv run pytest                  # 1,598 tests inc. doctests in src/ and docs/; ~11:30 on an M-series
 uv run pytest -m paper         # 22 numbers printed in the paper
 uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
-uv run pytest -m literature    # 14 numbers published in the CLV literature
-uv run pytest -m oracle        # 249 checks against R CLVTools fixtures
-uv run pytest -m slow          # 157 full-dataset MLE fits
+uv run pytest -m literature    # 22 numbers published in the CLV literature
+uv run pytest -m oracle        # 247 checks against R CLVTools fixtures
+uv run pytest -m slow          # 202 full-dataset MLE fits
 uv run pytest -m dyncov_fit    # the time-varying covariate MLE; ~10 min, deselected by default
 uv run pytest --cov=clvtools --cov-report=term-missing
 uv run pytest docs/paper.md    # the paper's case study alone
