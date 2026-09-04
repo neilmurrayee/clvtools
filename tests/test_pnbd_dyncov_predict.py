@@ -827,3 +827,152 @@ class TestExtraCovariatePeriodsDoNotMoveTheLikelihood:
                 data.walks(), **model, gamma_life=zero, gamma_trans=zero
             ))
         assert values[0] == values[1]
+
+
+class TestZeroCoefficientsAndZeroWindowsInPredict:
+    """Spec `DY-11` and `DY-12`, both `absent`.
+
+    `DY-11` is the nesting `X-04` asserts for the *static* covariate path,
+    taken through the time-varying one, which shares none of its code: with
+    every gamma at zero the covariates cannot move anything, so the answer must
+    be the plain Pareto/NBD's. `DY-12` is `A1`'s zero-length window, which was
+    fixed for the plain and static paths and never checked here. Backlog item
+    36, round 6.
+    """
+
+    ZERO: ClassVar = np.zeros(3)
+
+    @pytest.fixture(scope="class")
+    def params(self):
+        return PnbdDynCovParams(
+            r=1.4490, alpha=48.6361, s=0.5613, beta=46.8844,
+            gamma_life=self.ZERO, gamma_trans=self.ZERO,
+            names_cov_life=NAMES, names_cov_trans=NAMES,
+            log_likelihood=float("nan"), converged=True, n_customers=600,
+        )
+
+    @pytest.fixture(scope="class")
+    def plain(self):
+        from clvtools.pnbd.fit import PnbdParams
+
+        return PnbdParams(
+            r=1.4490, alpha=48.6361, s=0.5613, beta=46.8844,
+            log_likelihood=float("nan"), converged=True, n_customers=600,
+        )
+
+    @pytest.fixture(scope="class")
+    def both(self, holdout_data, apparel_trans, params, plain):
+        without = ClvData(apparel_trans, time_unit="week", estimation_split=104)
+        return (
+            predict(holdout_data, params, prediction_end=13),
+            predict(without, plain, prediction_end=13),
+        )
+
+    @pytest.mark.parametrize("column", ["PAlive", "CET"])
+    def test_zero_coefficients_recover_the_plain_prediction(self, both, column):
+        """To 1e-13, over all 600 customers. Measured: 2.1e-14 at worst."""
+        dyncov, plain = both
+        np.testing.assert_allclose(
+            dyncov[column].to_numpy(), plain[column].to_numpy(), atol=1e-13
+        )
+
+    def test_but_dect_is_not_dert_and_should_not_be(self, both):
+        """The one column `DY-11`'s "after renaming" cannot mean by value.
+
+        ``DERT`` discounts over an infinite horizon; ``DECT`` discounts each
+        period of a *finite* one, because with covariates there is no infinite
+        horizon to discount over -- the covariates are known only as far as they
+        are given. The two are different quantities wearing similar names, and
+        at gamma = 0 over thirteen weeks they differ by 0.387 at most. Asserting
+        that they *disagree* is the useful half: a change that made ``DECT``
+        silently fall back to the closed form would pass every other test here.
+        """
+        dyncov, plain = both
+        gap = np.abs(dyncov["DECT"].to_numpy() - plain["DERT"].to_numpy())
+        assert gap.max() > 0.1
+        assert (dyncov["DECT"].to_numpy() < plain["DERT"].to_numpy()).all()
+
+    def test_a_zero_length_window_gives_no_expected_transactions(
+        self, holdout_data, params
+    ):
+        """`DY-12`, and the third path to answer rather than raise."""
+        table = predict(holdout_data, params, prediction_end=0)
+        assert (table["CET"] == 0).all()
+        assert (table["period.length"] == 0).all()
+
+
+class TestAStaticSeriesMakesTheFirstTransactionIrrelevant:
+    """Spec `NC-07`, `absent`: what `first_transaction` is *for*.
+
+    A prospective customer's covariate series is indexed from their first
+    transaction, so moving that date slides the window over the series and the
+    prediction moves with it. Unless the series is flat -- then every window
+    sees the same values and the date cannot matter. That is the claim, and it
+    is the one that says ``first_transaction`` selects a window rather than
+    entering the arithmetic in its own right: a path that mixed the date into
+    a coefficient would pass every varying-covariate test and fail this one.
+    Backlog item 36, round 6.
+    """
+
+    @pytest.fixture(scope="class")
+    def flat(self):
+        """The apparel series with every covariate pinned to one value."""
+        frame = load_apparel_dyn_cov().copy()
+        for name in NAMES:
+            frame[name] = 1.0
+        return frame
+
+    @pytest.fixture(scope="class")
+    def params(self):
+        return PnbdDynCovParams(
+            r=1.4490, alpha=48.6361, s=0.5613, beta=46.8844,
+            gamma_life=np.array([0.3, -0.2, 0.1]),
+            gamma_trans=np.array([0.1, 0.2, -0.3]),
+            names_cov_life=NAMES, names_cov_trans=NAMES,
+            log_likelihood=float("nan"), converged=True, n_customers=600,
+        )
+
+    def test_the_prediction_does_not_move(self, flat, params):
+        """Bit for bit across three dates fourteen months apart.
+
+        Asserted as equality between them rather than against a constant: the
+        claim is that the date makes no difference, and a constant would also
+        pin the parameters, which are not what this is about.
+        """
+        one = flat[flat["Id"] == flat["Id"].iloc[0]]
+        answers = [
+            float(
+                predict(
+                    newcustomer_dynamic(7.89, one, one, first_transaction=date),
+                    params,
+                )
+            )
+            for date in ("2005-01-03", "2005-06-06", "2006-03-06")
+        ]
+        assert len(set(answers)) == 1
+        assert answers[0] == pytest.approx(1.2228, abs=5e-4)
+
+    def test_and_a_varying_series_does_move_it(self, params):
+        """The control: without this the test above passes on a broken path.
+
+        If ``first_transaction`` were ignored outright rather than made
+        irrelevant by a flat series, the assertion above would still hold. So
+        the same three dates over the *real* series must give more than one
+        answer -- **two**, not three: over the 7.89 weeks this scenario spans,
+        2005-01-03 and 2006-03-06 both see ``High.Season`` at zero throughout,
+        while 2005-06-06 opens on a high-season week. Two identical answers out
+        of three is the covariate agreeing with itself, not the date being
+        ignored, and asserting three would have been asserting a coincidence.
+        """
+        frame = load_apparel_dyn_cov()
+        one = frame[frame["Id"] == frame["Id"].iloc[0]]
+        answers = {
+            float(
+                predict(
+                    newcustomer_dynamic(7.89, one, one, first_transaction=date),
+                    params,
+                )
+            )
+            for date in ("2005-01-03", "2005-06-06", "2006-03-06")
+        }
+        assert len(answers) == 2

@@ -1136,6 +1136,67 @@ class ClvDataStaticCov(ClvData):
         return frame[wanted].to_numpy(dtype=float)
 
 
+
+def _checked_dyncov(
+    frame: pd.DataFrame, name_date: str, names: list[str] | None, which: str
+) -> None:
+    """A time-varying covariate series, checked before anything consumes it.
+
+    Spec `C-11`, five claims, of which this port had **none**: a duplicated
+    ``(Id, Cov.Date)`` pair, a missing one, and an ``NA`` in ``Id``, in the date
+    or in any covariate column all built a data object in silence. The last is
+    the shape the README already records for static covariates -- "NaN prices
+    and NaN covariates travelled into the likelihoods and came back as plausible
+    numbers" -- reaching a path that had no such guard.
+
+    Completeness is checked as a rectangle: every customer must carry every date
+    the series mentions, which is S6.4's "a value has to be specified for every
+    customer every week" stated as an assertion. That also catches a *missing*
+    pair, which counting rows would not.
+
+    >>> frame = pd.DataFrame({
+    ...     "Id": ["1", "1", "2", "2"],
+    ...     "Cov.Date": pd.to_datetime(["2005-01-03", "2005-01-10"] * 2),
+    ...     "Gender": [0.0, 0.0, 1.0, 1.0],
+    ... })
+    >>> _checked_dyncov(frame, "Cov.Date", ["Gender"], "lifetime")
+    >>> _checked_dyncov(frame.drop(index=3), "Cov.Date", ["Gender"], "lifetime")
+    Traceback (most recent call last):
+        ...
+    ValueError: the lifetime covariate series is not complete: 2 customers over
+    2 dates needs 4 rows and has 3. S6.4 requires a value for every customer in
+    every period.
+    """
+    if name_date not in frame.columns:
+        raise ValueError(
+            f"the {which} covariate frame has no {name_date!r} column"
+        )
+    columns = ["Id", name_date, *(names or [])]
+    present = [c for c in columns if c in frame.columns]
+    holes = [c for c in present if frame[c].isna().any()]
+    if holes:
+        raise ValueError(
+            f"the {which} covariate series has missing values in {holes!r}; "
+            "a gap here reaches the likelihood as a nan and comes back as a "
+            "plausible number"
+        )
+    keys = frame[["Id", name_date]]
+    if keys.duplicated().any():
+        repeated = keys[keys.duplicated()].head(3).to_numpy().tolist()
+        raise ValueError(
+            f"the {which} covariate series repeats (Id, {name_date}) pairs, "
+            f"for instance {repeated!r}; each customer needs one row per period"
+        )
+    customers, dates = frame["Id"].nunique(), frame[name_date].nunique()
+    if customers * dates != len(frame):
+        raise ValueError(
+            f"the {which} covariate series is not complete: {customers} "
+            f"customers over {dates} dates needs {customers * dates} rows and "
+            f"has {len(frame)}. S6.4 requires a value for every customer in "
+            "every period."
+        )
+
+
 class ClvDataDynCov(ClvData):
     """Transaction data with time-varying covariates. Cf. ``SetDynamicCovariates()``.
 
@@ -1183,6 +1244,14 @@ class ClvDataDynCov(ClvData):
         self.names_cov_life = names_cov_life
         self.names_cov_trans = names_cov_trans
         self.name_date_cov = name_date_cov
+        _checked_dyncov(
+            self.data_cov_life, name_date_cov, names_cov_life, "lifetime"
+        )
+        if self.data_cov_trans is not self.data_cov_life:
+            _checked_dyncov(
+                self.data_cov_trans, name_date_cov, names_cov_trans,
+                "transaction",
+            )
 
     def with_covariates(
         self, names_life: list[str] | None = None,

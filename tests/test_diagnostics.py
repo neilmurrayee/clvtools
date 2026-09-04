@@ -980,3 +980,85 @@ class TestBootstrapDrawsKeepTheOriginalWindow:
 
         assert callable(bootstrap.bootstrap_apply)
         assert callable(bootstrap.confidence_intervals)
+
+
+class TestThePerCustomerPmfTable:
+    """Spec `PMF-05`, `absent`: the generic this package did not have.
+
+    CLVTools' ``pmf()`` on a fitted object gives one row per customer and one
+    ``pmf.x.<k>`` column per requested count, defaulting to ``0:5``. What
+    existed here was :func:`~clvtools.diagnostics.pmf_data`, which aggregates
+    customers into bins for S6.2.2's plot -- a different question, and one that
+    cannot answer "what is *this* customer's probability of buying twice".
+    Backlog item 36, round 6.
+    """
+
+    @staticmethod
+    def _pmf(k, T):
+        from clvtools.pnbd import pmf
+
+        return pmf(k, T, 1.4490, 48.6361, 0.5613, 46.8844)
+
+    @pytest.fixture(scope="class")
+    def data(self, apparel_trans):
+        from clvtools import ClvData
+
+        return ClvData(apparel_trans, time_unit="week", estimation_split=104)
+
+    def test_the_default_is_zero_through_five(self, data):
+        from clvtools.diagnostics import pmf_table
+
+        frame = pmf_table(data, self._pmf)
+        assert list(frame.columns) == ["Id"] + [f"pmf.x.{k}" for k in range(6)]
+        assert len(frame) == 600
+
+    def test_the_ids_are_the_data_s_own(self, data):
+        from clvtools.diagnostics import pmf_table
+
+        got = pmf_table(data, self._pmf)["Id"]
+        np.testing.assert_array_equal(got, data.customer_summary()["Id"])
+
+    @pytest.mark.parametrize("x", [0, 0.0, [0], np.int64(0)])
+    def test_a_single_count_is_accepted_bare_and_boxed(self, data, x):
+        """R takes an integer, a numeric, or a length-one vector alike."""
+        from clvtools.diagnostics import pmf_table
+
+        assert list(pmf_table(data, self._pmf, x=x).columns) == ["Id", "pmf.x.0"]
+
+    def test_the_columns_agree_with_the_family_s_own_pmf(self, data):
+        """Selection, not recomputation -- the table adds no arithmetic."""
+        from clvtools.diagnostics import pmf_table
+
+        frame = pmf_table(data, self._pmf, x=[0, 3])
+        T = data.customer_summary()["T"].to_numpy(dtype=float)
+        np.testing.assert_allclose(frame["pmf.x.3"], self._pmf(3, T), rtol=0)
+
+    def test_each_row_is_the_start_of_a_distribution(self, data):
+        """Six terms of a PMF, so every row sums to at most one."""
+        from clvtools.diagnostics import pmf_table
+
+        totals = pmf_table(data, self._pmf).set_index("Id").sum(axis=1)
+        assert (totals <= 1.0).all()
+        assert (totals > 0.0).all()
+
+    def test_the_same_count_twice_is_refused(self, data):
+        """``2`` and ``2.0`` name one column, so asking for both is a mistake."""
+        from clvtools.diagnostics import pmf_table
+
+        with pytest.raises(ValueError, match="asked for twice"):
+            pmf_table(data, self._pmf, x=[2, 2.0])
+
+    @pytest.mark.parametrize("bad", [1.5, -1])
+    def test_a_count_that_is_not_a_whole_non_negative_number_is_refused(
+        self, data, bad
+    ):
+        from clvtools.diagnostics import pmf_table
+
+        with pytest.raises(ValueError, match="whole and non-negative"):
+            pmf_table(data, self._pmf, x=[bad])
+
+    def test_no_counts_at_all_is_refused(self, data):
+        from clvtools.diagnostics import pmf_table
+
+        with pytest.raises(ValueError, match="at least one count"):
+            pmf_table(data, self._pmf, x=[])

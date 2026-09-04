@@ -2577,6 +2577,39 @@ directly therefore fails on an exclusion the documented path handles, and for a
 few minutes that looked like `FI-07`'s exclusion half being broken. The test
 now takes the path `latent_attrition` takes, and says why in its own docstring.
 
+### Batch 9 — the time-varying path, which had no input checks at all
+
+**`C-11` is five claims and this port satisfied none of them.** A repeated
+`(Id, Cov.Date)` pair, a missing one, and an `NA` in `Id`, in the date or in any
+covariate column all built a `ClvDataDynCov` in silence. The `NA` case is the
+README's own static-covariate finding — "NaN prices and NaN covariates travelled
+into the likelihoods and came back as plausible numbers" — reaching a path that
+had no equivalent guard. Completeness is now checked as a *rectangle*: customers
+times dates must equal rows, which catches a missing pair that counting rows
+alone would not.
+
+`C-07` holds, and the assertion is the strong one: 26 extra weeks of covariate
+history before the estimation start leave the likelihood **bit-identical**. It
+is asserted there rather than on the walk arrays, because those carry `NaN` for
+customers with no real walk and an elementwise comparison reports a difference
+where there is none — which it did, for a few minutes, while this was written.
+
+**`DY-11`'s "after renaming `DECT` → `DERT`" cannot mean by value.** `DERT`
+discounts an infinite horizon; `DECT` discounts each period of a finite one,
+because with covariates there is no infinite horizon to discount over. At
+gamma = 0 they differ by 0.387. So `PAlive` and `CET` are asserted equal to
+2.1e-14 and `DECT` is asserted *unequal* — a change that made it fall back to
+the closed form would pass every other test in the module.
+
+`NC-07`'s control is the interesting half. Three dates over a flat series give
+the identical prediction; over the real series they give **two** distinct
+answers, not three, because two of them see `High.Season` at zero throughout the
+7.89-week window. Asserting three would have been asserting a coincidence.
+
+`PMF-05` was a missing generic rather than a defect: `pmf_data` bins customers
+for the S6.2.2 plot and cannot say what *this* customer's probability of buying
+twice is. `pmf_table` does.
+
 *Done when:* every `a` row has been read against the suite as it stands and
 carries either a corrected verdict, a test, or a note saying why nothing covers
 it — the same bar round 5 met, and the same batching, largest section first:

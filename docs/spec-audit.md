@@ -455,11 +455,11 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | C-04 | c | re-verdicted 2026-09-03: **round 5**: numeric covariates stay numeric with and without categoricals present |
 | C-05 | o ! | re-verdicted 2026-09-04: closed as a divergence by **A7** — names are kept verbatim where R mangles them, already in the README's findings |
 | C-06 | c | re-verdicted 2026-09-04: **round 6**: the covariate frame is copied; mutating the caller's afterwards leaves the data object unchanged, asserted alongside `S-07` |
-| C-07 | a | nothing feeds dyncov data longer than needed |
+| C-07 | c | re-verdicted 2026-09-04: **round 6**: 26 extra weeks of history before the estimation start leave the likelihood **bit-identical**. Asserted there rather than on the walk arrays, whose `NaN` entries make an elementwise comparison report a difference where there is none |
 | C-08 | c ! | **round 5**, a recorded divergence: R requires the two series to be equally long, this package allows them to differ and asks the questions equal length would have answered at three points instead — the lifetime grid reaching the estimation end, the transaction grid covering its walks, and the prediction horizon being reachable. Pinned, and in the README's findings |
 | C-09 | c ! | re-verdicted 2026-09-04: **round 6**: a *defect*, and larger than the row says — a categorical covariate could not be selected by its own name at all, because the check ran against the encoded frame. Only the apparel cohort's 0/1 numeric covariates, which keep their names, made that survivable. Fixed, with the single-level case earning its own message |
 | C-10 | c ! | re-verdicted 2026-09-03: closed by **A4** — an unrecognised covariate name now raises; `test_predict.py:651` |
-| C-11 | a | dyncov has no duplicate, NA, or (Id, Date) completeness check |
+| C-11 | c ! | re-verdicted 2026-09-04: **round 6**: five claims, and this port had **none**. A repeated `(Id, Cov.Date)`, a missing one, and an `NA` in `Id`, the date or any covariate all built a data object in silence -- the last being the README's static-covariate finding on a path with no guard. Completeness is checked as a rectangle, which catches a *missing* pair that counting rows would not |
 | C-12 | c | |
 | C-13 | c | re-verdicted 2026-09-04: closed by **A4** — re-setting covariates no longer silently overwrites |
 | C-14 | c | re-verdicted 2026-09-04: **round 6**: `name_id` on the covariate frame, compared against the default-named build rather than merely run |
@@ -478,7 +478,7 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | PMF-02 | c | re-verdicted 2026-09-03: **round 5**: every value in [0, 1], no NaN, over the whole range rather than one scalar T |
 | PMF-03 | c | holds structurally — `pmf(k,T,params)` cannot see `x`/`t_x` |
 | PMF-04 | c | re-verdicted 2026-09-04: **round 6**: stale -- asserted for all three families in the same class |
-| PMF-05 | a | no fitted-object `pmf()` generic, no `pmf.x.<k>` frame |
+| PMF-05 | c | re-verdicted 2026-09-04: **round 6**: added `diagnostics.pmf_table` -- one row per customer, one `pmf.x.<k>` column per count, `0:5` by default. `pmf_data` answers a different question (bins for the S6.2.2 plot) and cannot say what *this* customer's probability of buying twice is |
 | PMF-06 | c | re-verdicted 2026-09-03: **round 5**: a non-integer `k` was silently truncated — `pmf(2.7, ...)` returned `pmf(2, ...)`, a different question answered confidently. Now refused |
 | F-01 | c | re-verdicted 2026-09-04: **round 6**: stale -- `test_literature.py` has fitted CDNOW at the date split since round 4. Gains CLVTools' own four-decimal estimates, a tighter oracle than the paper's three |
 | F-02..F-06 | a | no literature value pinned; BG/NBD and GGomNBD never fitted on cdnow at all (**C**) |
@@ -525,8 +525,8 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | DY-08 | c | `test_pnbd_dyncov.py:194` — 30 columns × 2 parameter vectors × 600 customers, rtol 1e-8. The strongest item in the audit |
 | DY-09 | c | re-verdicted 2026-09-04: **round 6**: trimming the covariate series to the estimation end leaves the likelihood *bit-identical*, so the walks are not reading past their own end |
 | DY-10 | c | re-verdicted 2026-09-03: closed by **D3** — `test_pnbd_dyncov.py:935` takes the `alpha = beta` arm |
-| DY-11 | a | no γ=0 predict-vs-nocov comparison |
-| DY-12 | a ! | zero-length window refused where R gives `CET = 0` (**A1**) |
+| DY-11 | c ! | re-verdicted 2026-09-04: **round 6**: PAlive and CET recover the plain model at gamma = 0 to 2.1e-14. `DECT` does **not** equal `DERT` and should not: `DERT` discounts an infinite horizon, `DECT` each period of a finite one, because with covariates there is no infinite horizon to discount over. The test asserts they *disagree* -- a change making `DECT` fall back to the closed form would pass everything else |
+| DY-12 | c | re-verdicted 2026-09-04: **round 6**: stale with `T-20`/`PR-05` -- the zero-length window answers here too |
 | DY-13 | c | re-verdicted 2026-09-04: **round 6**: its orphaned oracle was deleted by item 25 as bit-identical to the `PAlive` column already checked at rtol 1e-11; the claim is covered by that comparison |
 | DY-14 | c | `test_pnbd_dyncov.py:476,495,456`, atol 1e-12 |
 | DY-15 | c | re-verdicted 2026-09-03: closed by **B5** — four synthetic births reach `d_omega` of 7/7, 4/7, 2/7, 1/7 |
@@ -572,7 +572,7 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | NC-04 | c | re-verdicted 2026-09-04: **round 6**: covered with `NC-03`, at zero data rather than zero coefficients |
 | NC-05 | c | re-verdicted 2026-09-04: **round 6**: holds by construction — `row()` looks up by name — and the arbitrary-gamma nesting above exercises it |
 | NC-06 | c | re-verdicted 2026-09-03: closed by **B1** — the test predicts four scenarios and asserts the spread |
-| NC-07 | a | no test varies `first_transaction` on an effectively static path |
+| NC-07 | c | re-verdicted 2026-09-04: **round 6**: three dates fourteen months apart give the identical prediction over a flat series, with a control over the real one. The control gives **two** distinct answers and not three: two of the dates see `High.Season` at zero throughout the 7.89-week window, which is the covariate agreeing with itself rather than the date being ignored |
 | NC-08 | c | `test_pnbd_dyncov_predict.py:277,334`, rel 1e-12, both branches |
 | NC-09 | c | re-verdicted 2026-09-03: **round 5**: fractional horizons (0.25, 0.5) for the plain model, not dyncov alone, and asserted monotone so a horizon dropped on the floor would show |
 | NC-10 | c | re-verdicted 2026-09-03: **round 5**: the working side asserted, the refusals having been covered already |

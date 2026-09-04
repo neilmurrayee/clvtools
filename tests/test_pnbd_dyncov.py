@@ -1142,3 +1142,110 @@ class TestTheDyncovFitTakesConstraintsAndRegularization:
         from clvtools.pnbd.dyncov import fit_pnbd_dyncov
 
         assert "use_cor" not in inspect.signature(fit_pnbd_dyncov).parameters
+
+
+class TestTheCovariateSeriesIsCheckedAndTrimmed:
+    """Spec `C-07` and `C-11`, both `absent`.
+
+    `C-11` is five claims and this port had **none**: a duplicated
+    ``(Id, Cov.Date)`` pair, a missing one, and an ``NA`` in ``Id``, in the date
+    or in any covariate column all built a data object in silence. The last is
+    the shape the README already records for static covariates -- "NaN prices
+    and NaN covariates travelled into the likelihoods and came back as plausible
+    numbers" -- on a path that had no such guard.
+
+    `C-07` holds, and the assertion is the strong one: 26 extra weeks of
+    covariate history before the estimation start leave the likelihood
+    **bit-identical**, not merely close. Backlog item 36, round 6.
+    """
+
+    NAMES: ClassVar = ["High.Season", "Gender", "Channel"]
+
+    @pytest.fixture(scope="class")
+    def base(self, apparel_trans):
+        from clvtools import ClvData
+
+        return ClvData(apparel_trans, time_unit="week", estimation_split=104)
+
+    @pytest.fixture(scope="class")
+    def covariates(self):
+        from clvtools import load_apparel_dyn_cov
+
+        frame = load_apparel_dyn_cov().copy()
+        frame["Cov.Date"] = pd.to_datetime(frame["Cov.Date"])
+        return frame
+
+    def _build(self, base, frame):
+        from clvtools import ClvDataDynCov
+
+        return ClvDataDynCov(
+            base, frame,
+            names_cov_life=self.NAMES, names_cov_trans=self.NAMES,
+        )
+
+    def test_a_repeated_id_and_date_is_refused(self, base, covariates):
+        doubled = pd.concat([covariates, covariates.iloc[[0]]], ignore_index=True)
+        with pytest.raises(ValueError, match="repeats"):
+            self._build(base, doubled)
+
+    @pytest.mark.parametrize("column", ["Id", "Cov.Date", "Gender"])
+    def test_a_missing_value_anywhere_is_refused(self, base, covariates, column):
+        holed = covariates.copy()
+        holed.loc[holed.index[0], column] = None
+        with pytest.raises(ValueError, match="missing values"):
+            self._build(base, holed)
+
+    def test_a_single_missing_pair_is_refused(self, base, covariates):
+        """Counting rows would not catch this; a rectangle does.
+
+        600 customers over 313 dates is 187,800 rows. Dropping one leaves a
+        customer a period short, which S6.4 forbids -- "a value has to be
+        specified for every customer every week" -- and which the walk builder
+        would otherwise discover as a shape mismatch, or not at all.
+        """
+        with pytest.raises(ValueError, match="not complete"):
+            self._build(base, covariates.drop(index=covariates.index[5]))
+
+    def test_the_message_counts_what_it_found(self, base, covariates):
+        with pytest.raises(ValueError, match="600 customers over 313 dates"):
+            self._build(base, covariates.drop(index=covariates.index[5]))
+
+    def test_a_frame_without_the_date_column_says_so(self, base, covariates):
+        with pytest.raises(ValueError, match=r"no 'Cov\.Date' column"):
+            self._build(base, covariates.rename(columns={"Cov.Date": "when"}))
+
+    def test_extra_history_is_cut_and_changes_nothing(self, base, covariates):
+        """`C-07`, asserted on the likelihood rather than on the walk arrays.
+
+        The covariate matrices come out identical, which is the direct claim;
+        the walk *info* arrays carry ``NaN`` for customers with no real walk, so
+        comparing them elementwise is a trap -- ``nan != nan`` reports a
+        difference where there is none, and it did while this was written. The
+        likelihood is the answer both feed, and it agrees exactly.
+        """
+        from clvtools.pnbd.dyncov import log_likelihood
+
+        earlier = [
+            covariates[covariates["Cov.Date"] == covariates["Cov.Date"].min()]
+            .assign(**{"Cov.Date": lambda f, k=k: f["Cov.Date"] - pd.Timedelta(weeks=k)})
+            for k in range(1, 27)
+        ]
+        longer = (
+            pd.concat([*earlier, covariates], ignore_index=True)
+            .sort_values(["Id", "Cov.Date"])
+            .reset_index(drop=True)
+        )
+        assert len(longer) == len(covariates) + 26 * 600
+
+        trimmed = self._build(base, covariates).walks()
+        padded = self._build(base, longer).walks()
+        for name in ("covdata_real_life", "covdata_aux_life",
+                     "covdata_real_trans", "covdata_aux_trans"):
+            np.testing.assert_array_equal(
+                getattr(trimmed, name), getattr(padded, name)
+            )
+
+        gamma_life = np.array([0.3, -0.2, 0.1])
+        gamma_trans = np.array([0.1, 0.2, -0.3])
+        args = (1.449, 48.63, 0.5613, 46.88, gamma_life, gamma_trans)
+        assert log_likelihood(padded, *args) == log_likelihood(trimmed, *args)

@@ -29,6 +29,7 @@ __all__ = [
     "frequency_data",
     "interpurchase_time_data",
     "pmf_data",
+    "pmf_table",
     "render",
     "spending_data",
     "spending_density_data",
@@ -184,6 +185,70 @@ def tracking_data(
             "period.until": grid, "variable": ACTUAL, "value": actual_series,
         }),
     ], ignore_index=True)
+
+
+def pmf_table(data: ClvData, pmf, x=range(6)) -> pd.DataFrame:
+    r"""Each customer's PMF at each of several counts. Cf. ``pmf()``.
+
+    Spec `PMF-05`, `absent`: CLVTools' ``pmf()`` generic on a fitted object
+    returns one row per customer and one ``pmf.x.<k>`` column per requested
+    count, defaulting to ``x = 0:5``. This package had
+    :func:`pmf_data`, which is a different thing -- it aggregates customers
+    into bins for S6.2.2's plot, and cannot answer "what is *this* customer's
+    probability of buying twice".
+
+    ``x`` may be an integer, a float that is a whole number, or any iterable of
+    them, as R's does; the column name uses the integer, so ``2.0`` and ``2``
+    give the same column and asking for both is an error rather than two
+    columns that silently collide.
+
+    Examples
+    --------
+    >>> from clvtools import ClvData, load_apparel_trans
+    >>> from clvtools.pnbd import pmf
+    >>> data = ClvData(load_apparel_trans(), time_unit="week", estimation_split=104)
+    >>> frame = pmf_table(
+    ...     data, lambda k, T: pmf(k, T, 1.4490, 48.6361, 0.5613, 46.8844))
+    >>> list(frame.columns)
+    ['Id', 'pmf.x.0', 'pmf.x.1', 'pmf.x.2', 'pmf.x.3', 'pmf.x.4', 'pmf.x.5']
+    >>> len(frame)
+    600
+
+    A single count is a single column, and R accepts a bare number for it:
+
+    >>> list(pmf_table(data, lambda k, T: pmf(k, T, 1.449, 48.64, 0.561, 46.88),
+    ...                x=0).columns)
+    ['Id', 'pmf.x.0']
+
+    Each row is a probability distribution's first few terms, so it sums to at
+    most one:
+
+    >>> bool(frame.set_index("Id").sum(axis=1).le(1.0).all())
+    True
+    """
+    counts = [x] if isinstance(x, (int, float, np.integer, np.floating)) else list(x)
+    wanted: list[int] = []
+    for value in counts:
+        whole = float(value)
+        if whole != int(whole) or whole < 0:
+            raise ValueError(
+                f"pmf counts must be whole and non-negative, got {value!r}"
+            )
+        if int(whole) in wanted:
+            raise ValueError(
+                f"pmf count {int(whole)} was asked for twice, which would give "
+                "one column two definitions"
+            )
+        wanted.append(int(whole))
+    if not wanted:
+        raise ValueError("pmf needs at least one count")
+
+    summary = data.customer_summary()
+    T = summary["T"].to_numpy(dtype=float)
+    frame = pd.DataFrame({"Id": summary["Id"].to_numpy()})
+    for k in wanted:
+        frame[f"pmf.x.{k}"] = np.asarray(pmf(k, T), dtype=float)
+    return frame
 
 
 def pmf_data(
