@@ -775,6 +775,60 @@ class ClvData:
 #: A formula term wrapping an expression to evaluate, as R's ``I()`` does.
 _TRANSFORMED_TERM = re.compile(r"^I\s*\((?P<expression>.+)\)$", re.DOTALL)
 
+#: A bare function call, ``log(Gender + 2)``, which R evaluates without needing
+#: ``I()`` -- ``I()`` in R protects *operators* from the formula grammar, not
+#: calls. Spec `FI-06`, which asked for exactly this term and got "covariates
+#: not in the data". The name must be an identifier and the parentheses must
+#: close at the end, so ``Gender`` and ``a(b) + c(d)`` are both excluded.
+_CALL_TERM = re.compile(r"^(?P<name>[A-Za-z_]\w*)\s*\((?P<argument>.+)\)$")
+
+#: An interaction, ``Gender * Channel`` or ``Gender : Channel``. R's ``*``
+#: means main effects *and* their product; ``:`` means the product alone. Spec
+#: `FI-07`. The product column is named with a dot, as ``make.names`` renders
+#: R's ``Gender:Channel``.
+_INTERACTION = re.compile(r"^(?P<left>[^:*]+?)\s*(?P<operator>[:*])\s*(?P<right>[^:*]+)$")
+
+
+
+def _term_names(name: str, columns, evaluate) -> list[str]:
+    """The column names one formula term contributes, evaluating as it goes.
+
+    Split out of :meth:`ClvDataStaticCov._evaluate_terms` for the complexity
+    limit; the four shapes it recognises are documented there. ``evaluate``
+    takes a column name and the expression to compute it from.
+
+    >>> import pandas as pd
+    >>> made = {}
+    >>> frame = pd.DataFrame({"a": [1.0, 2.0], "b": [3.0, 4.0]})
+    >>> _term_names("a", frame.columns, lambda n, e: made.update({n: e}))
+    ['a']
+    >>> _term_names("a * b", frame.columns, lambda n, e: made.update({n: e}))
+    ['a', 'b', 'a.b']
+    >>> _term_names("a : b", frame.columns, lambda n, e: made.update({n: e}))
+    ['a.b']
+    >>> made
+    {'a.b': '(a) * (b)'}
+    """
+    if name in columns:
+        return [name]
+    transformed = _TRANSFORMED_TERM.match(name)
+    if transformed is not None:
+        evaluate(name, transformed.group("expression"))
+        return [name]
+    if _CALL_TERM.match(name) is not None:
+        evaluate(name, name)
+        return [name]
+    interaction = _INTERACTION.match(name)
+    if interaction is None:
+        return [name]
+    left = interaction.group("left").strip()
+    right = interaction.group("right").strip()
+    product = f"{left}.{right}"
+    evaluate(product, f"({left}) * ({right})")
+    if interaction.group("operator") == "*":
+        return [left, right, product]
+    return [product]
+
 
 class ClvDataStaticCov(ClvData):
     """Transaction data with time-invariant covariates. Cf. ``SetStaticCovariates()``.
@@ -1008,27 +1062,43 @@ class ClvDataStaticCov(ClvData):
     def _evaluate_terms(
         frame: pd.DataFrame, terms: Sequence[str]
     ) -> tuple[list[str], pd.DataFrame]:
-        """Turn every ``I(...)`` term into a column, leaving plain names alone.
+        """Turn a formula's terms into columns, leaving plain names alone.
 
-        The expression is handed to :meth:`pandas.DataFrame.eval` rather than
+        Four shapes, in the order R's formula grammar gives them:
+
+        * a plain column name, which selects;
+        * ``I(...)``, which evaluates -- in R, ``I()`` protects *operators*
+          from the formula grammar;
+        * a bare call, ``log(Gender + 2)``, which R also evaluates because a
+          call is not formula syntax. Spec `FI-06` asked for exactly this term
+          and got "covariates not in the data";
+        * an interaction, ``Gender * Channel`` (main effects and their product)
+          or ``Gender : Channel`` (the product alone). Spec `FI-07`. The
+          product is named with a dot, as ``make.names`` renders R's
+          ``Gender:Channel``.
+
+        Every expression is handed to :meth:`pandas.DataFrame.eval` rather than
         to :func:`eval`, so it reaches the covariate columns and arithmetic and
         not the interpreter.
         """
         resolved, derived = [], {}
-        for term in terms:
-            name = str(term).strip()
-            match = _TRANSFORMED_TERM.match(name)
-            resolved.append(name)
-            if match is None or name in frame.columns:
-                continue
-            expression = match.group("expression")
+
+        def evaluate(name: str, expression: str) -> None:
             try:
                 values = frame.eval(expression)
             except Exception as error:
                 raise ValueError(
-                    f"cannot evaluate the covariate expression {expression!r}: {error}"
+                    f"cannot evaluate the covariate expression "
+                    f"{expression!r}: {error}"
                 ) from error
             derived[name] = np.asarray(values, dtype=float)
+
+        for term in terms:
+            name = str(term).strip()
+            resolved.extend(
+                _term_names(name, frame.columns, evaluate)
+            )
+
         if not derived:
             return resolved, frame
         frame = frame.copy()

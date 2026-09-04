@@ -454,7 +454,7 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | C-03 | c | re-verdicted 2026-09-03: **round 5**: the mixed arm reached — `get_dummies` does reorder (numerics first), and the names are asserted to describe the matrix column for column, which is the claim the reordering threatens |
 | C-04 | c | re-verdicted 2026-09-03: **round 5**: numeric covariates stay numeric with and without categoricals present |
 | C-05 | o ! | re-verdicted 2026-09-04: closed as a divergence by **A7** — names are kept verbatim where R mangles them, already in the README's findings |
-| C-06 | a | `frame.copy()` untested; `with_covariates` uses `copy.copy`, so `_cov_life` is shared when no term is derived |
+| C-06 | c | re-verdicted 2026-09-04: **round 6**: the covariate frame is copied; mutating the caller's afterwards leaves the data object unchanged, asserted alongside `S-07` |
 | C-07 | a | nothing feeds dyncov data longer than needed |
 | C-08 | c ! | **round 5**, a recorded divergence: R requires the two series to be equally long, this package allows them to differ and asks the questions equal length would have answered at three points instead — the lifetime grid reaching the estimation end, the transaction grid covering its walks, and the prediction horizon being reachable. Pinned, and in the README's findings |
 | C-09 | c ! | re-verdicted 2026-09-04: **round 6**: a *defect*, and larger than the row says — a categorical covariate could not be selected by its own name at all, because the check ran against the encoded frame. Only the apparel cohort's 0/1 numeric covariates, which keep their names, made that survivable. Fixed, with the single-level case earning its own message |
@@ -623,8 +623,8 @@ that nothing in README Findings / `docs/audit.md` / `docs/backlog.md` records.
 | FI-01..FI-03 | c | |
 | FI-04 | c | re-verdicted 2026-09-03: **round 5**: `.` beside another term was read as a literal column name; it now expands against the data in `_narrowed`, all three claims pinned |
 | FI-05 | c ! | re-verdicted 2026-09-04: **round 6**: was a defect, now refused. A name given twice built a `(600, 2)` design of two identical columns; the fit reported two coefficients whose *sum* is what the data identifies, each with a standard error the Hessian cannot support |
-| FI-06 | a ! | naming-by-term-text *is* recorded (`audit.md:489`); bare `log(x+2)` unsupported is not (**A7**) |
-| FI-07 | a ! | `Gender*Channel` and `.-Gender` parse then fail as column names (**A7**) |
+| FI-06 | c ! | re-verdicted 2026-09-04: **round 6**: the bare-call half was a real gap. In R `I()` protects *operators* from the formula grammar; a call is not formula syntax and needs no protection, so `log(Gender + 2)` should never have needed wrapping. It was refused as "covariates not in the data" -- which reads as a typo in a term that is not one. Both spellings now evaluate; the naming half was already recorded |
+| FI-07 | c ! | re-verdicted 2026-09-04: **round 6**: the exclusion half already worked (a README finding); the interaction half did not exist. `*` gives main effects and their product, `:` the product alone, named `Gender.Channel` as `make.names` renders R's `Gender:Channel`. `~Gender*Channel|.-Gender` now gives exactly the life and transaction sets the spec names |
 | FI-08 | c | re-verdicted 2026-09-03: **round 5**: the type claim asserted both ways — static narrows to static and is not dynamic, dynamic stays dynamic |
 | FI-09 | c ! | **round 5**, a recorded divergence: narrowing shares the transaction and covariate frames where R copies. `ClvData.__init__` copies the *caller's* frame, so nothing a caller holds is reachable from a fitted object; the sharing is between two of this package's own objects. Pinned in both directions and in the README's findings |
 | FI-10 | c | |

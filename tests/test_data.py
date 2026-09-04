@@ -928,6 +928,23 @@ class TestFramesTheFixturesNeverContained:
 
         pd.testing.assert_frame_equal(data.as_data_frame(), before)
 
+    def test_the_covariate_frame_is_copied_too(self):
+        """`C-06`, the same claim one layer up.
+
+        ``ClvDataStaticCov`` takes a second frame, and it takes it from the
+        caller by a different route than the transaction log does.
+        """
+        from clvtools import ClvData, ClvDataStaticCov
+
+        source = load_apparel_static_cov()
+        data = ClvDataStaticCov(
+            ClvData(load_apparel_trans(), time_unit="week", estimation_split=104),
+            source, names_cov_life=["Gender"], names_cov_trans=["Gender"],
+        )
+        before = data.design_life().copy()
+        source.loc[source.index[0], "Gender"] = 99.0
+        np.testing.assert_array_equal(data.design_life(), before)
+
     def test_the_hour_unit_floors_a_sub_hour_timestamp(self):
         """`D-03`: tested at the ``timeunit`` layer, never end to end.
 

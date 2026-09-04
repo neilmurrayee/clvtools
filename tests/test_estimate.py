@@ -701,3 +701,109 @@ class TestRsConstraintSyntaxIsRefusedNotMisread:
         )
         assert fit.names_cov_constr == ["Gender"]
         assert "constr.Gender" in fit.names
+
+
+class TestTransformationsAndInteractionsInAFormula:
+    """Spec `FI-06` and `FI-07`, both `absent !`.
+
+    `FI-06` asks for `~I(Gender+1)|log(Gender+2)` -- note that only the *first*
+    term is wrapped. In R, ``I()`` protects **operators** from the formula
+    grammar; a bare call is not formula syntax and needs no protection. This
+    port supported ``I(...)`` and refused ``log(Gender + 2)`` with "covariates
+    not in the data", which reads as a typo in a term that is not one.
+
+    `FI-07` asks for interactions and exclusions: `~Gender*Channel|.-Gender`
+    giving life ``(Gender, Channel, Gender.Channel)`` and transactions
+    ``(Channel)``. The exclusion half already worked -- it is one of the
+    README's findings -- and the interaction half did not exist. ``*`` is main
+    effects *and* their product, ``:`` the product alone, and the product is
+    named with a dot, which is how ``make.names`` renders R's
+    ``Gender:Channel``. Backlog item 36, round 6.
+    """
+
+    @staticmethod
+    def _select(data, formula):
+        """The formula path ``latent_attrition`` takes, without the fit.
+
+        The ``.`` expansion needs the data to know its own covariates, so it
+        happens after :func:`parse_formula` and not inside it -- which is why a
+        probe that called ``with_covariates(parse_formula(f))`` directly saw
+        `FI-07`'s exclusion fail when the documented path handles it.
+        """
+        from clvtools.estimate import _expanded, parse_formula
+
+        life, trans = parse_formula(formula)
+        return data.with_covariates(
+            _expanded(life, data.names_cov_life),
+            _expanded(trans, data.names_cov_trans),
+        )
+
+    def test_a_bare_call_is_evaluated_like_a_wrapped_one(self, static_data):
+        """`FI-06`: both spellings, and the arithmetic, not just the naming."""
+        narrowed = self._select(
+            static_data, "~ I(Gender + 1) | log(Gender + 2)"
+        )
+        assert narrowed.names_cov_life == ["I(Gender + 1)"]
+        assert narrowed.names_cov_trans == ["log(Gender + 2)"]
+
+        gender = static_data.design_life(["Gender"]).ravel()
+        np.testing.assert_allclose(
+            narrowed.design_life().ravel(), gender + 1.0
+        )
+        np.testing.assert_allclose(
+            narrowed.design_trans().ravel(), np.log(gender + 2.0)
+        )
+
+    def test_the_coefficient_carries_the_term_as_written(self, static_data):
+        """R deparses and respaces; nothing here reformats, and that is a choice."""
+        narrowed = self._select(static_data, "~ log(Gender+2) | Gender")
+        assert narrowed.names_cov_life == ["log(Gender+2)"]
+
+    def test_a_star_interaction_gives_main_effects_and_the_product(
+        self, static_data
+    ):
+        """`FI-07`'s first half, spelled exactly as the spec spells it."""
+        narrowed = self._select(static_data, "~ Gender * Channel | . - Gender")
+        assert narrowed.names_cov_life == ["Gender", "Channel", "Gender.Channel"]
+        assert narrowed.names_cov_trans == ["Channel"]
+        assert narrowed.design_life().shape == (600, 3)
+        assert narrowed.design_trans().shape == (600, 1)
+
+    def test_the_product_column_is_the_product(self, static_data):
+        design = self._select(
+            static_data, "~ Gender * Channel | Gender"
+        ).design_life()
+        np.testing.assert_allclose(design[:, 2], design[:, 0] * design[:, 1])
+
+    def test_a_colon_interaction_gives_the_product_alone(self, static_data):
+        """Which is the whole of R's distinction between ``*`` and ``:``."""
+        narrowed = self._select(static_data, "~ Gender : Channel | Gender")
+        assert narrowed.names_cov_life == ["Gender.Channel"]
+
+    def test_an_unevaluable_expression_says_which_one(self, static_data):
+        with pytest.raises(ValueError, match="cannot evaluate"):
+            self._select(static_data, "~ log(NoSuchColumn) | Gender")
+
+    def test_a_column_whose_own_name_looks_like_a_call_still_selects(
+        self, apparel_trans, apparel_static_cov
+    ):
+        """A real column wins over any interpretation of its name.
+
+        The order matters: ``name in frame.columns`` is checked first, so a
+        covariate someone called ``log(spend)`` selects rather than being
+        evaluated. Contrived, and exactly the sort of thing a term-parsing
+        change breaks silently.
+        """
+        from clvtools import ClvDataStaticCov
+
+        cov = apparel_static_cov.rename(columns={"Gender": "log(spend)"})
+        data = ClvDataStaticCov(
+            ClvData(apparel_trans, time_unit="week", estimation_split=104),
+            cov,
+            names_cov_life=["log(spend)"], names_cov_trans=["Channel"],
+        )
+        narrowed = data.with_covariates(["log(spend)"], ["Channel"])
+        np.testing.assert_array_equal(
+            narrowed.design_life().ravel(),
+            data.design_life(["log(spend)"]).ravel(),
+        )

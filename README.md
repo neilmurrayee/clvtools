@@ -483,6 +483,19 @@ sliced for; and the prediction horizon must be reachable from whichever series
 runs shortest. Three checks where they bite rather than one blanket rule at the
 door. Spec C-08.
 
+**Two more formula spellings, one of which needed no `I()` to begin with.**
+`FI-06` asks for `~ I(Gender + 1) | log(Gender + 2)` — note that only the first
+term is wrapped. In R, `I()` protects *operators* from the formula grammar; a
+bare call is not formula syntax and needs no protection at all. This package
+supported `I(...)` and refused `log(Gender + 2)` with "covariates not in the
+data", which reads as a typo in a term that is not one. Both now evaluate, and
+the coefficient carries the term exactly as written — R deparses and respaces,
+nothing here reformats. `FI-07`'s interactions are new too: `*` gives main
+effects and their product, `:` the product alone, and the product is named
+`Gender.Channel`, which is how `make.names` renders R's `Gender:Channel`. A real
+column wins over any reading of its name, so a covariate someone called
+`log(spend)` still selects.
+
 **Two formula spellings R has that this does not, and one it shares.**
 S6.4's formula is `~ life | trans`, and three constructs inside it needed
 deciding. `.` expands to every covariate the data carries, *including* beside

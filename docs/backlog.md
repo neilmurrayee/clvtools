@@ -2553,6 +2553,30 @@ together. `B-09` was fixed and is tested at `test_diagnostics.py:816`; `B-11` is
 eight real defects, which is roughly the rate round 5 found and is the argument
 for re-reading an audit rather than trusting it.
 
+### Batch 8 — the formula grammar: a term that never needed protecting
+
+`FI-06` asks for `~ I(Gender + 1) | log(Gender + 2)`, and only the **first**
+term is wrapped. That is not an inconsistency in the spec: in R, `I()` protects
+*operators* from the formula grammar, and a bare call is not formula syntax, so
+`log(Gender + 2)` needs no protection at all. This port supported `I(...)` and
+refused the call with "covariates not in the data" -- a message that reads as a
+typo in a term that is not one, which is the same shape as round 5's recurring
+finding. Both spellings now evaluate.
+
+`FI-07`'s exclusion half already worked and is a README finding; its
+interaction half did not exist. `*` gives main effects and their product, `:`
+the product alone, and the product is named `Gender.Channel`, which is how
+`make.names` renders R's `Gender:Channel`. `~Gender*Channel|.-Gender` now gives
+exactly the sets the spec names.
+
+**A probe of mine went through the wrong path and nearly produced a false
+finding.** `parse_formula` leaves `.` and `-Gender` as terms, because expanding
+`.` needs the data to know its own covariates; `_expanded` does that, and
+`latent_attrition` calls both. Calling `with_covariates(parse_formula(f))`
+directly therefore fails on an exclusion the documented path handles, and for a
+few minutes that looked like `FI-07`'s exclusion half being broken. The test
+now takes the path `latent_attrition` takes, and says why in its own docstring.
+
 *Done when:* every `a` row has been read against the suite as it stands and
 carries either a corrected verdict, a test, or a note saying why nothing covers
 it — the same bar round 5 met, and the same batching, largest section first:
