@@ -5,10 +5,10 @@
 package's documentation, and the R package's own test suite. It was written
 without reading `src/` or `tests/` of this repository, so that it can only
 describe what the sources demand and never what this implementation happens to
-do. `docs/spec-audit.md` is the separate pass that joins it against the suite
-we actually have.
+do. Every item below now has a test behind it; `grep -rn 'F-12' tests/` finds
+the one that pins a given claim, since each test names the item it covers.
 
-**Why derive it this way.** `docs/audit.md` indexed the paper and the R
+**Why derive it this way.** An earlier audit indexed the paper and the R
 `NAMESPACE` *against this implementation*: for each thing the sources contain,
 does a counterpart exist here. That direction finds missing features. It cannot
 find a claim that is present but wrongly pinned, because the implementation is

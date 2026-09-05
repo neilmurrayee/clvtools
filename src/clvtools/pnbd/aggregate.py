@@ -407,7 +407,7 @@ def discounted_expected_residual_transactions(
         # accepted silently, returning a number for a per-period discount rate
         # of 10,000%. The parameter carries CLVTools' exact semantics --
         # ``DEFAULT_DISCOUNT_FACTOR`` is ``log(1.1)`` -- so its range transfers
-        # with it. Finding A3 of ``docs/spec-audit.md``, spec PR-11.
+        # with it. Finding A3 of the 2026-09 spec audit, spec PR-11.
         raise ValueError(
             "continuous_discount_factor must lie in [0, 1); got "
             f"{continuous_discount_factor}. It is a *per-period* rate -- see "

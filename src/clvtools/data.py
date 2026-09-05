@@ -175,7 +175,7 @@ def _identified(df: pd.DataFrame) -> pd.DataFrame:
     travel silently: an NA ``Id`` became the string ``"None"`` and an NA
     ``Date`` was dropped by ``to_datetime``, so transactions could leave the
     data between a caller's frame and the model with nothing said -- five of
-    them, in the case that found this. Finding A4 of ``docs/spec-audit.md``.
+    them, in the case that found this. Spec `D-06`.
 
     >>> import pandas as pd
     >>> _identified(pd.DataFrame({"Id": [None], "Date": ["2005-01-02"]}))
@@ -204,7 +204,7 @@ def _identified(df: pd.DataFrame) -> pd.DataFrame:
         # there is no oracle and this is a decision: refuse, and say how to
         # proceed. Dropping the zone here would silently move a late-evening
         # transaction to the previous day. Finding A6 of
-        # ``docs/spec-audit.md``.
+        # the 2026-09 spec audit.
         raise ValueError(
             f"Date is timezone-aware ({parsed.dtype.tz}); these models work in "
             "whole periods and a daylight-saving transition inside the "
@@ -277,7 +277,7 @@ def _priced(df: pd.DataFrame, has_price: bool) -> pd.DataFrame:
     the mean, and ``fillna(0.0)`` then records ``Spending = 0``. The
     Gamma-Gamma silently excludes that row and ``predict()`` reports the
     population mean for the customer -- 7.72 against 88.65 with real prices, in
-    the review's example. Finding 6 of ``docs/review-2026-09-02.md``.
+    the review's example. Finding 6 of the 2026-09 review.
 
     >>> import pandas as pd
     >>> _priced(pd.DataFrame({"Id": ["1"]}), has_price=False)["Price"].isna().all()
@@ -1004,7 +1004,7 @@ class ClvDataStaticCov(ClvData):
         # covariate "fit" comes back at its start values with no exception and
         # several hundred RuntimeWarnings. Named here, with the ids, it is a
         # data-cleaning problem the caller can act on -- finding 6 of
-        # ``docs/review-2026-09-02.md``.
+        # the 2026-09 review.
         bad = out.index[~np.isfinite(out.to_numpy()).all(axis=1)]
         if len(bad):
             raise ValueError(

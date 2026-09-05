@@ -18,7 +18,7 @@
 # branch. It has run twice and passed both times -- 33614866210 on `225f6a3`
 # and 33731273502 on `a8f35e1`, read from `gh run list` on 2026-09-03. The
 # first was dispatched by hand rather than left to the night, which is what
-# `docs/backlog.md` item 13 asked for.
+# backlog item 13 asked for.
 name: Time-varying covariate MLE
 
 on:

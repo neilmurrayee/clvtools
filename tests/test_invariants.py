@@ -1,6 +1,6 @@
 r"""Invariants that determine their own answer, and so need no oracle.
 
-Findings D5 and D6 of ``docs/spec-audit.md``: claims whose truth is fixed by
+Findings D5 and D6 of the 2026-09 spec audit: claims whose truth is fixed by
 the inputs rather than by anything CLVTools printed. They are the cheapest
 tests in that audit and they cover the mechanisms most likely to break
 silently, because every one of them joins two code paths that agreement at a
@@ -394,7 +394,7 @@ class TestZeroCovariatesMatchTheNoCovariateModelForAnyGamma:
     Drawn from a seeded generator across a wide range, so a coefficient of 40 is
     tried beside one of 1e-9, and for all three families rather than the
     Pareto/NBD alone. Element-wise where the family exposes a per-customer
-    entry point, summed where it does not. Backlog item 34, round 5.
+    entry point, summed where it does not.
     """
 
     N_DRAWS = 8
@@ -475,7 +475,7 @@ class TestZeroCovariatesNestThroughPredictAndNewCustomer:
 
     Bit-identical rather than close, for the same reason as `X-02`: ``exp(0)``
     is 1 to the bit, so any difference at all would be a covariate model
-    reaching something the plain one does not. Backlog item 36, round 6.
+    reaching something the plain one does not.
     """
 
     GAMMA_LIFE: ClassVar[np.ndarray] = np.array([0.7])
@@ -539,7 +539,6 @@ class TestABootstrapResampleKeepsTheHoldout:
     count -- so it survives only if the rebuild carries it. Nothing had said so,
     and the failure would be quiet in exactly the wrong way: a bootstrap whose
     draws had no holdout still produces intervals, of a different quantity.
-    Backlog item 36, round 6.
     """
 
     @pytest.fixture(scope="class")

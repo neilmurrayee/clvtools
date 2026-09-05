@@ -280,7 +280,7 @@ inference(est.static.constr, "pnbd_staticcov_constrained")
 #
 # Both follow from differencing a penalised *mean* objective numerically where
 # the coefficients have been shrunk to 1e-3 and the penalty dominates. See the
-# README's findings and docs/backlog.md item 22.
+# README's findings and the
 
 cat("\n== regularized vcov (a disagreement, pinned) ==\n")
 

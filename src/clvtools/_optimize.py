@@ -114,7 +114,7 @@ def _reject_unknown_options(method: str, overrides: dict) -> None:
     then drops the key. R errors, and so does this: an option that was asked for
     and not applied is a fit that did something other than what was requested,
     which is the one thing an escape hatch must not do quietly. See finding 20
-    of ``docs/review-2026-09-02.md`` and spec ``V-03``.
+    of the 2026-09 review and spec ``V-03``.
     """
     accepted = _accepted_options(method)
     if not accepted:

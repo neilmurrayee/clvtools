@@ -131,7 +131,7 @@ def log_likelihood_ind(
         # The survival term, as -s*log1p(e/beta) rather than a difference of
         # two logs. beta is 1.4e-3 on CDNOW and expm1(bT) is 1.2e-2, so the
         # difference cancels: measured against a 60-digit reference it loses
-        # to 2.2e-10 where this form is exact to 2.2e-16. Backlog item 37.
+        # to 2.2e-10 where this form is exact to 2.2e-16.
         - s * np.log1p(np.expm1(b * T_flat) / beta_flat)
     )
 
@@ -153,7 +153,7 @@ def log_likelihood_ind(
     # exactly 0, its log is ``-inf``, and ``logaddexp`` then returned the alive
     # branch alone -- ``PAlive`` exactly 1.0 for a heavy buyer, with no warning.
     # On daily data, where ``T`` runs to a thousand, that starts around
-    # ``x = 105``. Finding 4 of ``docs/review-2026-09-02.md``.
+    # ``x = 105``. Finding 4 of the 2026-09 review.
     offset = np.array(
         [log_integrand(t_x_flat[i], i) for i in range(t_x_flat.size)]
     )
@@ -269,7 +269,7 @@ def conditional_expected_transactions(
     # failure. ``(alpha + T)^(r + x)`` *overflows* to ``inf`` at about the same
     # frequency at which the integral *underflows* to 0, so the product was
     # ``inf * 0`` -- NaN, returned as a conditional expectation, from x = 140 on
-    # the apparel fit. Finding 4 of ``docs/review-2026-09-02.md``.
+    # the apparel fit. Finding 4 of the 2026-09 review.
     offset = np.array(
         [log_integrand(t_x_flat[i], i) for i in range(t_x_flat.size)]
     )

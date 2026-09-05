@@ -27,14 +27,9 @@ examples/quickstart.ipynb  the twenty-cell tour; executed by pytest via nbmake,
                     outputs stripped, rebuilt by tools/build_quickstart.py
 docs/paper.md       §6 case study as an executable doctest document
 docs/vignette.md    the R package's walkthrough + advanced-techniques vignettes
-docs/audit.md       gaps against the paper and the R package — closed, kept as history
-docs/backlog.md     the work queue and why each change was made — empty; add new work here
 docs/performance.md where the time goes, and why nothing asserts a wall clock
-docs/spec.md        what a correct port must do, derived from the sources alone
-docs/spec-audit.md  that spec joined against the suite — all 222 verdicted; read
-                    this to find how a given claim is pinned
-docs/review-2026-09-02.md  a four-reviewer read of the whole repo; findings 1-20,
-                    all closed
+docs/spec.md        what a correct port must do, derived from the sources alone —
+                    every one of its 222 items has a test; cite the id in yours
 CHANGELOG.md        the short version: what installing a given version gets you
 .github/workflows/  ci.yml on every push and PR; dyncov.yml nightly, for the fit
                     the ordinary gate deselects
@@ -47,17 +42,20 @@ src/clvtools/data/  CLVTools' bundled datasets as CSV — inside the package,
 ```
 
 Module ↔ paper mapping lives in `src/clvtools/__init__.py` and the README table.
-`docs/backlog.md` is the standing queue: work the topmost unchecked item, tick
-it with what was measured, and leave items marked `[needs-decision]` alone. It
-is currently **empty** — all forty items closed, and `docs/spec-audit.md` has a
-verdict on all 222 spec items. The two live references are `docs/spec.md` (what
-a correct port must do) and `docs/spec-audit.md` (how each of its claims is
-pinned); the rest is history worth keeping for the reasoning, not for the tasks.
+There is no backlog. Seven audit rounds against `docs/spec.md` are closed and
+all 222 of its items have a test behind them, so `docs/spec.md` is the one
+remaining reference: it states what a correct port must do, derived from the
+sources without reading this code, which is what makes it worth checking a
+change against. **How** each claim is pinned is a `grep -rn 'F-12' tests/` away,
+because every test names the spec item it covers — which is why the audit tables
+that used to say the same thing were deleted rather than maintained. The tests
+cite the spec, so the tests are the map. Findings and deliberate divergences
+live in the README.
 
 ## Commands
 
 ```bash
-uv run pytest                  # 1,605 tests inc. doctests in src/ and docs/; ~4:50 on an M-series
+uv run pytest                  # 1,609 tests inc. doctests in src/ and docs/; ~4:50 on an M-series
 uv run pytest -m paper         # 22 numbers printed in the paper
 uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
 uv run pytest -m literature    # 22 numbers published in the CLV literature

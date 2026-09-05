@@ -191,7 +191,7 @@ SAMPLE_IDS <- c("1", "10", "100", "1000", "1001")
 # `dyncov_predict_holdout`, which the suite already checks at rtol 1e-11, so the
 # file was a second copy of numbers already pinned. The `check()` below is the
 # part worth keeping -- it is what establishes that the two R entry points agree
-# in the first place. Backlog item 25.
+# in the first place.
 dt.palive <- cpp("pnbd_dyncov_palive")(fit)
 
 date.holdout.end <- clv@clv.time@timepoint.holdout.end

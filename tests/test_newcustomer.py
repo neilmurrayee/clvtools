@@ -91,7 +91,7 @@ class TestProspectiveCustomers:
         This used to read the four values out of the *fixture* and assert that
         they differ from each other -- a statement about CLVTools' output, true
         no matter what this package computed, and it would have passed with
-        ``predict`` deleted. Finding B1 of ``docs/spec-audit.md``. It now
+        ``predict`` deleted. Finding B1 of the 2026-09 spec audit. It now
         predicts the four scenarios here and asserts they are distinct, which
         is what "the covariates separate the scenarios" means.
 
@@ -229,7 +229,7 @@ class TestNewCustomerAcceptsShortHorizonsAndDateTypes:
     `NC-10`'s three cases -- covariate data starting before the first
     transaction, ending after the horizon, and drawn from a different period
     than the fitting data -- are the *working* side of claims whose refusals
-    were already covered. Backlog item 34, round 5.
+    were already covered.
     """
 
     @pytest.fixture(scope="class")
@@ -293,7 +293,6 @@ class TestTheProspectiveDyncovSeriesIsChecked:
       not in index"`` -- a question about two objects pandas has never seen
       together, which is the defect `PR-13` records for the cohort path.
 
-    Backlog item 38.
     """
 
     NAMES: ClassVar = ["High.Season", "Gender", "Channel"]

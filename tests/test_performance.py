@@ -12,7 +12,7 @@ So this module gates efficiency the way ``test_code_quality.py`` gates
 tidiness: deterministically. **Nothing here looks at a clock.** A wall-clock
 assertion would be the first gate in this repo that fails for reasons unrelated
 to the change under test, and the first response to a flaky gate is to loosen
-it -- which ``docs/backlog.md`` forbids anyway. Counting operations catches the
+it -- which the backlog forbids anyway. Counting operations catches the
 same regressions and cannot be flaky.
 
 Each limit below carries the value measured on 2026-09-01 in a comment beside

@@ -154,7 +154,7 @@ class TestDispatch:
 
     # 18.4 s for the GGom/NBD arm, which is a full-dataset MLE and belongs
     # under `slow` with the other 150-odd. It was the slowest unmarked test in
-    # the suite. Finding 17, backlog item 25.
+    # the suite. Finding 17,
     @pytest.mark.slow
     @pytest.mark.parametrize("family", [bgnbd, ggomnbd])
     def test_the_other_families_dispatch_too(self, data, family):
@@ -412,7 +412,7 @@ class TestTheDotExpandsBesideOtherTerms:
 
     Expanding it needs the data, which :func:`~clvtools.estimate.parse_formula`
     does not see, so parsing keeps the ``"."`` term and ``_narrowed`` resolves
-    it. Backlog item 34, round 5.
+    it.
     """
 
     def test_the_dot_survives_parsing_as_a_term(self):
@@ -457,7 +457,7 @@ class TestTheEntryPointsRefuseWhatIsNotClvData:
     Both entry points did fail -- with ``AttributeError: 'DataFrame' object has
     no attribute 'customer_summary'``, which names an internal method rather
     than what the caller got wrong, and reads like a bug in the library rather
-    than in the call. Backlog item 34, round 5.
+    than in the call.
     """
 
     @pytest.fixture(scope="class")
@@ -633,7 +633,6 @@ class TestTheDotTakesExclusions:
 
     `_split_terms` splits on ``+`` only, so ``~ . - Gender | .`` arrived as the
     single term ``". - Gender"`` and was looked up as a column of that name.
-    Backlog item 34, round 5.
     """
 
     def test_an_exclusion_becomes_its_own_term(self):
@@ -718,7 +717,7 @@ class TestTransformationsAndInteractionsInAFormula:
     README's findings -- and the interaction half did not exist. ``*`` is main
     effects *and* their product, ``:`` the product alone, and the product is
     named with a dot, which is how ``make.names`` renders R's
-    ``Gender:Channel``. Backlog item 36, round 6.
+    ``Gender:Channel``.
     """
 
     @staticmethod
@@ -807,3 +806,59 @@ class TestTransformationsAndInteractionsInAFormula:
             narrowed.design_life().ravel(),
             data.design_life(["log(spend)"]).ravel(),
         )
+
+
+class TestAnUnusedArgumentIsAnError:
+    """Spec `V-04`: "every user-facing function errors on unused arguments".
+
+    The spec audit recorded this as a divergence, on the grounds that
+    ``**kwargs`` forwarding would surface a typo at a *private* signature.
+    Re-run, it does not: all three entry points name a public one, because the
+    functions ``latent_attrition`` and ``spending`` forward to are the same ones
+    the README tells you to call directly. ``fit_pnbd() got an unexpected
+    keyword argument 'hessain'`` is as good an answer as R's, and points at a
+    signature the caller can read.
+
+    A test rather than a README finding, for that reason: it is not a
+    divergence, and the only thing wrong was the note.
+    """
+
+    @pytest.fixture(scope="class")
+    def plain(self, apparel_trans):
+        return ClvData(apparel_trans, time_unit="week", estimation_split=104)
+
+    @pytest.fixture(scope="class")
+    def covariates(self, apparel_trans, apparel_static_cov):
+        from clvtools import ClvDataStaticCov
+
+        return ClvDataStaticCov(
+            ClvData(apparel_trans, time_unit="week", estimation_split=104),
+            apparel_static_cov,
+            names_cov_life=["Gender"], names_cov_trans=["Gender"],
+        )
+
+    def test_latent_attrition_names_a_public_function(self, plain):
+        with pytest.raises(TypeError, match=r"fit_pnbd\(\) got an unexpected"):
+            latent_attrition("pnbd", plain, nonsense=1)
+
+    def test_a_plausible_typo_is_refused_rather_than_ignored(self, plain):
+        """``hessain`` for ``hessian`` -- the failure mode that matters.
+
+        Ignored silently, it would compute a Hessian the caller asked not to
+        have, or skip one they wanted, and the table would look right either
+        way.
+        """
+        with pytest.raises(TypeError, match="hessain"):
+            latent_attrition("pnbd", plain, hessain=False)
+
+    def test_the_covariate_path_names_its_own_entry_point(self, covariates):
+        with pytest.raises(TypeError, match="fit_pnbd_staticcov"):
+            latent_attrition(
+                "pnbd", covariates, formula="~ Gender | Gender", nonsense=1
+            )
+
+    def test_and_so_does_the_spending_path(self, plain):
+        from clvtools import spending
+
+        with pytest.raises(TypeError, match="fit_gg"):
+            spending("gg", plain, nonsense=1)

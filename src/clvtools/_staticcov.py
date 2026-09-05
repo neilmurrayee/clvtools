@@ -533,7 +533,7 @@ def _search(
                 # whatever was asked for, so `options={"maxiter": 3}` returned
                 # in 10.5 s where `polish=False` returned in 0.005 s -- a
                 # factor of 2,100 between what was requested and what ran.
-                # Backlog item 31. Only the keys Nelder-Mead reads are carried
+                # Only the keys Nelder-Mead reads are carried
                 # over: the search above may be L-BFGS-B, whose `maxfun` this
                 # stage would reject.
                 **_polish_overrides(settings.options),
@@ -593,7 +593,7 @@ def _penalised(
         # reproduces the unpenalised fit including its summary table, and it
         # is right to: which objective is minimised should not turn on a
         # weight that contributes nothing. Finding B6 of
-        # ``docs/spec-audit.md``, spec X-06.
+        # the 2026-09 spec audit, spec X-06.
         return negative_ll
     penalty = lam_life * np.sum(g_life**2) + lam_trans * np.sum(g_trans**2)
     return negative_ll / n_customers + penalty

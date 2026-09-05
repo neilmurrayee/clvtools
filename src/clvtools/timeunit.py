@@ -254,8 +254,7 @@ def _resolve(name: str) -> str | None:
     case-insensitively, and on any unambiguous prefix. Asked, it accepts
     ``"w"``, ``"week"``, ``"weeks"``, ``"Weeks"`` and ``"WEEK"`` alike, and
     this package took only the exact lowercase singular -- so code that works
-    against CLVTools failed here on a spelling. Finding A5 of
-    ``docs/spec-audit.md``, spec T-07.
+    against CLVTools failed here on a spelling. Spec ``T-07``.
 
     An ambiguous prefix is refused rather than guessed:
 

@@ -5,14 +5,14 @@ All notable changes to this project are recorded here. The format follows
 yet use semantic versioning, because it has not had a release to be
 semantic about.
 
-`docs/backlog.md` carries the working queue and `docs/audit.md` the two audit
+the backlog carries the working queue and the paper/R-package audit the two audit
 rounds against the paper and the R package. This file is the short version: what
 someone installing a given version gets.
 
 ## Unreleased
 
 Everything below is on `main` and in no released artifact. `0.1.0` has been
-built but never published — see `docs/backlog.md` item 15, which is a decision
+built but never published — see backlog item 15, which is a decision
 rather than a task.
 
 ### Added
@@ -70,7 +70,7 @@ rather than a task.
   rank-deficient design and reported two coefficients for one covariate; and the
   time-varying covariate series was never checked for duplicates, gaps or `NA`.
 - **Four defects the spec-derived audit found that no test here could see**
-  (`docs/spec-audit.md`): standard errors `sqrt(600) = 24.5` times too large at
+  (the spec audit): standard errors `sqrt(600) = 24.5` times too large at
   a zero penalty; a dyncov bootstrap that resampled but refitted *without* the
   covariates, because `ClvDataDynCov` subclasses `ClvData` and the branch never
   fired; a `NaN` prediction horizon accepted and returned as a `NaN`

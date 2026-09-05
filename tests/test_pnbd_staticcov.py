@@ -339,7 +339,7 @@ class TestAgainstThePaper:
         ``inference_pnbd_staticcov.json`` has carried CLVTools' full-precision
         standard errors all along while the check above compared against the
         paper's printed four, at 5% -- so the fixture was written, committed
-        and never read (finding 16 of ``docs/review-2026-09-02.md``). 2e-3 is
+        and never read (finding 16 of the 2026-09 review). 2e-3 is
         what two optimisers stopping at different points on this ridge can
         agree to, and it is 25 times tighter than the printed comparison.
         """
@@ -467,7 +467,7 @@ class TestTheCovariateJoinDoesNotDependOnOrder:
     a design matrix mis-joined to the customer summary, or ``names_cov_*``
     drifting from column *position*, would be invisible — and
     ``get_dummies`` moving generated dummies to the end is exactly that
-    mechanism. Finding D2 of ``docs/spec-audit.md``.
+    mechanism. Finding D2 of the 2026-09 spec audit.
 
     Neither test needs an oracle: the fit is compared with itself under a
     permutation that must not matter.
@@ -540,7 +540,6 @@ class TestCategoricalCovariatesBecomeDummies:
     regardless of the input order -- so what matters is not the order itself but
     that :attr:`names_cov_life` still describes the matrix column for column.
     A silent transposition there would give every coefficient the wrong name.
-    Backlog item 34, round 5.
     """
 
     @staticmethod
@@ -633,7 +632,6 @@ class TestACategoricalCovariateCanBeNamedByItsOwnName:
     `C-09` itself is the single-category case, which now earns its own message:
     k-1 is zero, so the column contributes no dummies and carries no
     information -- "not in the data" would send the reader hunting a typo.
-    Backlog item 36, round 6.
     """
 
     @pytest.fixture(scope="class")

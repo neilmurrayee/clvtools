@@ -79,7 +79,7 @@ testpaths = ["src", "tests", "docs", "examples"]
 # is the slowest test in the repo and the one thing "not slow" clearly excludes.
 # The deselection moved to `tests/conftest.py`, where it composes with whatever
 # the caller asks for instead of being overwritten by it. See finding 15 of
-# `docs/review-2026-09-02.md`.
+# the 2026-09 review.
 addopts = "-q --strict-markers --doctest-modules --doctest-glob=*.md --nbmake"
 doctest_optionflags = ["NORMALIZE_WHITESPACE", "ELLIPSIS"]
 markers = [

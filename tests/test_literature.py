@@ -4,7 +4,7 @@ A third class of oracle, beside the paper (``-m paper``) and the R package's own
 documentation (``-m rdoc``): the articles the models come from. CLVTools' own
 testthat suite asserts these, and that suite is not installed with the package,
 so nothing in this repository had ever consulted them — ``docs/spec.md``'s
-literature tier, and finding C of ``docs/spec-audit.md``.
+literature tier, and finding C of the 2026-09 spec audit.
 
 They are on ``cdnow`` at ``estimation_split="1997-09-30"``, which is why
 ``paper_values.py`` does not already reach them: the paper and ``?pmf`` both use
@@ -272,7 +272,7 @@ class TestClvToolsOwnCdnowEstimates:
     package prints four and its own suite asserts them at a relative 0.001, and
     that is a *different* oracle of a different strength for the same fit: it
     pins this port against the implementation it is a port of rather than
-    against the article both implement. Backlog item 36, round 6.
+    against the article both implement.
     """
 
     @pytest.fixture(scope="class")
@@ -321,7 +321,6 @@ class TestBemmaorGlady2012:
     whose ``kkt2`` CLVTools' own suite expects to be false (spec `F-09`).
 
     So what is asserted is the ratio and the likelihood, not the coordinates.
-    Backlog item 36, round 6.
     """
 
     @pytest.fixture(scope="class")
@@ -350,7 +349,7 @@ class TestBemmaorGlady2012:
         This test itself moved twice while it was being written: 0.60577
         before the default start became scale-aware
         (:func:`~clvtools._optimize.start_scale`), 0.60478 after it, and
-        0.60590 once the survival term stopped cancelling (backlog item 37).
+        0.60590 once the survival term stopped cancelling.
         Three values within 0.0011 of each other, for changes worth under 1e-6
         of log-likelihood. That is the ridge demonstrating itself, twice, and
         the reason the assertion is a spread rather than a coordinate.

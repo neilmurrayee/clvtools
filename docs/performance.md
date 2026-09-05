@@ -1,6 +1,6 @@
 # Performance
 
-Everything in this repo is gated on being *correct* — 1,605 tests, the paper's
+Everything in this repo is gated on being *correct* — 1,609 tests, the paper's
 numbers, the R package's numbers, oracle fixtures expression by expression —
 and on being *tidy*: ruff, complexity, module size, 100% line coverage. Nothing
 has ever asked whether it is *fast*. This document is the first pass at that
@@ -28,8 +28,8 @@ question: where does the time actually go, and is any of it avoidable.
 ## What the suite itself costs
 
 A separate question from what the *library* costs, and the one a contributor
-feels: **4:50 plain and 7:40 with coverage**, on the machine above, for 1,605
-tests. That is where it stands after the audit rounds, which added 453 tests.
+feels: **4:50 plain and 7:45 with coverage**, on the machine above, for 1,609
+tests. That is where it stands after the audit rounds, which added 457 tests.
 
 The distribution is very uneven, and worth knowing before optimising anything:
 
@@ -467,7 +467,7 @@ table does, 0.360 s → 0.137 s is **2.6x on the fit**, ~10:07 → ~4 minutes.
 
 That figure is a projection and is labelled as one: the restructure has not been
 done, and it would additionally remove 4,770 NumPy dispatches per evaluation
-that the projection gives it no credit for. Carried as backlog item 30.
+that the projection gives it no credit for. Carried as
 
 ### Backlog item 30: the duplicates, collapsed without a restructure
 
@@ -534,8 +534,8 @@ last two bits.
 Not `assert elapsed < 2.0`. Every gate in this repo is deterministic — tests,
 coverage, lint, size limits — and a wall-clock assertion would be the first one
 that fails for reasons unrelated to the change under test. The first response
-to a flaky gate is to loosen it, and `docs/backlog.md` explicitly forbids
-loosening a limit to get green. A gate nobody trusts is worse than no gate.
+to a flaky gate is to loosen it, and this repo's rule is that a limit is never
+loosened to get green. A gate nobody trusts is worse than no gate.
 
 Count operations instead. The regressions actually worth catching are
 structural, and every one of them is visible without a clock:
@@ -564,17 +564,17 @@ Wall-clock still belongs in `tools/benchmark.py`, and *where* the time goes in
 
 ## Next
 
-- ~~`docs/backlog.md` item 7~~ — done: `tests/test_performance.py`, marker
+- ~~backlog item 7~~ — done: `tests/test_performance.py`, marker
   `performance`. The four invariants above, 1.0 s on every run, and each one
   demonstrated to fail against a deliberately broken implementation.
-- ~~`docs/backlog.md` item 8~~ — done: `tools/profile.py`, 6 s, which emits
+- ~~backlog item 8~~ — done: `tools/profile.py`, 6 s, which emits
   every profile table above as markdown. Running it is what turned up the
   `_hyp_beta_gt_alpha` correction, which is the argument for it in one line.
-- ~~`docs/backlog.md` item 9~~ — done: the dyncov vectorisation spike, which
+- ~~backlog item 9~~ — done: the dyncov vectorisation spike, which
   paid, though not where it was expected to. 3.3-5.1x per evaluation, 1.33x on
   the fit, 27 of 30 oracle intermediates bit-identical. Written up above, gated
   by `TestDyncovStaysVectorised`.
-- ~~`docs/backlog.md` item 14~~ — done: the `hyp2f1` spike, written up above.
+- ~~backlog item 14~~ — done: the `hyp2f1` spike, written up above.
   Two thirds of a fit is spent where 85% of self-time is inside SciPy, and
   neither exact rewrite of the hypergeometric helps — the fast one cancels to
   35 digits of error, the accurate one is what SciPy already does. What does
@@ -583,7 +583,7 @@ Wall-clock still belongs in `tools/benchmark.py`, and *where* the time goes in
   "Vectorising `log_likelihood_customer` across customers as well — the obvious
   next refactor — would not touch it, and the numbers above are the reason not
   to start it." The duplicate arguments were the thing it could not see.
-- ~~`docs/backlog.md` item 30~~ — done, and *not* by the restructure that item
+- ~~backlog item 30~~ — done, and *not* by the restructure that item
   specified. A per-evaluation memo reaches the same duplicates: the dwell vector
   falls 0.480 s to 0.119 s, all 30 intermediates stay **bit-identical** at both
   grid vectors, and `log_likelihood_customer` keeps its shape. Written up above.

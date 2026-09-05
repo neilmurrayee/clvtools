@@ -368,7 +368,7 @@ _HYP_MEMO: contextvars.ContextVar[dict | None] = contextvars.ContextVar(
 def _memoised_hypergeometrics() -> Iterator[None]:
     r"""Share one :math:`{}_2F_1` memo across the customers of one evaluation.
 
-    Backlog item 30. One evaluation over the apparel cohort asks for **79,508**
+    One evaluation over the apparel cohort asks for **79,508**
     hypergeometrics and only **5,303** of them are distinct: the covariates are
     categorical, so :math:`\exp(\gamma'x)` takes few values and so does the
     argument :math:`z`. The duplication is entirely *across* customers -- within
@@ -783,7 +783,7 @@ def log_likelihood_customer(
     both :math:`F_1F_2` and :math:`F_3` are around 1e-274, so both underflow
     while their *ratio* is O(1). Adding them as values gave :math:`F_2 = 0` and
     the ``sign == 0`` branch below -- the alive-only likelihood, silently, and
-    wrong by 225 log-units. Finding 10 of ``docs/review-2026-09-02.md``.
+    wrong by 225 log-units. Finding 10 of the 2026-09 review.
     """
     A1T = c.aux_walk_trans.first
     AkT = c.aux_walk_trans.last
@@ -999,7 +999,7 @@ class PnbdDynCovParams(Fitted):
         A constrained covariate appears **once**, as ``constr.<name>``. It has
         to: the search estimates one coordinate for it, so reporting two would
         make :attr:`n_parameters` -- and through it AIC and BIC -- describe a
-        model with a free parameter the fit never had. Backlog item 35.
+        model with a free parameter the fit never had.
         """
         constrained = set(self.names_cov_constr)
         return (
@@ -1058,7 +1058,7 @@ def fit_pnbd_dyncov(
     # coordinate written into both processes, and the penalty is a function of
     # the coefficients. Neither cares that the covariates here vary over time,
     # so both reuse the static-covariate machinery rather than a second copy of
-    # it. Backlog item 35, spec `I-05`.
+    # it. Spec `I-05`.
     layout = _Layout.build(
         names_cov_life=names_cov_life,
         names_cov_trans=names_cov_trans,
@@ -1100,7 +1100,7 @@ def fit_pnbd_dyncov(
         # likelihood that costs ~0.1 s, so ``summary()`` would take a minute on
         # this model and nothing at all on every other one. The argument exists
         # so the error from ``summary()`` names something a caller can actually
-        # do -- which is finding 8 of ``docs/review-2026-09-02.md`` -- and the
+        # do -- which is finding 8 of the 2026-09 review -- and the
         # default says what it costs.
         with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
             def natural_ll(v):

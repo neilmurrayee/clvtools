@@ -561,7 +561,7 @@ def _reject_unused_for_new_customer(spending_params, prediction_end) -> None:
     end have nowhere to go. Silently dropping them meant
     ``predict(newcustomer(52), fit, gg, prediction_end=99)`` returned a
     transaction count with no hint that two of its four arguments were
-    ignored. Finding 12 of ``docs/review-2026-09-02.md``.
+    ignored. Finding 12 of the 2026-09 review.
     """
     unused = [
         name

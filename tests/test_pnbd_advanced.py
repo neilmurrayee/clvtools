@@ -449,7 +449,7 @@ class TestRegularization:
         coefficient could move in its third decimal and go unnoticed. The R
         suite asserts the coefficient *vector* and the summary table with
         ``expect_equal`` and no loosened tolerance. Finding B6 of
-        ``docs/spec-audit.md``, spec X-06.
+        the 2026-09 spec audit, spec X-06.
 
         1e-6 relative rather than exact equality: `reg_lambdas=(0, 0)` adds
         ``0 * sum(gamma**2)`` to the objective, which is arithmetically zero
@@ -858,7 +858,7 @@ class TestTheCorrelationStartValueIsChecked:
     this package to be diagnosed by whatever consumed it first, after `V-01`,
     `V-02`, `X-14` and `PR-15`. And a start far outside the bounds earned the
     same message, where the bounds are computable at the start point and say
-    exactly what is wrong. Backlog item 36, round 6.
+    exactly what is wrong.
     """
 
     @pytest.fixture(scope="class")

@@ -19,8 +19,8 @@ What is asserted instead:
 """
 
 # One precision rule, applied across the suite after CI showed the old one was
-# a statement about macOS/ARM (``docs/backlog.md`` item 17, finding 13 of
-# ``docs/review-2026-09-02.md``):
+# a statement about macOS/ARM (backlog item 17, finding 13 of
+# the 2026-09 review):
 #
 #   * an **estimate** is compared with a tolerance no tighter than 1e-3
 #     relative -- the Pareto/NBD ridge moves the parameters by ~1e-4 between
@@ -288,7 +288,6 @@ class TestNonFiniteStartValuesAreRefusedByName:
     named vector, so five of `V-02`'s seven claims cannot arise, but "numeric"
     and "finite" can and the second one did not hold.
 
-    Backlog item 34, round 5.
     """
 
     @pytest.fixture(scope="class")
@@ -353,7 +352,7 @@ class TestFitsRunUnderOptimiserMethodsBeyondTheTwoInUse:
 
     `F-09`'s "flawless results out of the box" is the finiteness sweep: no
     non-finite value in the estimates, the standard errors, or anywhere in the
-    prediction table. Backlog item 34, round 5.
+    prediction table.
     """
 
     @pytest.mark.slow
@@ -581,7 +580,7 @@ class TestASingleLogicalIsCheckedLikeR:
     *works*: ``hessian="no"`` computes a Hessian, ``hessian=None`` skips one,
     and neither says anything. Applied to ``hessian``, which is the
     single-logical argument on every fit here and the one whose misreading
-    silently changes what the caller gets back. Backlog item 36, round 6.
+    silently changes what the caller gets back.
     """
 
     @pytest.fixture(scope="class")

@@ -487,7 +487,7 @@ class TestFloorRoundsDownAndSettlesOnABoundary:
     on a boundary changes nothing -- which is what makes the covariate grid
     stable: a boundary that moved under a second application would give a walk
     a different number of intervals depending on how many times the grid was
-    built. Backlog item 34, round 5.
+    built.
     """
 
     UNITS: ClassVar[tuple[str, ...]] = ("hour", "day", "week", "month", "year")

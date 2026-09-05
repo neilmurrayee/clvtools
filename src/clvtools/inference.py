@@ -200,7 +200,7 @@ class Fitted:
         # is within 4% of the penalty-only 1/sqrt(2*lambda), and CLVTools'
         # four are identical to twelve significant figures. Whoever reads the
         # number should be told what it is made of. See the README's findings
-        # and docs/backlog.md item 22.
+        # and the
         lambdas = getattr(self, "reg_lambdas", None)
         if lambdas is not None and any(lambdas):
             warnings.warn(
@@ -398,7 +398,7 @@ class Fitted:
         # independent, which is exactly ``m = 0``, and CLVTools prints one for
         # it. The four model parameters are "constrained to be strictly
         # positive" (S6.4.1), so a null of zero lies outside the space and
-        # their rows stay NaN. Finding 8 of ``docs/review-2026-09-02.md``.
+        # their rows stay NaN. Finding 8 of the 2026-09 review.
         testable = np.array(
             [n.startswith(COVARIATE_PREFIXES) or n == "m" for n in self.names]
         )

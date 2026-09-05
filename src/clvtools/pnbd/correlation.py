@@ -383,7 +383,7 @@ def fit_pnbd_correlated(
             # exponentiated. Until this existed the fit's Hessian was always
             # None and ``summary()`` raised advising ``hessian=True``, which
             # was not an argument this function had: finding 8 of
-            # ``docs/review-2026-09-02.md``.
+            # the 2026-09 review.
             natural = np.concatenate([np.exp(result.x[:4]), result.x[4:]])
             hess = numerical_hessian(
                 lambda p: -correlated_log_likelihood(

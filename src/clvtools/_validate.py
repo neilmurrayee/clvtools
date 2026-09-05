@@ -2,7 +2,7 @@ r"""Shared input validation and optimiser-result handling.
 
 Every fit in this package took its own view of what a customer history may
 contain and none of them said anything when the search failed. Two reviews
-found the same two consequences, and both are in ``docs/review-2026-09-02.md``:
+found the same two consequences, and both are in the 2026-09 review:
 
 * **A recency a hair above the observation window collapses the whole fit.**
   The likelihoods need :math:`t_x \le T` exactly -- a ratio above one makes an

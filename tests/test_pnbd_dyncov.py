@@ -343,7 +343,7 @@ class TestAgainstOracle:
     # `oracle`, not `paper`: the value compared against comes from the
     # `dyncov_fit` fixture, and the README records that the paper's own S6.4.2
     # table cannot be reproduced from CLVTools 0.12.1's fit at all. Finding 17,
-    # backlog item 25.
+    #
     @pytest.mark.oracle
     def test_the_fitted_likelihood_matches(self, dyncov_walks):
         """The MLE grid point is CLVTools' own fit, so this pins ``logLik()``."""
@@ -373,7 +373,7 @@ class TestWalkAssembly:
         collapse to elapsed time.
 
         Over all 600 customers and all four walks, not the first twenty and the
-        two auxiliary ones -- finding B7 of ``docs/spec-audit.md``, a restricted
+        two auxiliary ones -- finding B7 of the 2026-09 spec audit, a restricted
         sample presented as general. The real transaction walks are the half
         that was missing and the one with something to say: there are 1,266 of
         them, each with its own ``d1`` and ``tjk``, and it is
@@ -409,7 +409,7 @@ class TestWalkAssembly:
 
         It was called ``test_real_and_auxiliary_lifetime_walks_do_not_overlap``
         and its own comment conceded that it tested something else -- finding
-        B2 of ``docs/spec-audit.md``. The non-overlap is not falsifiable in
+        B2 of the 2026-09 spec audit. The non-overlap is not falsifiable in
         this representation: the two walks index *different arrays*
         (``real_life_from/to`` runs 1..93 for customer 1 while
         ``aux_life_from/to`` runs 1..12), so there is no shared coordinate in
@@ -573,7 +573,7 @@ class TestFit:
     is computationally much more demanding than the previously detailed
     alternatives." Each likelihood evaluation sweeps 600 customers and evaluates
     some 80,000 hypergeometrics, batched over each customer's covariate
-    intervals since ``docs/backlog.md`` item 9.
+    intervals since the
     """
 
     def test_reaches_at_least_the_oracles_optimum(self, dyncov_walks):
@@ -938,7 +938,7 @@ class TestTheHypergeometricBranchIsContinuous:
     ``dyncov.py`` chooses between two arms of the :math:`F_2` term on that
     comparison, and every test in this repository ran on data where one side
     wins. R exercises the boundary directly, at :math:`\alpha = \beta =
-    1.234`. Finding D3 of ``docs/spec-audit.md``.
+    1.234`. Finding D3 of the 2026-09 spec audit.
 
     The boundary is the strongest available check on the pair, and it needs no
     oracle: at :math:`\alpha = \beta` both arms describe the same quantity,
@@ -1005,7 +1005,7 @@ class TestTheHypergeometricBranchIsContinuous:
 
 
 class TestTheDyncovFitTakesConstraintsAndRegularization:
-    """Backlog item 35, spec `I-05`.
+    """ Spec `I-05`.
 
     `I-05` asks that ``hessian()`` match the optimiser's own for 29
     configurations, four of which are dyncov x {default, correlation,
@@ -1156,7 +1156,7 @@ class TestTheCovariateSeriesIsCheckedAndTrimmed:
 
     `C-07` holds, and the assertion is the strong one: 26 extra weeks of
     covariate history before the estimation start leave the likelihood
-    **bit-identical**, not merely close. Backlog item 36, round 6.
+    **bit-identical**, not merely close.
     """
 
     NAMES: ClassVar = ["High.Season", "Gender", "Channel"]

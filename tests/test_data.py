@@ -311,7 +311,7 @@ class TestOtherDatasets:
 
 
 class TestBadInputIsLoud:
-    """Findings 6 and 12 of ``docs/review-2026-09-02.md``.
+    """Findings 6 and 12 of the 2026-09 review.
 
     Each of these used to be accepted and to come back as a plausible number
     much later, which is the failure mode the review calls silent-wrong. The
@@ -437,7 +437,7 @@ class TestTheSharedValidatorAndResultHelper:
 
 
 class TestATransactionMustSayWhoAndWhen:
-    """Finding A4 of ``docs/spec-audit.md``: four ways in, all of them quiet.
+    """Finding A4 of the 2026-09 spec audit: four ways in, all of them quiet.
 
     The R suite is the only source that says what must happen on bad input, and
     it is not installed with the package, so none of this had ever been
@@ -647,7 +647,7 @@ class TestTheTwoSamplesPartitionTheLogExactly:
     What is asserted here is the property the epsilon exists to guarantee: the
     two samples **partition** the log, with nothing dropped between them and
     nothing counted twice. That holds whatever the constant is, and would fail
-    for a coarser one. Backlog item 34, round 5.
+    for a coarser one.
     """
 
     @staticmethod
@@ -744,7 +744,7 @@ class TestIdsAndColumnTypesAreAcceptedAsGiven:
 
     The rest hold and were untested: an integer ``Price``, a ``Date`` given as
     strings or ``datetime.date``, and the results not depending on input row
-    order. Backlog item 36, round 6.
+    order.
     """
 
     @staticmethod
@@ -904,7 +904,7 @@ class TestFramesTheFixturesNeverContained:
     datasets is midnight-stamped, so the sub-day floor paths never run on real
     input; the one synthetic duplicate is on a customer's *second* day, so the
     first-day branch has no fixture; and nothing had ever mutated a caller's
-    frame after handing it over. Backlog item 36, round 6.
+    frame after handing it over.
     """
 
     def test_the_caller_s_frame_is_copied_not_borrowed(self):

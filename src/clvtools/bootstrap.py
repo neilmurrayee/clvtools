@@ -74,7 +74,7 @@ def bootstrap_data(data: ClvData, ids: Sequence[str]) -> ClvData:
     # rows once per drawn customer: 0.965 s a draw against 0.134 s for the
     # summary and the Pareto/NBD fit together, so a hundred draws spent about
     # 95 seconds rebuilding data and 13 fitting it. Finding 11 of
-    # ``docs/review-2026-09-02.md``.
+    # the 2026-09 review.
     positions = transactions.groupby("Id", sort=False).indices
 
     seen: dict[str, int] = {}
@@ -139,7 +139,7 @@ def _drawer(sample, rng) -> Callable[[np.ndarray], np.ndarray]:
     nothing said so. It is offered the generator when it can take one, and a
     one-argument sampler still works -- that is the shape
     ``?clv.bootstrapped.apply``'s own example has. Finding 11 of
-    ``docs/review-2026-09-02.md``.
+    the 2026-09 review.
     """
     if sample is None:
         return lambda pool: rng.choice(pool, size=len(pool), replace=True)
@@ -258,7 +258,7 @@ def bootstrap_apply(
         # series duplicated under the new id and re-aligned to the resampled
         # window. Until that exists, refusing is the only honest answer -- the
         # alternative is an interval computed from the wrong model. Finding A2
-        # of `docs/spec-audit.md`.
+        # of the 2026-09 spec audit.
         raise NotImplementedError(
             "bootstrapping time-varying covariate data is not supported: the "
             "covariate series would have to be resampled with the customers, "

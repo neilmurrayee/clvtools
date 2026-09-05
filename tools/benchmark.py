@@ -88,7 +88,7 @@ def _static_fit(x, t_x, T, covariate):
         # fits were unified; this still passed them loose and had been raising
         # TypeError on every invocation since. Nothing noticed because ty
         # checks `src/` only, `tools/` is not in `testpaths`, and no test
-        # imports this file -- finding 14 of ``docs/review-2026-09-02.md``,
+        # imports this file -- finding 14 of the 2026-09 review,
         # now covered by a smoke test in tests/test_code_quality.py.
         search=SearchSettings(
             method="L-BFGS-B", maxiter=10_000, hessian=False, polish=False

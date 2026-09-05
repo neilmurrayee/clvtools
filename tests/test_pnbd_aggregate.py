@@ -237,7 +237,7 @@ class TestDertProperties:
 
         The old assertion was that *zero* is rejected, which pinned the
         divergence rather than the claim -- finding A3 of
-        ``docs/spec-audit.md``. Asked directly, R errors at 1.0 with "needs to
+        the 2026-09 spec audit. Asked directly, R errors at 1.0 with "needs to
         be in the interval [0,1)" and accepts 0, so a discount factor of 100
         used to return a number here for a per-period rate of 10,000%.
         """
@@ -422,7 +422,6 @@ class TestThePmfIsADistributionOverWholeCounts:
     `PMF-06` was a defect. A non-integer `k` was **silently truncated**, so
     ``pmf(2.7, ...)`` returned ``pmf(2, ...)`` -- a different question, answered
     confidently. A transaction count between two integers is not a count.
-    Backlog item 34, round 5.
     """
 
     PARAMS: ClassVar[tuple] = (1.4490, 48.6361, 0.5613, 46.8844)

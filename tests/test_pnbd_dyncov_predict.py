@@ -127,7 +127,7 @@ class TestAbcdOverEveryCustomer:
     The oracle comparison above runs over the eight ids the fixture holds, and
     on a split that lands exactly on a covariate boundary -- so ``d1`` is 1 for
     every row of it and comparing that column against the oracle discriminates
-    nothing. Findings B5 and B7 of ``docs/spec-audit.md``. Both claims below
+    nothing. Findings B5 and B7 of the 2026-09 spec audit. Both claims below
     are determined by their own inputs, so neither needs the oracle.
     """
 
@@ -492,7 +492,7 @@ class TestStaticCovariatesSuppliedAsDynamic:
     * :math:`\bar{B}_i = -T_{cal} A_i`.
 
     None of it needs a fixture: the input is constructed and the output is
-    determined by it. Finding D1 of ``docs/spec-audit.md``, and the reason it
+    determined by it. Finding D1 of the 2026-09 spec audit, and the reason it
     matters is that the dyncov path is otherwise checked only against oracle
     tables that CLVTools produced with the same arrangement of the arithmetic.
     """
@@ -645,7 +645,7 @@ class TestDyncovPredictionOnNewData:
     horizons and the over-long one were not, and short horizons are where an
     off-by-one in the covariate grid shows itself.
 
-    None turned up a defect. Backlog item 34, round 5.
+    None turned up a defect.
     """
 
     @pytest.fixture(scope="class")
@@ -721,7 +721,7 @@ class TestTheAbcdTableUnderZeroAndSharedCoefficients:
     fail against the oracle it is meant to agree with. `docs/spec.md` already
     warns about exactly this pair: "two tables in the R file share column names
     and disagree at ``i = 1`` ... check bodies, not titles". Recorded rather
-    than chased. Backlog item 36, round 6.
+    than chased.
     """
 
     @pytest.fixture(scope="class")
@@ -911,7 +911,6 @@ class TestAStaticSeriesMakesTheFirstTransactionIrrelevant:
     is the one that says ``first_transaction`` selects a window rather than
     entering the arithmetic in its own right: a path that mixed the date into
     a coefficient would pass every varying-covariate test and fail this one.
-    Backlog item 36, round 6.
     """
 
     @pytest.fixture(scope="class")

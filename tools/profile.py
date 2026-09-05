@@ -100,7 +100,7 @@ def _import_cprofile() -> ModuleType:
     'Profile'``.
 
     Dropping the script's directory for the duration of the import is what makes
-    ``tools/profile.py`` -- the name ``docs/backlog.md`` item 8 asks for -- safe.
+    ``tools/profile.py`` -- the name backlog item 8 asks for -- safe.
     ``pstats`` needs no such care; it never imports ``profile``.
     """
     here = Path(__file__).resolve().parent

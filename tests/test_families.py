@@ -412,7 +412,7 @@ class TestFamiliesCompared:
     """
 
     # Not `paper`: this compares two of this package's own likelihoods against
-    # each other and the paper prints neither. Finding 17, backlog item 25.
+    # each other and the paper prints neither. Finding 17,
     def test_the_ggomnbd_collapses_onto_the_pareto_nbd(self):
         r"""Its fitted ``b`` is 8.1e-07, and the fit is the Pareto/NBD's.
 
@@ -481,7 +481,7 @@ class TestFamiliesCompared:
 
     # `oracle`, not `paper`: it reads `bgnbd_fit` and compares against
     # `PNBD_LL`, which the README's table marks as an oracle value the paper
-    # does not print. Finding 17, backlog item 25.
+    # does not print. Finding 17,
     @pytest.mark.oracle
     def test_the_bgnbd_fits_worse_than_the_pareto_nbd_here(self):
         """Same parameter count, lower likelihood: 9 log-likelihood units."""

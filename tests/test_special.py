@@ -179,7 +179,7 @@ class TestSeriesIsBounded:
         # Bounded by evaluations rather than by seconds, for the reason given
         # above: `maxiter` caps the search, so a fit that used to run for over
         # a minute now cannot, and the assertion says so without a clock.
-        # Finding 17, backlog item 25.
+        # Finding 17,
         got = fit_pnbd(
             [0, 2, 5], [0.0, 30.0, 80.0], [104.0] * 3,
             weights=[3.0, 1.0, 2.0], hessian=False,

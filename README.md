@@ -315,7 +315,7 @@ the comment says "the 37 weeks fitting period" while the call passes
 name customers — `"1219"`, and `"1000"` — that are not in `apparelTrans`, whose
 ids run 1..600; CLVTools answers with a table of `Inf`, `-Inf` and `NaN` and a
 warning. `ClvData.summary(ids=...)` raises instead. None of these printed
-values are used as oracles here, and `docs/audit.md` records why.
+values are used as oracles here, for that reason.
 
 **The built wheel carried no datasets, and no test in a checkout could see
 it.** `DATA_DIR` resolved `__file__/../../../data`, which is the repository root
@@ -574,7 +574,7 @@ on hourly data $1.5\times10^{-12}$. The DERT integral's $U(s,s,z)$ loses at most
 $7.9\times10^{-11}$ over $z \in [10^{-4}, 10^4]$, against the $z \approx 0.3$ an
 actual discount factor produces. Measured, not assumed, and pinned by
 `TestWhereTheClosedFormsCancel` so that a future change cannot make them worse
-in silence. Backlog item 37.
+in silence.
 
 **Periods after the last transaction are zeros here and `NA` in R.** With a
 `data_end` past the end of the log, CLVTools' tracking plot reports `NA` for
@@ -726,7 +726,7 @@ which it reported successful convergence on the Gamma-Gamma at a local optimum
 ## Testing
 
 ```bash
-uv run pytest                  # 1,605 tests, including doctests in src/ and docs/
+uv run pytest                  # 1,609 tests, including doctests in src/ and docs/
 uv run pytest -m paper         # 22 numbers printed in the paper
 uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
 uv run pytest -m literature    # 22 numbers published in the CLV literature
@@ -781,8 +781,9 @@ throughout where the paper uses the apparel data alone. Those are checked under
 `-m rdoc` and collected in `tests/rdoc_values.py`; `docs/vignette.md` walks the
 same ground as an executable document.
 
-`docs/audit.md` records what was compared against the paper and the R package,
-and what each gap turned into.
+`docs/spec.md` states what a correct port must do, derived from the paper, the
+R package's documentation and its test suite without reading this code. All 222
+of its items have a test behind them.
 
 ## Run times
 

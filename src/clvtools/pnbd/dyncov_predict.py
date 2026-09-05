@@ -236,7 +236,7 @@ def _reject_unit_s(s: float) -> None:
 
     The same guard, and the same message, as
     :func:`clvtools.pnbd.aggregate.conditional_expected_transactions`. Finding
-    10 of ``docs/review-2026-09-02.md`` noticed that only one of the two had it.
+    10 of the 2026-09 review noticed that only one of the two had it.
     """
     if np.isclose(s, 1.0):
         raise ValueError(

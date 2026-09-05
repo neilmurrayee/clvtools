@@ -337,7 +337,7 @@ class TestPredictionEnd:
 
         Predicting over no time is a well-defined question with the answer
         zero, and R gives it: ``period.length = 0``, ``CET = 0``, the window
-        ending on the estimation end. Finding A1 of ``docs/spec-audit.md``,
+        ending on the estimation end. Finding A1 of the 2026-09 spec audit,
         spec PR-05. Checked against CLVTools 0.12.1 rather than assumed.
         """
         data, pnbd, gg = full
@@ -685,7 +685,7 @@ class TestAFractionalPredictionEndIsNotTruncated:
     the paper misprints an equation or CLVTools stops at a worse optimum, that
     is pinned by a test and recorded in the README's Findings section. Add to
     both."* It was in the README and nowhere else, so nothing would have
-    noticed the behaviour reverting to R's. Backlog item 34, round 5.
+    noticed the behaviour reverting to R's.
     """
 
     @pytest.fixture(scope="class")
@@ -739,7 +739,7 @@ class TestDataEndAndShortHorizons:
     *and* as a date, over a single period and over two. One-period horizons are
     where an off-by-one in the grid shows up, and nothing reached them.
 
-    Neither turned up a defect. Backlog item 34, round 5.
+    Neither turned up a defect.
     """
 
     @pytest.fixture(scope="class")
@@ -811,7 +811,6 @@ class TestPredictArgumentsAndCovariateNames:
     input [[1, 2]]". Both describe a conversion rather than the argument -- the
     same shape as `V-01`'s start value, which is the fourth instance this round.
 
-    Backlog item 34, round 5.
     """
 
     @pytest.fixture(scope="class")
@@ -908,7 +907,7 @@ class TestAFitAppliedToOtherData:
 
     Bit-identical, not close: nothing about the fit depends on which customers
     are being predicted for, so any difference would mean the prediction is
-    reading something it should not. Backlog item 34, round 5.
+    reading something it should not.
     """
 
     @pytest.fixture(scope="class")
@@ -952,7 +951,7 @@ class TestADivergedFitCannotPredictInSilence:
     entirely ``NaN``, with nothing anywhere to say why. Every value that
     *should* have caught it is a ``<= 0`` or ``> 0`` test, and ``nan`` fails
     all of them, which is the same shape as `V-01`, `V-02`, `X-14`, `PR-15` and
-    `X-13`. Backlog item 36, round 6.
+    `X-13`.
     """
 
     @pytest.fixture(scope="class")

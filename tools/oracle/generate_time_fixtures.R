@@ -5,7 +5,7 @@
 # Writes `time_elapsed.csv` (840 spans) and `time_add_periods.csv` (280
 # additions), which `tests/test_timeunit.py` reads.
 #
-# Backlog item 33. Both files were committed in `e385a16` by a script that was
+# Both files were committed in `e385a16` by a script that was
 # never committed with them, so for a while they were the one thing in
 # `tests/fixtures/` that could not be re-baselined -- and CLAUDE.md's claim that
 # the fixtures come from `tools/oracle/*.R` was not true of them. This is that

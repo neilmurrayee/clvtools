@@ -327,7 +327,7 @@ class TestOptimiserOverridesAreCheckedAgainstTheMethod:
     SciPy's answer to a key the solver does not read is a
     ``UserWarning: Unknown solver options`` and then dropping it, so a caller
     who asked for a bound got a fit that ran without one. R errors. Finding 20
-    of ``docs/review-2026-09-02.md``, spec ``V-03``.
+    of the 2026-09 review, spec ``V-03``.
 
     The accepted keys are asked of SciPy rather than listed here -- the keyword
     parameters of ``_minimize_neldermead`` and ``_minimize_lbfgsb`` *are* the
@@ -411,7 +411,7 @@ class TestRegularizationWeightsAndConstraintNamesSayWhatIsWrong:
     Both are the "make bad input loud" class this repository has spent items
     21, 27 and 29 on, and both were caught by the same kind of reading: the
     argument was accepted, or refused for a reason that was true but not the
-    problem. Backlog item 34, round 5.
+    problem.
     """
 
     LIFE: ClassVar[list[str]] = ["Gender", "Channel"]

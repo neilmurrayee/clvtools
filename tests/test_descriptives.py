@@ -385,7 +385,7 @@ class TestDescriptivePlots:
 class TestTheRemainingFrequencyBinMatchesR:
     """S-13, checked against CLVTools and found *not* to be a divergence.
 
-    ``docs/spec-audit.md`` lists the ``"10+"`` row being emitted with zero
+    the 2026-09 spec audit lists the ``"10+"`` row being emitted with zero
     customers when the bins already cover everyone as an unrecorded
     divergence. Asked, R does exactly the same -- and keeps the same stale
     label. This test exists so that nobody "fixes" the agreement away.

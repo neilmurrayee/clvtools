@@ -19,7 +19,7 @@
 #
 # Not run here: the `dyncov_fit` marker, the ~10-minute time-varying covariate
 # MLE. `tests/conftest.py` deselects it by default and this job keeps that
-# default; giving it a schedule of its own is backlog item 6.
+# default; giving it a schedule of its own is
 name: CI
 
 # Every push, not just pushes to `main`: work here happens on long-lived

@@ -202,7 +202,7 @@ class TestPmfData:
 
 @pytest.mark.oracle
 class TestFittedData:
-    """``fitted()``, against R's own -- finding B3 of ``docs/spec-audit.md``.
+    """``fitted()``, against R's own -- finding B3 of the 2026-09 spec audit.
 
     ``fitted_data`` had one doctest and no test file, and the doctest's printed
     values came from this implementation rather than from R, so it could not
@@ -855,7 +855,6 @@ class TestBootstrapArgumentsAndCovariateAlignment:
     is estimated against the wrong customer's covariates.
 
     `B-15`'s six argument checks were two-of-six, and one landed badly.
-    Backlog item 34, round 5.
     """
 
     def test_the_default_number_of_draws_is_a_hundred(self):
@@ -990,7 +989,6 @@ class TestThePerCustomerPmfTable:
     existed here was :func:`~clvtools.diagnostics.pmf_data`, which aggregates
     customers into bins for S6.2.2's plot -- a different question, and one that
     cannot answer "what is *this* customer's probability of buying twice".
-    Backlog item 36, round 6.
     """
 
     @staticmethod
@@ -1077,7 +1075,7 @@ class TestTrackingPastTheLastTransaction:
     matches what was asked for, and an ``NA`` would discard a real observation.
 
     Pinned rather than silently inherited, because a plot moving from R gets a
-    line at zero where it used to get a gap. Backlog item 36, round 6.
+    line at zero where it used to get a gap.
     """
 
     @pytest.fixture(scope="class")

@@ -483,7 +483,7 @@ class TestTheThreeViewsOfAFitAgreeOnItsNames:
     then attrition then transaction coefficients, and a constrained one reports
     a tied covariate **once**, as ``constr.<name>``; a `vcov` indexed in a
     different order would give every standard error to the wrong coefficient
-    while looking perfectly well formed. Backlog item 34, round 5.
+    while looking perfectly well formed.
     """
 
     @pytest.fixture(scope="class")
@@ -602,7 +602,7 @@ class TestNobsAnswersOnAFitAsWellAsOnTheData:
 
     Correct, and an inconsistency rather than a decision: the count was
     reachable as ``fit.n_customers`` while the data spelled the same question
-    ``data.nobs()``. Both now answer. Backlog item 34, round 5.
+    ``data.nobs()``. Both now answer.
     """
 
     def test_a_fit_and_its_data_agree(self, cbs_estimation, apparel_trans):
@@ -643,7 +643,7 @@ class TestTheRatioTestIsFamilyAgnostic:
 
     Asserted over constructed results rather than fits: six covariate fits to
     show that a function which never looks at the family works for every family
-    is minutes of optimiser time for no information. Backlog item 34, round 5.
+    is minutes of optimiser time for no information.
     """
 
     @staticmethod

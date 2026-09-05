@@ -78,7 +78,7 @@ write_json(list(
 # The self-check CLAUDE.md asks for. This used to read
 # `check("coef r", cf[["r"]], coef(fit)[["r"]])`, and since `cf <- coef(fit)` a
 # few lines up, it compared a value with itself -- it could not have failed.
-# Backlog item 25.
+#
 #
 # The independent route is the optimiser's own output, which optimx reports on
 # the *log* scale as `log.r`, `log.alpha`, ... That is the convention this whole

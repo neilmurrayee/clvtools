@@ -11,7 +11,7 @@ check. Every dyncov test in this repository runs at ``estimation_split=104``,
 which lands exactly on the weekly covariate grid, and every one of the 600
 apparel customers was born on a Sunday; so ``d1`` and ``d_omega`` are 1
 throughout and six of the seven possible alignments are never seen. Findings
-B5 and D4 of ``docs/spec-audit.md``.
+B5 and D4 of the 2026-09 spec audit.
 """
 
 from __future__ import annotations
@@ -146,7 +146,7 @@ class TestEveryWeekdaySplit:
     r"""DY-22: "All walks are basically correct for an ``estimation.split`` on
     every day of the week" -- seven cases in CLVTools' suite.
 
-    Finding D4 of ``docs/spec-audit.md``. Every dyncov test in both files runs
+    Finding D4 of the 2026-09 spec audit. Every dyncov test in both files runs
     at ``estimation_split=104``, which lands exactly on the weekly covariate
     grid, so all 600-customer oracle comparisons here have been made at one
     alignment out of seven. The other six put the split part-way through a
@@ -255,7 +255,7 @@ class TestEveryWeekdaySplit:
 class TestDOmegaOffTheBoundary:
     r"""``d_omega`` where the apparel data cannot take it.
 
-    Finding B5 of ``docs/spec-audit.md``: every one of the 600 apparel
+    Finding B5 of the 2026-09 spec audit: every one of the 600 apparel
     customers made their first purchase on a **Sunday**, and the covariate grid
     starts on a Sunday too, so ``d_omega`` is 1 for all of them. Comparing that
     column against the oracle discriminates nothing, and the second branch of
@@ -401,7 +401,7 @@ class TestWalkConstructionValidation:
 
 
 class TestTheLifeWalksReconstructTheCovariateSeries:
-    r"""Spec DY-20, which `docs/spec-audit.md` called an exact round-trip
+    r"""Spec DY-20, which the 2026-09 spec audit called an exact round-trip
     invariant and marked `weak`: "matrices match; the round-trip is never
     asserted".
 
@@ -421,7 +421,7 @@ class TestTheLifeWalksReconstructTheCovariateSeries:
 
     Asserted **bit for bit** (``atol=0, rtol=0``): both sides are the same
     products of the same floats, so anything looser would be hiding a real
-    difference rather than tolerating a rounding one. Backlog item 34, round 5.
+    difference rather than tolerating a rounding one.
     """
 
     #: Deliberately not zero. With :math:`\gamma = 0` every multiplier is 1 and
@@ -615,7 +615,6 @@ class TestTheTwoPeriodAuxiliaryWalk:
     Two periods is the interesting length because it is the shortest walk with
     an interior: a one-period walk has only its own ends, and the ``d_omega``
     and ``d1`` corrections that scale the first and last intervals coincide.
-    Backlog item 34, round 5.
     """
 
     GRID: ClassVar[pd.Timestamp] = pd.Timestamp("2005-01-03")   # a Monday
@@ -808,7 +807,7 @@ class TestTheWalkIntervalsAreHalfOpenDays:
     silently while every likelihood test still passed.
 
     `DY-18` is CLVTools' issue #134: aux walks lost when the covariate series
-    stops at the calibration end. Backlog item 36, round 6.
+    stops at the calibration end.
     """
 
     def test_an_epsilon_does_not_move_a_day(self):
