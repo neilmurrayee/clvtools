@@ -1,5 +1,10 @@
 # Backlog
 
+**Status, 2026-09-05: empty.** All forty items are closed, including the seven
+audit rounds against `docs/spec.md`. Kept as the record of *why* each change was
+made and what was measured — several items exist only because an earlier item's
+fix caused them, and that chain is the useful part. New work goes at the bottom.
+
 The paper and the R package's documentation are both covered — `docs/audit.md`
 records both rounds, and every item in them is closed. What remains is not
 model work. It is the difference between "the port is correct" and "the package

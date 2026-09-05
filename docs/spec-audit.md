@@ -1,6 +1,13 @@
 # Audit of the suite against `docs/spec.md`
 
-Date: 2026-09-02, at commit `61cd5ba`. `docs/spec.md` states what the sources
+**Status, 2026-09-05: closed.** All 222 spec items are verdicted — 186
+`covered`, 16 `out-of-scope or a recorded divergence`, 0 `weak`, 0 `absent`.
+Rounds 5, 6 and 7 in `docs/backlog.md` (items 34, 36 and 38) worked every row;
+the per-row notes below say what each turned into and which were stale. This
+file is now a **map**, not a task list: it says how each claim the sources make
+is pinned, which is what to read before changing one.
+
+Audited 2026-09-02, at commit `61cd5ba`. `docs/spec.md` states what the sources
 demand, derived without reading `src/` or `tests/`. This file is the join:
 for each spec item, what the suite actually pins.
 

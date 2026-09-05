@@ -27,12 +27,14 @@ examples/quickstart.ipynb  the twenty-cell tour; executed by pytest via nbmake,
                     outputs stripped, rebuilt by tools/build_quickstart.py
 docs/paper.md       §6 case study as an executable doctest document
 docs/vignette.md    the R package's walkthrough + advanced-techniques vignettes
-docs/audit.md       gaps against the paper and the R package, as a task list
-docs/backlog.md     what is left once the port is right — the work queue; start here
+docs/audit.md       gaps against the paper and the R package — closed, kept as history
+docs/backlog.md     the work queue and why each change was made — empty; add new work here
 docs/performance.md where the time goes, and why nothing asserts a wall clock
 docs/spec.md        what a correct port must do, derived from the sources alone
-docs/spec-audit.md  that spec joined against the suite this repo actually has
-docs/review-2026-09-02.md  a four-reviewer read of the whole repo; findings 1-20
+docs/spec-audit.md  that spec joined against the suite — all 222 verdicted; read
+                    this to find how a given claim is pinned
+docs/review-2026-09-02.md  a four-reviewer read of the whole repo; findings 1-20,
+                    all closed
 CHANGELOG.md        the short version: what installing a given version gets you
 .github/workflows/  ci.yml on every push and PR; dyncov.yml nightly, for the fit
                     the ordinary gate deselects
@@ -46,7 +48,11 @@ src/clvtools/data/  CLVTools' bundled datasets as CSV — inside the package,
 
 Module ↔ paper mapping lives in `src/clvtools/__init__.py` and the README table.
 `docs/backlog.md` is the standing queue: work the topmost unchecked item, tick
-it with what was measured, and leave items marked `[needs-decision]` alone.
+it with what was measured, and leave items marked `[needs-decision]` alone. It
+is currently **empty** — all forty items closed, and `docs/spec-audit.md` has a
+verdict on all 222 spec items. The two live references are `docs/spec.md` (what
+a correct port must do) and `docs/spec-audit.md` (how each of its claims is
+pinned); the rest is history worth keeping for the reasoning, not for the tasks.
 
 ## Commands
 
