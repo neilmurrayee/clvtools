@@ -488,12 +488,46 @@ class TestTheThreeViewsOfAFitAgreeOnItsNames:
 
     @pytest.fixture(scope="class")
     def fits(self, static_data):
+        """Four covariate fits -- three converged, and the GGom/NBD bounded.
+
+        This fixture was **99.4 s**, 14% of the whole suite, and 98.2 s of it
+        was the GGompertz/NBD alone: three Pareto/NBD and BG/NBD fits over the
+        same 600 customers cost 1.2 s between them. The claim here is where the
+        *names* go, not where the optimiser lands -- the ordering is fixed when
+        the params object is built -- so the GGom/NBD is stopped after one
+        iteration and the fixture costs 15.6 s. Every assertion below is
+        unchanged.
+
+        The other three are left alone deliberately. Bounding them too saved a
+        further second and cost something real: after one iteration their
+        Hessians are not positive definite, so ``test_and_carry_no_nan`` would
+        have been asserting "no ``NaN``" at a point where the curvature is
+        meaningless, and two new ``ConvergenceWarning``s appeared in the run.
+        A second is not worth a weaker claim.
+
+        The GGom/NBD is the right one to bound for the same reason it is the
+        expensive one: its covariate Hessian is the one this package already
+        records as untrustworthy -- ``b`` comes out at 8.1e-07 and the surface
+        cannot be differenced there -- so no test reads its optimum, and
+        ``test_and_carry_no_nan`` excludes it. Its ``ConvergenceWarning`` in
+        the run is genuine and was there before in another form: converged, its
+        Hessian carries ``NaN`` and warns about non-finite entries; bounded, it
+        is merely indefinite and warns about that -- so the module still
+        emits 13 warnings, the same 13 as before.
+
+        What this fixture deliberately
+        does not test is the optimum itself; that is `test_pnbd_staticcov.py`'s
+        job against the paper's published coefficients, and duplicating it here
+        bought nothing but minutes. Item 27's trade, made again.
+        """
         from clvtools import bgnbd, ggomnbd, pnbd
 
         return {
             "pnbd-cov": pnbd.fit_pnbd_staticcov(static_data),
             "bgnbd-cov": bgnbd.fit_bgnbd_staticcov(static_data),
-            "ggomnbd-cov": ggomnbd.fit_ggomnbd_staticcov(static_data),
+            "ggomnbd-cov": ggomnbd.fit_ggomnbd_staticcov(
+                static_data, options={"maxiter": 1}
+            ),
             "pnbd-constrained": pnbd.fit_pnbd_staticcov(
                 static_data, names_cov_constr=["Gender"]
             ),

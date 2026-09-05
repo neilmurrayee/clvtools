@@ -1,6 +1,6 @@
 # Performance
 
-Everything in this repo is gated on being *correct* — 1,244 tests, the paper's
+Everything in this repo is gated on being *correct* — 1,605 tests, the paper's
 numbers, the R package's numbers, oracle fixtures expression by expression —
 and on being *tidy*: ruff, complexity, module size, 100% line coverage. Nothing
 has ever asked whether it is *fast*. This document is the first pass at that
@@ -24,6 +24,44 @@ and `cdnow` (2,357). Reproduce with:
 paper's Appendix B. That is a *report* of wall-clock, which is the right home
 for numbers that move with hardware. What follows is the complementary
 question: where does the time actually go, and is any of it avoidable.
+
+## What the suite itself costs
+
+A separate question from what the *library* costs, and the one a contributor
+feels: **4:50 plain and 7:40 with coverage**, on the machine above, for 1,605
+tests. That is where it stands after the audit rounds, which added 453 tests.
+
+The distribution is very uneven, and worth knowing before optimising anything:
+
+| | share | what it is |
+|---|---|---|
+| `TestBemmaorGlady2012` setup | 56 s | one GGompertz/NBD fit on CDNOW's 2,357 customers, for spec `F-07` |
+| `TestTheThreeViewsOfAFitAgreeOnItsNames` setup | 15 s | four static-covariate fits |
+| the hourly GGom/NBD fit (`F-12`) | 10 s | 600 customers, one `quad` per customer per evaluation |
+| everything else | ~3:30 | 1,600 tests |
+
+Two of the top three are the GGompertz/NBD, and for one reason: its likelihood
+runs `scipy.integrate.quad` **once per customer per evaluation**, where the
+other three families are closed forms vectorised over the cohort. That is
+inherent to the model as the paper states it, not a defect, and it is why
+`tools/profile.py`'s tables put it in a class of its own.
+
+**One of those was 99.4 s until it was measured.** The four covariate fits above
+existed to check that `coef()`, `vcov()` and `summary()` name the same
+parameters in the same order — a claim about where names go, fixed when the
+params object is built, and nothing to do with where the optimiser lands. The
+GGom/NBD alone was 98.2 s of it, 14% of the whole suite, spent reaching an
+optimum no assertion read and whose Hessian this package already records as
+untrustworthy. Bounding *that one* fit to a single iteration costs nothing the
+tests check. Bounding the other three as well saved a further second and would
+have cost something real: after one iteration their Hessians are not positive
+definite, so the "no `NaN`" assertion beside them would have been made at a
+point where the curvature is meaningless. The fixture says so at the site.
+
+That is the same trade as backlog item 27, which found parity tests fitting
+three families over 600 customers to compare *shapes*, and the same trap: a
+fixture that fits something is easy to write and its cost is invisible until
+someone runs `--durations`.
 
 `tools/profile.py` is its sibling and produced every profile table below. It
 reports **call counts and shares of `tottime`** rather than seconds, so two

@@ -2705,6 +2705,42 @@ match a fixture that shares the defect would have been the wrong direction.
 
 ---
 
+## 40. `[x]` What the suite costs, measured rather than quoted
+
+`CLAUDE.md` said the suite takes ~11:30. It takes **4:50**, and did not take
+11:30 at any point I could reproduce — the figure was quoted, not measured, and
+had been carried forward. Measuring it turned up one fixture worth fixing.
+
+`TestTheThreeViewsOfAFitAgreeOnItsNames` cost **99.4 s**, 14% of the whole
+suite. It exists to check that `coef()`, `vcov()` and `summary()` name the same
+parameters in the same order — a claim about where names go, fixed when the
+params object is built, with nothing to do with where the optimiser lands. The
+GGompertz/NBD covariate fit alone was 98.2 s of it: the other three fits cost
+1.2 s between them, because the GGom/NBD runs `quad` once per customer per
+evaluation where the others are vectorised closed forms. Bounding that one fit
+to a single iteration leaves every assertion unchanged and costs 15.6 s.
+
+**Bounding all four would have been wrong**, and it took measuring to see why:
+it saved a further second, and after one iteration the Pareto/NBD Hessians are
+not positive definite, so `test_and_carry_no_nan` would have been asserting "no
+`NaN`" at a point where the curvature is meaningless — plus two new
+`ConvergenceWarning`s in the run. A second is not worth a weaker claim, and the
+fixture now says so at the site.
+
+Two smaller things came out of the same pass. A `warnings.catch_warnings()`
+around the bounded fit did nothing, because the warning comes from
+`standard_errors()` in the test body rather than from the fit; removed rather
+than left as decoration. And the module's warning count is unchanged at 13 —
+converged, the GGom/NBD's Hessian carries `NaN` and warns about non-finite
+entries; bounded, it is merely indefinite and warns about that.
+
+This is backlog item 27's trade made again, and its trap: a fixture that fits
+something is easy to write and its cost is invisible until someone runs
+`--durations`. `docs/performance.md` now carries the suite's own cost table so
+the next person does not have to rediscover it.
+
+---
+
 ## 39. `[x]` Both `[needs-decision]` items, and a tolerance I got wrong
 
 Neither remaining decision needed making: both had already been taken and the
