@@ -55,12 +55,12 @@ live in the README.
 ## Commands
 
 ```bash
-uv run pytest                  # 2,010 tests inc. doctests in src/ and docs/; ~5:00 on an M-series
+uv run pytest                  # 2,057 tests inc. doctests in src/ and docs/; ~5:10 on an M-series
 uv run pytest -m paper         # 22 numbers printed in the paper
 uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
 uv run pytest -m literature    # 22 numbers published in the CLV literature
-uv run pytest -m oracle        # 644 checks against the R oracle (247 fixtures + 390 pairs)
-uv run pytest -m pair          # 390 paired R/Python checks, replayed from recordings
+uv run pytest -m oracle        # 689 checks against the R oracle (247 fixtures + 435 pairs)
+uv run pytest -m pair          # 435 paired R/Python checks, replayed from recordings
 R_LIBS=.Rlib uv run pytest -m pair --oracle-live   # ...and diffed against live R
 uv run pytest -m slow          # 202 full-dataset MLE fits
 uv run pytest -m dyncov_fit    # the time-varying covariate MLE; ~10 min, deselected by default
@@ -117,10 +117,11 @@ The discipline that makes this port trustworthy, in order of strength:
    (the staleness gate), and the input vectors both sides were fed. Prefer a
    pair over a new fixture column for anything expression-level: drop a
    `tests/pairs_*.py` module in place -- they are discovered, not imported by
-   name -- and run `tools/oracle/record_pairs.py`. 38 of CLVTools' 76
-   per-customer entry points are still called by no generator; the covariate
-   arms of all three families were the largest block and are done, so the next
-   are the dyncov quantities and `gg_LL`.
+   name -- and run `tools/oracle/record_pairs.py`. Every per-customer entry
+   point CLVTools exposes is now paired, dyncov included; a new one means a new
+   prelude in `tools/oracle/run_pairs.R`, and the dyncov one is worth reading
+   first because it is the only one that has to re-parameterise a fitted
+   object (`at()`, and note why it refreshes `@LL.data`).
 2. **Oracle fixtures, expression by expression.** The generators call CLVTools'
    *internal* per-customer Rcpp entry points and dump every model expression at
    several parameter vectors — including points off the optimum and both arms of

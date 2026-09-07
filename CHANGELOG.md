@@ -40,8 +40,10 @@ commitment.
   per-customer entry points CLVTools exposes, 38 are called by no fixture
   generator, and the largest block of those was static-covariate machinery --
   every GGompertz/NBD covariate expression, and all of the BG/NBD's beyond
-  three scale transforms, had no equation-level check at all. Fifteen now do,
-  at 73 paired evaluations in total.
+  three scale transforms, had no equation-level check at all. Fifteen now do.
+  The no-covariate arms of the other families and the time-varying covariate
+  machinery followed, so every per-customer expression CLVTools exposes is
+  paired: 44 pairs, 139 evaluations, 435 checks.
 - `ConvergenceWarning`: every fit now says when it did not converge, and when a
   Hessian cannot be trusted.
 

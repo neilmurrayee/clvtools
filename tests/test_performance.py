@@ -663,3 +663,77 @@ class TestDyncovDeduplicatesItsHypergeometrics:
             assert np.array_equal(_hyp2f1(a, 3.0, z), want)
             # Second pass is all hits, and must still be identical.
             assert np.array_equal(_hyp2f1(a, 3.0, z), want)
+
+
+class TestTheKummerUSlowBand:
+    r"""``scipy.special.hyperu`` is ~90x slower for :math:`1 < s < 2`.
+
+    ``DECT`` sums :math:`U(s, s, \cdot)` period by period over the horizon, and
+    SciPy takes a different path through that function depending on ``s``.
+    Measured over 2,000 points at the arguments the time-varying ``DECT``
+    actually forms, relative to ``s = 0.35``:
+
+    ==========  ========  ==========  ========
+    ``s``       relative  ``s``       relative
+    ==========  ========  ==========  ========
+    0.35         1.0x     1.50        90.1x
+    0.90         1.5x     1.75        23.0x
+    1.00         1.7x     2.00         3.0x
+    1.25        79.8x     4.00         4.4x
+    ==========  ========  ==========  ========
+
+    A band, not a point: it opens just above 1 and has closed by 2. The cost is
+    real rather than theoretical -- one ``DECT`` over 600 customers at
+    ``s = 1.5`` took **449 seconds**, against 7.3 at the fitted ``s = 2.01``.
+    Accuracy is unaffected: that 449-second call agreed with CLVTools to
+    2.4e-08, which is the same order as the two points the paired oracle keeps.
+
+    Nothing here looks at a clock, in keeping with the rest of this module. A
+    timing assertion on a third-party routine would be the flakiest gate in the
+    repository. What is asserted instead is the choice that was made *because*
+    of the measurement: the time-varying pairs keep their ``s`` out of the band,
+    so nobody reintroduces a seven-minute case by editing a grid. The README's
+    findings carry the measurement itself.
+    """
+
+    #: Where SciPy's ``hyperu`` slows down. Exclusive at both ends: ``s = 1``
+    #: and ``s = 2`` are both on the fast path.
+    SLOW_BAND = (1.0, 2.0)
+
+    def test_no_dyncov_pair_sits_in_it(self):
+        """Every ``s`` in the time-varying grid is outside the band."""
+        import pairs_dyncov
+
+        for name, block in pairs_dyncov.GRID.items():
+            s = float(block["model"][2])
+            lo, hi = self.SLOW_BAND
+            assert not (lo < s < hi), (
+                f"the {name!r} dyncov input has s = {s}, inside SciPy's slow "
+                f"hyperu band {self.SLOW_BAND}; DECT there costs minutes per "
+                f"call. Move it out, or read the class docstring first."
+            )
+
+    def test_the_band_is_where_the_measurement_said(self):
+        """``U(s, s, z)`` is finite and equal either side of the band.
+
+        The guard above is only worth having if the band is a performance
+        boundary and not a correctness one -- otherwise moving ``s`` out of it
+        would be avoiding a wrong answer rather than a slow one. Checked
+        against the identity :math:`U(a, a, z) = e^{z}\\,\\Gamma(1-a, z)`, which
+        holds on both sides to the 1e-7 that ``hyperu`` itself delivers here.
+        """
+        from scipy import special
+
+        def gamma_upper(s, z):
+            if s > 0:
+                return special.gammaincc(s, z) * special.gamma(s)
+            return (gamma_upper(s + 1.0, z) - np.power(z, s) * np.exp(-z)) / s
+
+        z = np.linspace(5.0, 40.0, 64)
+        for s in (0.9, 1.5, 2.4):
+            got = special.hyperu(s, s, z)
+            assert np.isfinite(got).all(), f"hyperu is not finite at s = {s}"
+            want = np.exp(z) * gamma_upper(1.0 - s, z)
+            assert np.max(np.abs(got - want) / np.abs(want)) < 1e-6, (
+                f"hyperu disagrees with the closed form at s = {s}"
+            )

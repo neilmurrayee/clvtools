@@ -241,10 +241,11 @@ runs it weekly and on any change to the oracle machinery.
 Recording is a script and deliberately not a pytest mode: a suite that can
 rewrite its own expectations is one bad flag away from proving nothing.
 
-**What is on it, and why those.** Thirty-nine pairs, 124 evaluations, across
-four modules: `pairs_pnbd.py`, `pairs_families.py` (BG/NBD, GGompertz/NBD,
-Gamma-Gamma) and `pairs_staticcov.py` (the covariate arm of all three
-latent-attrition families), discovered rather than imported by name.
+**What is on it, and why those.** Forty-four pairs, 139 evaluations, across
+five modules: `pairs_pnbd.py`, `pairs_families.py` (BG/NBD, GGompertz/NBD,
+Gamma-Gamma), `pairs_staticcov.py` (the covariate arm of all three
+latent-attrition families) and `pairs_dyncov.py`, discovered rather than
+imported by name. Every per-customer expression CLVTools exposes is now on it.
 
 The Pareto/NBD came first, but what the rest answer is a question the mechanism
 made countable: of the 76 per-customer entry points CLVTools exposes, **38 were
@@ -252,9 +253,22 @@ called by no generator in `tools/oracle/`**, and the largest block was the
 static-covariate machinery — every GGompertz/NBD covariate expression, and all
 of the BG/NBD's beyond three scale transforms. They were reachable only through
 `predict()` and `plot()` output, which is a fit away from the equation and
-cannot be evaluated off the optimum at all. That whole surface is now paired;
-what remains unpinned is the time-varying covariate machinery, which needs a
-prelude that builds walks.
+cannot be evaluated off the optimum at all. That whole surface is now paired, and so is the
+time-varying covariate machinery — `pairs_dyncov.py`, whose prelude was the
+interesting one.
+
+Every dyncov entry point reaches its data through a *fitted object*:
+`pnbd_dyncov_palive`, `_CET` and `_DECT` take one and read the coefficients off
+it, so on the face of it they can only be checked wherever a fit happened to
+stop — and this family's fit is ten minutes, deselected from every ordinary
+run. Two observations get around that. The walk structures do not depend on the
+parameters, so `itnmax = 1` gives a well-formed object with real walks in under
+six seconds; and the parameters can then be replaced, so the expressions are
+evaluated where the pairs choose. One subtlety cost an hour: `PAlive` does not
+read the coefficients at all, but `@LL.data`, computed once at fit time, so
+setting the slots moved `CET` and left `PAlive` at the fitted values — a pair
+disagreeing by 90% beside a likelihood agreeing to 4e-15.
+`pnbd_dyncov_getLLdata` is the recomputation that fixes it.
 
 What those pairs assert is a claim, not a detail. CLVTools computes each
 covariate quantity in dedicated C++; this package computes the *no-covariate*
@@ -381,6 +395,31 @@ its own published likelihood, because rounding to two significant figures is a
 5% move along this direction. So the tests assert the ratio and the likelihood
 and not the coordinates, and `s` is asserted only as a spread — it tilts along
 the same ridge, moving 0.001 for 9e-7 of log-likelihood.
+
+**`scipy.special.hyperu` is ~90x slower for `1 < s < 2`, and `DECT` lives
+there.** The time-varying `DECT` sums `U(s, s, ·)` period by period, and SciPy
+takes a different path through that function depending on `s`. Over 2,000
+points at the arguments `DECT` actually forms, relative to `s = 0.35`:
+
+| `s` | relative | `s` | relative |
+| --- | --- | --- | --- |
+| 0.35 | 1.0x | 1.50 | **90.1x** |
+| 0.90 | 1.5x | 1.75 | 23.0x |
+| 1.00 | 1.7x | 2.00 | 3.0x |
+| 1.25 | **79.8x** | 4.00 | 4.4x |
+
+A band, not a point: it opens just above 1 and has closed by 2. The cost is not
+theoretical — one `DECT` over 600 customers at `s = 1.5` took **449 seconds**,
+against 7.3 at the fitted `s = 2.01`, and that is how it was found: a paired
+case that would not finish. Accuracy is untouched; the 449-second call agreed
+with CLVTools to 2.4e-08, the same order as the points the suite keeps. The
+band is reachable by a real fit, so this is worth knowing rather than merely
+avoiding. `U(a, a, z) = e^z Γ(1−a, z)` evaluates the same thing ~5,000x faster
+but agrees only to 1e-8, which is `hyperu`'s own accuracy here rather than
+obviously better, so nothing in `src/` changed on that basis.
+`TestTheKummerUSlowBand` keeps the time-varying grid out of the band — a
+structural assertion, not a timing one, because `tests/test_performance.py`
+looks at no clock.
 
 **CLVTools' GGompertz/NBD likelihood loses accuracy as `b` grows, and this
 package's does not.** The paired oracle put the two against each other at
@@ -868,12 +907,12 @@ which it reported successful convergence on the Gamma-Gamma at a local optimum
 ## Testing
 
 ```bash
-uv run pytest                  # 2,010 tests, including doctests in src/ and docs/
+uv run pytest                  # 2,057 tests, including doctests in src/ and docs/
 uv run pytest -m paper         # 22 numbers printed in the paper
 uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
 uv run pytest -m literature    # 22 numbers published in the CLV literature
-uv run pytest -m oracle        # 644 checks against the R oracle (247 fixtures + 390 pairs)
-uv run pytest -m pair          # 390 paired R/Python checks; 134 run without R
+uv run pytest -m oracle        # 689 checks against the R oracle (247 fixtures + 435 pairs)
+uv run pytest -m pair          # 435 paired R/Python checks; 149 run without R
 uv run pytest -m slow          # 202 full-dataset MLE fits
 uv run pytest -m dyncov_fit    # the time-varying covariate MLE; ~10 minutes
 uv run pytest --cov=clvtools --cov-report=term-missing

@@ -27,8 +27,9 @@ question: where does the time actually go, and is any of it avoidable.
 ## What the suite itself costs
 
 A separate question from what the *library* costs, and the one a contributor
-feels: **4:50 plain and 7:45 with coverage**, on the machine above, for 1,609
-tests. That is where it stands after the audit rounds, which added 457 tests.
+feels: **about 5:10 plain**, on the machine above, for 2,060 tests. That is
+where it stands after the audit rounds, which added 457 tests, and the paired
+oracle, which added another 451.
 
 The distribution is very uneven, and worth knowing before optimising anything:
 
@@ -36,8 +37,20 @@ The distribution is very uneven, and worth knowing before optimising anything:
 |---|---|---|
 | `TestBemmaorGlady2012` setup | 56 s | one GGompertz/NBD fit on CDNOW's 2,357 customers, for spec `F-07` |
 | `TestTheThreeViewsOfAFitAgreeOnItsNames` setup | 15 s | four static-covariate fits |
+| the time-varying `DECT` pairs | ~15 s | three `U(s, s, .)` sums over 600 customers, replayed |
 | the hourly GGom/NBD fit (`F-12`) | 10 s | 600 customers, one `quad` per customer per evaluation |
 | everything else | ~3:30 | 1,600 tests |
+
+The `DECT` row is the paired oracle's only material contribution to the clock --
+the other 136 paired cases are milliseconds each -- and it is the price of the
+first expression-level check that quantity has ever had. It would have been
+**much** worse. `DECT` sums Tricomi's `U(s, s, .)` period by period, and
+`scipy.special.hyperu` takes a slow path for `1 < s < 2`: ~90x at `s = 1.5`,
+which made one call over 600 customers take **449 seconds**. The three
+parameter points the pairs use sit outside that band, and
+`TestTheKummerUSlowBand` keeps them there. The README's findings carry the
+sweep; the short version is that it is a performance boundary and not a
+correctness one, so nothing is lost by stepping around it.
 
 Two of the top three are the GGompertz/NBD, and for one reason: its likelihood
 runs `scipy.integrate.quad` **once per customer per evaluation**, where the
