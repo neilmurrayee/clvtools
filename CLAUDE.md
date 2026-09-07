@@ -55,11 +55,13 @@ live in the README.
 ## Commands
 
 ```bash
-uv run pytest                  # 1,609 tests inc. doctests in src/ and docs/; ~4:50 on an M-series
+uv run pytest                  # 1,712 tests inc. doctests in src/ and docs/; ~4:50 on an M-series
 uv run pytest -m paper         # 22 numbers printed in the paper
 uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
 uv run pytest -m literature    # 22 numbers published in the CLV literature
-uv run pytest -m oracle        # 247 checks against R CLVTools fixtures
+uv run pytest -m oracle        # 348 checks against the R oracle (247 fixtures + 101 pairs)
+uv run pytest -m pair          # 101 paired R/Python checks, replayed from recordings
+R_LIBS=.Rlib uv run pytest -m pair --oracle-live   # ...and diffed against live R
 uv run pytest -m slow          # 202 full-dataset MLE fits
 uv run pytest -m dyncov_fit    # the time-varying covariate MLE; ~10 min, deselected by default
 uv run pytest --cov=clvtools --cov-report=term-missing
@@ -96,6 +98,7 @@ R_LIBS=.Rlib Rscript tools/oracle/generate_interface_fixtures.R  # summary, plot
 R_LIBS=.Rlib Rscript tools/oracle/generate_cdnow_fixtures.R       # the CDNOW fit, pmf, frequencies
 R_LIBS=.Rlib Rscript tools/oracle/generate_time_fixtures.R       # S5's calendar arithmetic
 R_LIBS=.Rlib Rscript tools/oracle/generate_dyncov_fixtures.R     # slow: fits dyncov twice
+R_LIBS=.Rlib uv run python tools/oracle/record_pairs.py          # the paired oracle
 ```
 
 Pipe an R generator to a file or to `tail`, never to `head`: closing the pipe
@@ -105,14 +108,23 @@ early leaves the R process wedged rather than killing it.
 
 The discipline that makes this port trustworthy, in order of strength:
 
-1. **Oracle fixtures, expression by expression.** The generators call CLVTools'
+1. **The paired oracle** (`tests/pairs.py`), which is fixtures plus the one
+   thing they cannot carry: the *statement* that a given R expression and a
+   given Python function are the same quantity. A pair holds both, the inputs,
+   and the tolerance, in one declaration. `pytest -m pair` replays it against
+   committed recordings with no R; `--oracle-live` evaluates the R in a live
+   session and diffs three ways -- Python against R, the recordings against R
+   (the staleness gate), and the input vectors both sides were fed. Prefer a
+   pair over a new fixture column for anything expression-level; add a family
+   with a module beside `tests/pairs_pnbd.py` and re-record.
+2. **Oracle fixtures, expression by expression.** The generators call CLVTools'
    *internal* per-customer Rcpp entry points and dump every model expression at
    several parameter vectors — including points off the optimum and both arms of
    the `α ≥ β` branch. That makes each equation testable before an optimiser
    exists. A single total agreeing can hide two errors cancelling; thirty columns
    agreeing at two parameter vectors cannot. Prefer a new fixture column over a
    hand-computed constant.
-2. **Published numbers.** `tests/paper_values.py` (`-m paper`) and
+3. **Published numbers.** `tests/paper_values.py` (`-m paper`) and
    `tests/rdoc_values.py` (`-m rdoc`). The paper is not the only place
    CLVTools prints results: its vignettes print a constrained covariate table,
    a regularized one and an `lrtest()` that the paper never does, and `?pmf`
@@ -122,11 +134,11 @@ The discipline that makes this port trustworthy, in order of strength:
    expression should match to 1e-9..1e-14; where this package's own optimiser
    runs, the last digits move (the Pareto/NBD ridge shifts 3e-5 for 1e-10 of
    log-likelihood), so assert accordingly.
-3. **Internal cross-checks.** Mix the individual-level expressions numerically
+4. **Internal cross-checks.** Mix the individual-level expressions numerically
    and require the marginalised closed form (see `tests/test_pnbd_individual.py`).
    Check the nesting the paper asserts — zero covariate effects recover the plain
    model, `m = 0` recovers independence.
-4. **Doctests.** Everything in `src/` and `docs/paper.md` runs, so no printed
+5. **Doctests.** Everything in `src/` and `docs/paper.md` runs, so no printed
    number can drift from what the code returns.
 
 100% line coverage of `src/` is the standing bar; don't land uncovered lines.

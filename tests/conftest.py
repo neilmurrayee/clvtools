@@ -169,12 +169,21 @@ def dyncov_walks():
 
 
 def pytest_addoption(parser) -> None:
-    """``--run-dyncov-fit``, the other way to ask for the slow fit by name."""
+    """``--run-dyncov-fit`` and ``--oracle-live``, the two opt-in runs."""
     parser.addoption(
         "--run-dyncov-fit",
         action="store_true",
         default=False,
         help="run the time-varying covariate MLE (about ten minutes)",
+    )
+    parser.addoption(
+        "--oracle-live",
+        action="store_true",
+        default=False,
+        help=(
+            "evaluate the paired oracle's R snippets in a live R session and "
+            "diff them against Python; needs Rscript and .Rlib/CLVTools"
+        ),
     )
 
 

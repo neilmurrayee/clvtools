@@ -1,0 +1,109 @@
+# The paired oracle, run against a live R session.
+#
+# `ci.yml` asserts that this repository needs no R: the oracle's output is
+# committed under `tests/fixtures/` and the suite is held to those files. That
+# is what makes the suite fast and portable, and it is also its blind spot.
+# Nothing in a replay run can tell you that a committed fixture still equals
+# what CLVTools produces -- a fixture edited by hand to make a test pass, a
+# generator changed without being re-run, or a CLVTools release nobody
+# re-baselined are all green.
+#
+# This job is the other half. It installs R and CLVTools, and runs the paired
+# oracle in live mode (`tests/pairs.py`), which compares three ways:
+#
+#   * Python against R, evaluated side by side -- the differential test
+#   * the committed recordings against R -- the staleness gate above
+#   * each prelude's inputs against the committed copies Python reads, so that
+#     "both implementations were fed the same numbers" is checked, not assumed
+#
+# Weekly rather than nightly, and off the push path entirely. What it watches
+# for does not change commit by commit: it changes when someone edits a fixture
+# or when CRAN ships a new CLVTools, and a week is a fine bound on learning
+# about either. `dyncov.yml` is nightly for the opposite reason -- what it
+# watches is where an optimiser stops, which every commit can move.
+name: Paired oracle (live R)
+
+on:
+  schedule:
+    # Mondays at 04:23 UTC. The odd minute is the usual courtesy: the top of
+    # the hour is the busiest slot on GitHub's scheduler.
+    - cron: "23 4 * * 1"
+  # Before a re-baselining, or after touching anything under tools/oracle/.
+  workflow_dispatch:
+  # And on any change to the oracle machinery itself, where the cost of finding
+  # out a week later is a week of work built on a broken pairing.
+  push:
+    paths:
+      - "tests/pairs*.py"
+      - "tests/test_pairs.py"
+      - "tests/fixtures/pairs/**"
+      - "tools/oracle/**"
+      - ".github/workflows/oracle.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  live:
+    name: Python against a live CLVTools
+    runs-on: ubuntu-latest
+    # Measured at 2.0s for the run itself on an M-series Mac; the install of R
+    # and CLVTools is what takes the time here. Generous, because a hung CRAN
+    # mirror should report as a timeout rather than run for six hours.
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Sync the environment
+        run: uv sync --locked
+
+      - uses: r-lib/actions/setup-r@465b7d8e732ca3921382b1674c59bada9cbf3399 # v2.13.0
+        with:
+          r-version: "release"
+          use-public-rspm: true
+
+      # CLVTools links against GSL and uses OpenMP (see its src/Makevars).
+      # CRAN ships no Linux binary, so the runner builds it from source and
+      # needs both. On macOS `setup_oracle.sh` fetches a binary and skips this.
+      - name: Install the C dependencies CLVTools builds against
+        run: sudo apt-get update && sudo apt-get install -y libgsl-dev
+
+      # `tools/setup_oracle.sh` installs into ./.Rlib and never the system
+      # library, which is what `tests/pairs.py` looks for. The runner's cache
+      # key is the script plus the pinned version, so a bump re-installs.
+      - name: Cache CLVTools
+        id: rlib
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .Rlib
+          key: rlib-${{ runner.os }}-${{ hashFiles('tools/setup_oracle.sh') }}
+
+      - name: Install CLVTools
+        if: steps.rlib.outputs.cache-hit != 'true'
+        run: ./tools/setup_oracle.sh
+
+      # Named by marker, so this job is the paired oracle and nothing else.
+      # Without `--oracle-live` every live comparison skips, and a job that
+      # silently ran no live check at all would look exactly like a passing
+      # one -- the same trap `ci.yml` guards with its interpreter assertion.
+      - name: Diff Python against R
+        run: |
+          R_LIBS=.Rlib uv run pytest -m pair --oracle-live -rs \
+            | tee run.log
+          grep -qE "^[0-9]+ passed" run.log
+          if grep -qE "test_python_matches_live_r.*SKIPPED" run.log; then
+            echo "::error::the live comparisons skipped; R was not reached"
+            exit 1
+          fi

@@ -51,9 +51,16 @@ R_LIBS="$RLIB" Rscript -e '
   deps <- c("data.table","digest","Formula","ggplot2","lubridate",
             "numDeriv","Matrix","MASS","optimx","Rcpp")
   miss <- setdiff(deps, rownames(installed.packages()))
+  # `type = "binary"` is an error on Linux rather than a fallback, so ask for it
+  # only where it exists. On a Linux runner the repository is Posit`s RSPM,
+  # which serves precompiled builds through source URLs, so the default type is
+  # no slower there.
+  type <- if (Sys.info()[["sysname"]] %in% c("Darwin", "Windows")) "binary"
+          else getOption("pkgType")
   if (length(miss)) {
     install.packages(miss, lib = Sys.getenv("R_LIBS"),
-                     repos = "https://cloud.r-project.org", type = "binary")
+                     repos = getOption("repos", "https://cloud.r-project.org"),
+                     type = type)
   }
 '
 

@@ -193,6 +193,62 @@ transposes the middle pair relative to every sibling. Each fixture family is
 checked against a public generic (`logLik()`, `coef()`, `predict()`) so a sign or
 ordering slip cannot ship as a plausible-looking expectation.
 
+### The paired oracle
+
+Fixtures are a one-way snapshot. R wrote them once, and nothing since relates
+them to R: `cpp("pnbd_nocov_LL_ind")` lives in a 475-line generator,
+`aggregate.log_likelihood_ind` is asserted in a test module, and no artefact
+says the two are the same quantity. Drop a column from a generator, edit a CSV
+to make a test pass, or upgrade CLVTools without re-baselining, and the suite is
+green against a stale oracle.
+
+`tests/pairs.py` is that missing artefact. A **pair** carries the R snippet and
+the Python callable in one declaration, with the inputs both are evaluated at
+and the tolerance they must agree to:
+
+```python
+@pair(
+    id="pnbd.nocov.LL_ind", spec="M-01", tol=1e-12,
+    r='cpp("pnbd_nocov_LL_ind")(vLogparams = log(p), vX = x, vT_x = tx, vT_cal = Tc)',
+    **COMMON,
+)
+def ll_ind(p):
+    return aggregate.log_likelihood_ind(X, TX, TC, *p)
+```
+
+The R side is a string because R is the foreign language; the Python side stays
+a real function, so `ruff` still sees it. Note what writing them adjacently
+makes visible: `log(p)` on one side against natural-scale parameters on the
+other is the log-scale convention listed first among the traps below, now
+readable as a pair rather than asserted in two files.
+
+Two runners consume the one registry:
+
+```bash
+uv run pytest -m pair                    # replay: Python vs the recording. No R.
+R_LIBS=.Rlib uv run pytest -m pair --oracle-live   # the differential run
+R_LIBS=.Rlib uv run python tools/oracle/record_pairs.py   # re-baseline
+```
+
+Live mode evaluates every snippet in a real R session — 30 cases in **2.0 s**,
+model fit included — and compares three ways: Python against live R, which is
+the differential test; the committed recordings against live R, which is the
+staleness gate nothing else here has; and each prelude's input vectors against
+the committed copies the Python side reads, so that "both implementations were
+fed the same numbers" is checked rather than assumed. `.github/workflows/oracle.yml`
+runs it weekly and on any change to the oracle machinery.
+
+Recording is a script and deliberately not a pytest mode: a suite that can
+rewrite its own expectations is one bad flag away from proving nothing.
+
+The first family on it is the Pareto/NBD without covariates — five expressions
+at six parameter vectors. It found something on its first run. Two grid points
+set `s = 1`, where S4.2's CET divides by `s - 1`; CLVTools returns `NaN` and
+this package raises. The existing fixture tests handle that by leaving those
+points out of the CET grid. A pair instead declares `undefined_at`, which does
+not skip them — it asserts *both* halves, that the oracle returns `NaN` and that
+we refuse, so either side changing reports.
+
 Two oracle classes stand outside R. The papers the models come from —
 Fader, Hardie & Lee (2005) for the Pareto/NBD and the BG/NBD, Fader & Hardie
 (2013) for the Gamma-Gamma — publish estimates and log-likelihoods on CDNOW at
@@ -716,6 +772,17 @@ runs one period past the data so the last period is shown whole; CLVTools
 reports `NA` for its observed value rather than the fraction it has, and so does
 this.
 
+**Every CSV fixture is a lossy copy of what R computed.**
+`data.table::fwrite` writes doubles at 15 significant digits, not the 17 that
+round-trip one exactly. 328 of the 600 `t.x` values in `cbs_estimation.csv`
+differ from the value R held in memory, by up to 4.3e-15 relative. Nothing has
+gone wrong — the tolerances the suite asserts are 1e-9 to 1e-14 and this sits
+under all of them — but it does put a floor under how tightly any CSV-backed
+comparison can honestly be stated, and the tightest of them are already at it.
+The paired oracle writes 17 digits and has no such floor, which is how this came
+to light: its recordings and the CSV disagreed on the same customers. Pinned by
+`test_pairs.py::TestRegistry::test_the_prelude_is_the_data_the_rest_of_the_suite_uses`.
+
 Two defects in this package's own code were caught the same way. The `hyp2f1`
 fallback summed its series in a Python loop, costing over a second per call as
 `z → 1`, which made a degenerate fit appear to hang. And SciPy's Nelder-Mead
@@ -726,11 +793,12 @@ which it reported successful convergence on the Gamma-Gamma at a local optimum
 ## Testing
 
 ```bash
-uv run pytest                  # 1,609 tests, including doctests in src/ and docs/
+uv run pytest                  # 1,712 tests, including doctests in src/ and docs/
 uv run pytest -m paper         # 22 numbers printed in the paper
 uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
 uv run pytest -m literature    # 22 numbers published in the CLV literature
-uv run pytest -m oracle        # 247 checks against R CLVTools fixtures
+uv run pytest -m oracle        # 348 checks against the R oracle (247 fixtures + 101 pairs)
+uv run pytest -m pair          # 101 paired R/Python checks; 37 run without R
 uv run pytest -m slow          # 202 full-dataset MLE fits
 uv run pytest -m dyncov_fit    # the time-varying covariate MLE; ~10 minutes
 uv run pytest --cov=clvtools --cov-report=term-missing
