@@ -56,7 +56,7 @@ from clvtools.pnbd.dyncov import (
 def _term(pair):
     """A ``(log magnitude, sign)`` pair back as a value.
 
-    Every :math:`F_2` helper reports a signed log since backlog item 28, so
+    Every :math:`F_2` helper reports a signed log, so
     that a term below float64 keeps its magnitude instead of becoming zero.
     The tests that predate it compare values, and are what says the two forms
     agree wherever the value form still has the digits.
@@ -771,7 +771,7 @@ class TestFitMechanics:
         assert np.isfinite(fitted.log_likelihood)
 
     def test_the_reported_count_is_the_weighted_one(self, dyncov_walks):
-        """Backlog item 27, finding 19: this reported the cohort size.
+        """This reported the cohort size.
 
         ``weights`` multiplies the per-customer log-likelihoods, so the
         objective is that of a sample of ``sum(weights)`` customers and BIC's
@@ -896,7 +896,8 @@ class TestTheF2TermsDoNotOverflowBeforeTheyUnderflow:
     def test_terms_below_float64_keep_their_magnitude(self, x, expected):
         """Where the value form has nothing left to say.
 
-        The pre-item-23 code gave 0 here by dividing by ``inf``; item 23 made
+        The earlier code gave 0 here by dividing by ``inf``; the log-domain
+        rewrite made
         that an honest 0; item 28 stops throwing the magnitude away. Exponent
         and sign are still exactly what the value form reported where the value
         form worked -- ``test_representable_terms_are_computed`` above is the
@@ -1014,7 +1015,8 @@ class TestTheDyncovFitTakesConstraintsAndRegularization:
     ``use_cor``, so twelve of the twenty-nine were unreachable rather than
     unpinned -- the one weak verdict of round 5 that was a capability gap.
 
-    CLVTools was asked before anything was built, which is what item 16 records
+    CLVTools was asked before anything was built, which is what the finding
+    records
     the cost of not doing: ``pnbd.Rd``'s ``clv.data.dynamic.covariates`` method
     carries ``names.cov.constr``, ``start.params.constr``, ``reg.lambdas``,
     ``use.cor`` and ``start.param.cor``. So the gap is real and not a

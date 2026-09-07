@@ -700,8 +700,7 @@ class TestCovariateNamesThatWereNeverExercised:
 
     Three claims about the *names* covariates arrive under, which the apparel
     cohort could never have raised: its two covariates are called ``Gender``
-    and ``Channel``, are numeric 0/1, and are each named once. Backlog item 36,
-    round 6.
+    and ``Channel``, are numeric 0/1, and are each named once.
     """
 
     @pytest.fixture(scope="class")

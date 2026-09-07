@@ -159,8 +159,8 @@ class Fitted:
 
         A method rather than a property, matching :meth:`ClvData.nobs` and R's
         generic. Weighted where the fit was weighted, since that is the sample
-        size its own :attr:`bic` is computed against -- see backlog item 27,
-        where the time-varying fit reported the two inconsistently.
+        size its own :attr:`bic` is computed against; the time-varying fit
+        reported the two inconsistently until this was reconciled.
         """
         return self.n_customers
 

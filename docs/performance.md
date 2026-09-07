@@ -5,9 +5,8 @@ numbers, the R package's numbers, oracle fixtures expression by expression —
 and on being *tidy*: ruff, complexity, module size, 100% line coverage. Nothing
 has ever asked whether it is *fast*. This document is the first pass at that
 question. The invariants in "What a performance gate should look like" below
-*are* now a gate — `tests/test_performance.py`, backlog item 7 — and every
-profile below is **regenerable**: `tools/profile.py`, backlog item 8, emits
-these tables as markdown. The first version of this document was assembled from
+*are* now a gate — `tests/test_performance.py` — and every profile below is
+**regenerable**: `tools/profile.py` emits these tables as markdown. The first version of this document was assembled from
 ad-hoc scripts that no longer existed by the time anyone could check them,
 which is how one of its figures came to be wrong; see the correction under the
 dyncov table.
@@ -58,7 +57,7 @@ have cost something real: after one iteration their Hessians are not positive
 definite, so the "no `NaN`" assertion beside them would have been made at a
 point where the curvature is meaningless. The fixture says so at the site.
 
-That is the same trade as backlog item 27, which found parity tests fitting
+That is the same trade an earlier round made, when it found parity tests fitting
 three families over 600 customers to compare *shapes*, and the same trap: a
 fixture that fits something is easy to write and its cost is invisible until
 someone runs `--durations`.
@@ -167,7 +166,7 @@ counts at two sizes.
 
 ## The time-varying covariate likelihood was Python-bound
 
-This was the finding worth acting on, and backlog item 9 acted on it. What
+This was the finding worth acting on, and the vectorisation spike acted on it. What
 follows is the profile as it stood, then what the rewrite did to it.
 
 One evaluation of the dyncov `log_likelihood` on 600 customers took **0.328 s**
@@ -222,7 +221,7 @@ of it is library work — it is interpreter overhead. Two things drive it:
    interval per customer — 39,754 intervals per evaluation across both arms,
    against *two* calls for the whole sample in the plain model.
 2. **`Walk` uses numpy as a scalar container.** (`pnbd/dyncov_walks.py` since
-   the split of backlog item 3; the counts did not move.) `elem(i)` is
+   an earlier split; the counts did not move.) `elem(i)` is
    `float(self.values[i])`, called 155,418 times; `n_elem` is
    `int(self.values.size)`, called 114,978 times. Extracting one element from a
    numpy array and boxing it into a Python float is close to the most expensive
@@ -365,7 +364,7 @@ fitted parameters**. That last one is the reason the gate runs at
 CLVTools' fitted point and not at a convenient starting vector: it is the only
 place the `alpha >= beta` arm is entered at all.
 
-### What backlog item 28 cost, and why it was still the right trade
+### What the log-space rewrite cost, and why it was still the right trade
 
 Combining the `F_2` terms in log space rather than as values took one
 evaluation from **0.104 s to 0.132 s — 26%** (same machine, same parameters,
@@ -393,7 +392,7 @@ something.
 
 ---
 
-### Backlog item 14: why `hyp2f1` is slow there, and what actually fixes it
+### Why `hyp2f1` is slow there, and what actually fixes it
 
 Measured 2026-09-03, same machine. The claim above reproduces: at
 `life.High.Season = -8.12` one evaluation is 0.480 s against 0.120 s at
@@ -469,7 +468,7 @@ That figure is a projection and is labelled as one: the restructure has not been
 done, and it would additionally remove 4,770 NumPy dispatches per evaluation
 that the projection gives it no credit for. Carried as
 
-### Backlog item 30: the duplicates, collapsed without a restructure
+### The duplicates, collapsed without a restructure
 
 Item 14 projected 2.6x from deduplicating the hypergeometrics and said it needed
 the likelihood batched over the cohort, because the duplication is *across*
@@ -525,7 +524,7 @@ oracle grid vectors** compare equal under `np.array_equal`, because a memo
 returns the same function's value for the same arguments; there is no
 rearrangement to lose a digit to. That is a stronger guarantee than item 9's
 rewrite could give (27 of 30) or item 28's (3e-14 relative), and it is the
-reason this was worth preferring over the restructure item 30 specified: the
+reason this was worth preferring over the restructure first proposed: the
 restructure would have re-associated the arithmetic and had to argue about the
 last two bits.
 
@@ -562,19 +561,21 @@ structural, and every one of them is visible without a clock:
 Wall-clock still belongs in `tools/benchmark.py`, and *where* the time goes in
 `tools/profile.py` — both reported, neither asserted.
 
-## Next
+## What came of it
 
-- ~~backlog item 7~~ — done: `tests/test_performance.py`, marker
+Every question this document opened is closed. What each turned into:
+
+- **A performance gate** — `tests/test_performance.py`, marker
   `performance`. The four invariants above, 1.0 s on every run, and each one
   demonstrated to fail against a deliberately broken implementation.
-- ~~backlog item 8~~ — done: `tools/profile.py`, 6 s, which emits
+- **A regenerable profile** — `tools/profile.py`, 6 s, which emits
   every profile table above as markdown. Running it is what turned up the
   `_hyp_beta_gt_alpha` correction, which is the argument for it in one line.
-- ~~backlog item 9~~ — done: the dyncov vectorisation spike, which
+- **The dyncov vectorisation spike**, which
   paid, though not where it was expected to. 3.3-5.1x per evaluation, 1.33x on
   the fit, 27 of 30 oracle intermediates bit-identical. Written up above, gated
   by `TestDyncovStaysVectorised`.
-- ~~backlog item 14~~ — done: the `hyp2f1` spike, written up above.
+- **The `hyp2f1` spike**, written up above.
   Two thirds of a fit is spent where 85% of self-time is inside SciPy, and
   neither exact rewrite of the hypergeometric helps — the fast one cancels to
   35 digits of error, the accurate one is what SciPy already does. What does
@@ -583,7 +584,7 @@ Wall-clock still belongs in `tools/benchmark.py`, and *where* the time goes in
   "Vectorising `log_likelihood_customer` across customers as well — the obvious
   next refactor — would not touch it, and the numbers above are the reason not
   to start it." The duplicate arguments were the thing it could not see.
-- ~~backlog item 30~~ — done, and *not* by the restructure that item
-  specified. A per-evaluation memo reaches the same duplicates: the dwell vector
+- **The duplicate hypergeometrics**, collapsed — and *not* by the restructure
+  first proposed. A per-evaluation memo reaches the same duplicates: the dwell vector
   falls 0.480 s to 0.119 s, all 30 intermediates stay **bit-identical** at both
   grid vectors, and `log_likelihood_customer` keeps its shape. Written up above.

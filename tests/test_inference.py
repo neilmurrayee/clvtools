@@ -104,7 +104,7 @@ class TestCurvatureAgainstTheOracle:
             # It sits on the same flat direction as `F-07`'s (b, beta) ridge --
             # 0.26914 here against CLVTools' 0.26973, 2.2e-3 apart -- and it
             # was already 0.0005 from the oracle inside a 0.00054 allowance
-            # when backlog item 37 replaced the survival term's difference of
+            # when the survival term's difference of logs was replaced with
             # logs with ``-s*log1p(expm1(bT)/beta)``. That form is exact to
             # 2.2e-16 against a 60-digit reference where the old one lost to
             # 2.2e-10, so the arithmetic improved and a second derivative
@@ -303,7 +303,7 @@ class TestLikelihoodRatioTest:
 
     @pytest.mark.oracle
     def test_the_two_log_likelihoods_behind_it_match_the_oracle(self, fits):
-        """Backlog item 25: ``pnbd_staticcov_lrtest.json`` had no reader.
+        """``pnbd_staticcov_lrtest.json`` had no reader.
 
         ``lrtest_pnbd_staticcov.json``, read above, pins the *derived*
         quantities -- degrees of freedom, the statistic, the p-value. This
@@ -619,7 +619,7 @@ class TestNobsAnswersOnAFitAsWellAsOnTheData:
     def test_it_is_the_count_bic_is_computed_against(self, cbs_estimation):
         """So a weighted fit cannot report one number and score against another.
 
-        Backlog item 27 found the time-varying fit doing exactly that.
+        The time-varying fit was found doing exactly that.
         """
         from clvtools.pnbd import fit_pnbd
 

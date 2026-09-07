@@ -95,7 +95,7 @@ def counted(module: ModuleType, name: str) -> Iterator[Count]:
     True
 
     A function that returns a tuple is measured by its first element. The
-    :math:`F_2` arms return ``(log magnitude, sign)`` since backlog item 28,
+    :math:`F_2` arms return ``(log magnitude, sign)`` since the log-space work,
     and it is the magnitudes that are one per covariate interval; counting the
     signs as well would double every number here for no change in the work
     done.
@@ -499,8 +499,8 @@ class TestDyncovStaysVectorised:
     ``docs/performance.md``: this was the one real finding of the profile --
     0.33 s and 600,000 Python-level calls for one number, because every one of
     a customer's ~66 covariate intervals took its own scalar trip through
-    :func:`~clvtools.pnbd.dyncov._hyp_term`. Backlog item 9 replaced that inner
-    loop with array work and the evaluation fell to 0.097 s.
+    :func:`~clvtools.pnbd.dyncov._hyp_term`. Replacing that inner loop with
+    array work brought the evaluation to 0.097 s.
 
     Nothing else in the suite would notice it going back: the oracle fixtures
     check the numbers, and a scalar loop would produce the same ones. So the
@@ -575,7 +575,7 @@ class TestDyncovStaysVectorised:
 
 
 class TestDyncovDeduplicatesItsHypergeometrics:
-    r"""Backlog item 30: 93.3% of the hypergeometrics are duplicate arguments.
+    r""" 93.3% of the hypergeometrics are duplicate arguments.
 
     ``docs/performance.md``: one evaluation over the apparel cohort asks for
     **79,508** :math:`{}_2F_1` values and only **5,303** are distinct, because

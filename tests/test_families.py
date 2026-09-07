@@ -854,8 +854,7 @@ class TestTheGgomnbdCetIsThePostErratumOne:
 
     That is half of this repository's own rule -- deviations get a test **and**
     a README findings entry -- and it is the fourth instance round 5 has found
-    of a considered choice recorded in only one of the two places. Backlog item
-    34, round 5.
+    of a considered choice recorded in only one of the two places.
     """
 
     def test_the_pinned_value_is_the_post_erratum_one(self):

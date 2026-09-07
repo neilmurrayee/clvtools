@@ -60,7 +60,7 @@ def oracle_params(pnbd_fixture: str, gg_fixture: str):
     """The oracle's coefficients, wrapped in the dataclasses ``predict`` expects.
 
     Shared by ``test_predict.py`` and ``test_newcustomer.py`` since round 5
-    split the second out of the first -- the same move item 25 made for
+    split the second out of the first -- the same move made earlier for
     ``DYNCOV_GRID`` when ``test_pnbd_dyncov.py`` outgrew the module-size limit.
     """
     from clvtools.gg import GgParams

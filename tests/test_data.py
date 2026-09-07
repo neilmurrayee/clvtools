@@ -550,7 +550,7 @@ class TestTheColumnRenameActuallyRenames:
 
 
 class TestReprNamesTheClassInHand:
-    """Backlog item 27, finding 19: every subclass printed `ClvData(`.
+    """Every subclass printed `ClvData(`.
 
     A literal class name in `__repr__` is inherited, so the covariate objects
     identified themselves as the base class -- in the one line most likely to
@@ -575,7 +575,7 @@ class TestReprNamesTheClassInHand:
 
 
 class TestIdsMustBeStrings:
-    """Backlog item 27, finding 20: `ids=1` gave "'int' object is not iterable".
+    """`ids=1` gave "'int' object is not iterable".
 
     `Id` is a string everywhere in this package -- `tests/conftest.py` enforces
     it on every fixture -- so an integer id is a common slip with a one
@@ -598,7 +598,7 @@ class TestIdsMustBeStrings:
 
 @pytest.mark.oracle
 class TestTheFutureCovariatesMatchWhatRExported:
-    """Backlog item 25: ``dyncov_future_covariates.json`` had no reader.
+    """``dyncov_future_covariates.json`` had no reader.
 
     S6.4.2 needs the covariate path *ahead* of the estimation period, and
     ``apparelDynCovFuture`` is where it comes from. Its shape was asserted
@@ -707,8 +707,7 @@ class TestDataEndIsRefusedWhenItWouldDiscardTransactions:
     before the last purchase, a ``data_end`` before the split is refused too.
 
     Worth pinning as the stricter rule rather than the spec's, because that is
-    what the code promises and the two are not the same statement. Backlog item
-    34, round 5.
+    what the code promises and the two are not the same statement.
     """
 
     def test_before_the_estimation_split_is_refused(self, apparel_trans):
@@ -837,8 +836,7 @@ class TestSplitSpellingsAndBoundaries:
     `T-09`: a one-day holdout is accepted where R has a minimum. `T-12`:
     ``data_end`` at the last transaction gives the same object as omitting it.
     `T-13`/`T-16`: the split takes an int, a string, a ``date`` and a
-    ``Timestamp``, and only ``datetime64[ns]`` was ever passed. Backlog item 36,
-    round 6.
+    ``Timestamp``, and only ``datetime64[ns]`` was ever passed.
     """
 
     @pytest.fixture(scope="class")

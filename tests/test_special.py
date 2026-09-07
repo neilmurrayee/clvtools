@@ -193,7 +193,7 @@ class TestSeriesIsBounded:
 
 
 class TestKummerUAgainstGslsHyp2f0:
-    r"""Backlog item 25: ``hyp2f0.csv`` was committed and never read.
+    r"""``hyp2f0.csv`` was committed and never read.
 
     CLVTools reaches this function as GSL's :math:`{}_2F_0`; this package has
     :func:`~clvtools.special.kummer_u` instead, and GSL defines one *through*
@@ -235,9 +235,9 @@ class TestKummerUAgainstGslsHyp2f0:
 
 
 class TestWhereTheClosedFormsCancel:
-    r"""Backlog item 37: the shape item 32 found, looked for everywhere else.
+    r"""The cancellation shape the `pmf` work found, looked for everywhere else.
 
-    Item 32 found that ``aggregate.pmf`` was **wrong in the third decimal**
+    The `pmf` work found that ``aggregate.pmf`` was **wrong in the third decimal**
     before it was visibly wrong at all -- 1.0e-3 at ``k = 16``, against a
     50-digit reference, three counts before the ``NaN`` anyone would have
     noticed. Nothing had looked for that shape elsewhere, and the conditions

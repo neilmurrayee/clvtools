@@ -1,13 +1,13 @@
 r"""What the time-varying likelihood does where no oracle can follow it.
 
-Backlog item 28, and the second half of finding 10. :math:`F_2` is a sum of
+The second half of finding 10 of the 2026-09 review. :math:`F_2` is a sum of
 per-interval terms of the form :math:`{}_2F_1(\cdot)/\alpha^{r+s+x}`, and the
 divisor grows with the customer's transaction count: past :math:`x = 160` for
 one of the two customers below and :math:`x = 190` for the other, *every* term
 is under float64 and :math:`F_2` was therefore exactly zero.
-``log_likelihood_customer`` then took its ``F2 == 0`` branch --
-``log F_0 + log F_3``, the likelihood of a customer who is certainly dead --
-and said nothing about it.
+``log_likelihood_customer`` then took its ``F2 == 0`` branch -- ``log F_0 + log
+F_3``, the likelihood of a customer who is certainly dead -- and said nothing
+about it.
 
 That is not a rounding error. :math:`F_3` is
 :math:`(B_{k_T}{+}\alpha_0)^{-(x+r)}`, which underflows at the *same* rate, so

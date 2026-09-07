@@ -341,7 +341,7 @@ class TestTimeVaryingDispatch:
 
 
 class TestAFormulaOnDataThatHasNoCovariates:
-    """Backlog item 27, finding 20: `~ . | .` on plain data was accepted.
+    """`~. |.` on plain data was accepted.
 
     The guard tested `names_life or names_trans`, which are the *parsed* names.
     `~ . | .` parses to `(None, None)` -- the "use every covariate" marker --
@@ -374,7 +374,7 @@ class TestAFormulaOnDataThatHasNoCovariates:
 
 
 class TestAnEmptyCovariateTerm:
-    """Backlog item 27: `~ Gender + | Gender` fitted on Gender alone.
+    """`~ Gender + | Gender` fitted on Gender alone.
 
     The parser dropped empty terms, so a `+` with nothing after it -- what a
     half-finished edit leaves behind -- produced a smaller model than the text
@@ -521,8 +521,8 @@ class TestAFormulaHasNoLeftHandSide:
         """The two checks share ``_split_terms`` and must not mask each other.
 
         ``_expand_exclusions`` filtered empty terms out on its way past, which
-        silently disabled the "a '+' with nothing after it" check added in
-        backlog item 27 -- ``TestAnEmptyCovariateTerm`` caught it. Both now fire
+        silently disabled the "a '+' with nothing after it" check beside it --
+        ``TestAnEmptyCovariateTerm`` caught it. Both now fire
         on a formula that trips both.
         """
         with pytest.raises(ValueError, match="empty covariate term"):

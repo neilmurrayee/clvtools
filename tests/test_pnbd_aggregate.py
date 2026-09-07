@@ -289,16 +289,17 @@ class TestPmfProperties:
 
 
 class TestPmfResolvesItsSecondTermByTheSeriesTail:
-    """Backlog items 29 and 32: `pmf` was quietly wrong long before it was NaN.
+    """`pmf` was quietly wrong long before it was NaN.
 
-    Item 29 found `b1 - b2` losing its value to cancellation and made it warn.
-    Item 32 found the cancellation is not the whole story and the fix is not
+    An earlier pass found `b1 - b2` losing its value to cancellation and made
+    it warn.
+    That work found the cancellation is not the whole story and the fix is not
     the one it had planned.
 
     ``b2`` is the first ``k+1`` terms of a convergent series whose full sum is
     ``b1``, so ``b1 - b2`` is the *rest of that series* -- and a tail of
     positive terms has nothing to cancel. Summing it directly is exact where
-    subtracting was not. Item 32 had planned to carry the two sides as
+    subtracting was not. The plan had been to carry the two sides as
     ``(log magnitude, sign)`` the way item 28 did for the dyncov ``F2``; that
     would not have worked, because item 28's problem was underflow (values
     below float64 but well determined) and this one is cancellation (values
@@ -328,7 +329,7 @@ class TestPmfResolvesItsSecondTermByTheSeriesTail:
         assert got == pytest.approx(self.TRUTH[k], rel=1e-11)
 
     def test_and_it_no_longer_warns_where_it_used_to(self):
-        """`k = 18` was `NaN` with a `PrecisionWarning` until item 32."""
+        """`k = 18` was `NaN` with a `PrecisionWarning` until this was fixed."""
         import warnings
 
         with warnings.catch_warnings(record=True) as caught:

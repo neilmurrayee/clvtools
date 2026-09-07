@@ -435,8 +435,7 @@ class TestTheSummaryDoesNotDependOnInputOrder:
     survives untested.
 
     `S-03` -- `summary(ids=None)` equals `summary(ids=<all ids>)` -- was
-    asserted for two cells where R compares the whole object. Backlog item 34,
-    round 5.
+    asserted for two cells where R compares the whole object.
     """
 
     @pytest.fixture(scope="class")

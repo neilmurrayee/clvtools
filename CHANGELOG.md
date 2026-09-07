@@ -12,8 +12,10 @@ someone installing a given version gets.
 ## Unreleased
 
 Everything below is on `main` and in no released artifact. `0.1.0` has been
-built but never published — see backlog item 15, which is a decision
-rather than a task.
+built but never published. Whether to publish it is a decision for the
+maintainer, not a task: the package is complete against the paper and the R
+package, and what a release would add is a name on PyPI and a support
+commitment.
 
 ### Added
 

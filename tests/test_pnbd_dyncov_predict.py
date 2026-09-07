@@ -589,7 +589,8 @@ class TestStaticCovariatesSuppliedAsDynamic:
 
 
 class TestTheDyncovCetRefusesUnitS:
-    """Backlog item 29, from finding 10: only one of the two CETs guarded s = 1.
+    """From finding 10: only one of the two CETs guarded s
+    = 1.
 
     Every expression in the time-varying ``CET`` divides by ``s - 1``, and
     :func:`clvtools.pnbd.aggregate.conditional_expected_transactions` has raised
@@ -836,8 +837,7 @@ class TestZeroCoefficientsAndZeroWindowsInPredict:
     taken through the time-varying one, which shares none of its code: with
     every gamma at zero the covariates cannot move anything, so the answer must
     be the plain Pareto/NBD's. `DY-12` is `A1`'s zero-length window, which was
-    fixed for the plain and static paths and never checked here. Backlog item
-    36, round 6.
+    fixed for the plain and static paths and never checked here.
     """
 
     ZERO: ClassVar = np.zeros(3)

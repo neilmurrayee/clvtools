@@ -19,8 +19,7 @@ What is asserted instead:
 """
 
 # One precision rule, applied across the suite after CI showed the old one was
-# a statement about macOS/ARM (backlog item 17, finding 13 of
-# the 2026-09 review):
+# a statement about macOS/ARM (finding 13 of the 2026-09 review):
 #
 #   * an **estimate** is compared with a tolerance no tighter than 1e-3
 #     relative -- the Pareto/NBD ridge moves the parameters by ~1e-4 between
@@ -405,8 +404,7 @@ class TestFitsRunOnDataShapesNothingHadFitOn:
     magnitude away. And nothing fitted a model on data carrying no ``Price`` at
     all, then predicted on data that does: the two objects meet only inside
     :func:`~clvtools.predict.predict`, so a fit that had quietly remembered
-    something about spending would have gone unnoticed. Backlog item 36,
-    round 6.
+    something about spending would have gone unnoticed.
     """
 
     @pytest.fixture(scope="class")

@@ -799,7 +799,7 @@ class TestDataEndAndShortHorizons:
 class TestPredictArgumentsAndCovariateNames:
     """Spec PR-02, PR-13 and PR-15.
 
-    `PR-13`'s scenario half was closed by item 27 -- a covariate the fit does
+    `PR-13`'s scenario half was closed earlier -- a covariate the fit does
     not carry now raises by name. The **data** half was not: applying a fit to
     covariate data whose columns are named differently surfaced as
     ``KeyError: "['Gender'] not in index"``, pandas' words for a question about

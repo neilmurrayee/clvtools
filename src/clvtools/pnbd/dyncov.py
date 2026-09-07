@@ -298,12 +298,13 @@ def _signed_logsumexp(
     r""":math:`\log|\sum_i s_i e^{l_i}|` and the sum's sign.
 
     The offset is the largest term's own log, so every term is weighed against
-    the one that dominates it. Backlog item 28 records a cheaper version that
-    does not work: scaling a customer's whole :math:`F_2` by the *first* term's
-    :math:`(r{+}s{+}x)\log\alpha_1` keeps the sum :math:`O(1)` and looks
-    equivalent, but the terms have different :math:`\alpha`, and customer 93 of
-    the apparel cohort -- whose :math:`F_2` is 5.6e-165, comfortably
-    representable -- moved by 2.4e-3 in log-likelihood under it.
+    the one that dominates it. There is a cheaper version that does *not*
+    work: scaling a customer's whole :math:`F_2` by the
+    *first* term's :math:`(r{+}s{+}x)\log\alpha_1` keeps the sum
+    :math:`O(1)` and looks equivalent, but the terms have different
+    :math:`\alpha`, and customer 93 of the apparel cohort -- whose
+    :math:`F_2` is 5.6e-165, comfortably representable -- moved by 2.4e-3
+    in log-likelihood under it.
 
     A term that is not usable (``nan``, or an overflowed :math:`+\infty`) is
     returned as it stands rather than mixed in, so that it reaches

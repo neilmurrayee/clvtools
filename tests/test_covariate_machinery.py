@@ -188,7 +188,7 @@ class TestCovariateResultAccessors:
 
 
 class TestTheThreeFamiliesAnswerTheSameQuestions:
-    """Backlog item 27, finding 19: the families had diverged around this code.
+    """The three families had diverged around this code.
 
     The Pareto/NBD's covariate result carries its estimates as its own fields;
     the BG/NBD's and the GGom/NBD's hold a
@@ -293,7 +293,7 @@ class TestTheThreeFamiliesAnswerTheSameQuestions:
 
 
 class TestAScalarRegLambdaSaysWhatItWanted:
-    """Backlog item 27, finding 20: `reg_lambdas=1.0` gave a bare TypeError.
+    """A scalar `reg_lambdas=1.0` gave a bare TypeError.
 
     It reached ``tuple(float(v) for v in reg_lambdas)`` and surfaced as
     "'float' object is not iterable", which names Python's difficulty rather
@@ -322,7 +322,7 @@ class TestAScalarRegLambdaSaysWhatItWanted:
 
 
 class TestOptimiserOverridesAreCheckedAgainstTheMethod:
-    """Backlog item 31: `options_for` merged anything the caller passed.
+    """`options_for` merged anything the caller passed.
 
     SciPy's answer to a key the solver does not read is a
     ``UserWarning: Unknown solver options`` and then dropping it, so a caller
@@ -373,7 +373,7 @@ class TestOptimiserOverridesAreCheckedAgainstTheMethod:
 
 
 class TestTheCallersCapReachesThePolish:
-    """Backlog item 31: the polish ran on its own budget, not the caller's.
+    """The polish ran on its own budget, not the caller's.
 
     ``_fit_from_candidates`` polishes an L-BFGS-B result with Nelder-Mead under
     a hard-coded ``maxiter=20_000, maxfev=20_000``, and used to keep those

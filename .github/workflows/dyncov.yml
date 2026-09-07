@@ -17,8 +17,8 @@
 # below live: GitHub fires `schedule:` from the workflow file on the default
 # branch. It has run twice and passed both times -- 33614866210 on `225f6a3`
 # and 33731273502 on `a8f35e1`, read from `gh run list` on 2026-09-03. The
-# first was dispatched by hand rather than left to the night, which is what
-# backlog item 13 asked for.
+# first was dispatched by hand rather than left to the night, so that the
+# schedule was known to work before anyone relied on it.
 name: Time-varying covariate MLE
 
 on:

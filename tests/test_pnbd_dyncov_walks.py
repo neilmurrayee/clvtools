@@ -512,8 +512,7 @@ class TestTheCovariateGridMustReachTheEstimationEnd:
     That is the shape items 21, 27 and 29 spent their time on, and the model
     already had the right words for it at the other end:
     ``dyncov_predict._require_coverage`` refuses a *prediction horizon* the
-    covariates cannot reach. Construction had no equivalent. Backlog item 34,
-    round 5.
+    covariates cannot reach. Construction had no equivalent.
     """
 
     START: ClassVar[pd.Timestamp] = pd.Timestamp("2005-01-03")
@@ -696,8 +695,7 @@ class TestTransactionsAnEpsilonApartCannotLoseAWalk:
     asserting something the data layer has already made vacuous.
 
     What is asserted instead is the step that makes it vacuous, which is the
-    thing that could actually regress. Same shape as `T-01`. Backlog item 34,
-    round 5.
+    thing that could actually regress. Same shape as `T-01`.
     """
 
     def test_two_purchases_an_epsilon_apart_are_one_transaction(self):
@@ -736,7 +734,7 @@ class TestTheTwoDynamicSeriesMayRunToDifferentDates:
     That is a deliberate weakening, and it is safe only because the questions
     equal length would have answered are asked directly instead: the walks'
     interval indices come from the lifetime grid, so it must reach the
-    estimation end (`_check_covariate_span`, backlog item 34); the transaction
+    estimation end (`_check_covariate_span`); the transaction
     grid must cover the walks it is sliced for (`_stack`); and the prediction
     horizon must be reachable (`_require_coverage`). Three checks at the points
     that matter rather than one blanket rule, which is worth pinning as a

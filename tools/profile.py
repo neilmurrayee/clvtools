@@ -100,7 +100,7 @@ def _import_cprofile() -> ModuleType:
     'Profile'``.
 
     Dropping the script's directory for the duration of the import is what makes
-    ``tools/profile.py`` -- the name backlog item 8 asks for -- safe.
+    ``tools/profile.py`` -- a module named after a standard-library one -- safe.
     ``pstats`` needs no such care; it never imports ``profile``.
     """
     here = Path(__file__).resolve().parent
@@ -371,7 +371,7 @@ def _header() -> str:
         "each path's own line move with the machine. cProfile charges every",
         "Python-level call, so a profiled run is slower than an unprofiled one",
         "-- by roughly half here. It used to be several times on the dyncov",
-        "likelihood, and that gap was the finding; backlog item 9 closed it.",
+        "likelihood, and that gap was the finding; the memoisation closed it.",
     ])
 
 

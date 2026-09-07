@@ -299,7 +299,7 @@ class TestTheSlowFitStaysDeselected:
 
 
 class TestImportingTheePackageIsCheap:
-    """Backlog item 27, finding 20: ``scipy.stats`` cost 78% of the import.
+    """``scipy.stats`` cost 78% of the import.
 
     It is wanted by three expressions in :mod:`clvtools.inference` -- two normal
     tails and one chi-squared -- and by nothing in a fit, a prediction or a
