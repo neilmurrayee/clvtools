@@ -55,12 +55,12 @@ live in the README.
 ## Commands
 
 ```bash
-uv run pytest                  # 1,712 tests inc. doctests in src/ and docs/; ~4:50 on an M-series
+uv run pytest                  # 1,846 tests inc. doctests in src/ and docs/; ~5:00 on an M-series
 uv run pytest -m paper         # 22 numbers printed in the paper
 uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
 uv run pytest -m literature    # 22 numbers published in the CLV literature
-uv run pytest -m oracle        # 348 checks against the R oracle (247 fixtures + 101 pairs)
-uv run pytest -m pair          # 101 paired R/Python checks, replayed from recordings
+uv run pytest -m oracle        # 480 checks against the R oracle (247 fixtures + 233 pairs)
+uv run pytest -m pair          # 233 paired R/Python checks, replayed from recordings
 R_LIBS=.Rlib uv run pytest -m pair --oracle-live   # ...and diffed against live R
 uv run pytest -m slow          # 202 full-dataset MLE fits
 uv run pytest -m dyncov_fit    # the time-varying covariate MLE; ~10 min, deselected by default
@@ -115,8 +115,12 @@ The discipline that makes this port trustworthy, in order of strength:
    committed recordings with no R; `--oracle-live` evaluates the R in a live
    session and diffs three ways -- Python against R, the recordings against R
    (the staleness gate), and the input vectors both sides were fed. Prefer a
-   pair over a new fixture column for anything expression-level; add a family
-   with a module beside `tests/pairs_pnbd.py` and re-record.
+   pair over a new fixture column for anything expression-level: drop a
+   `tests/pairs_*.py` module in place -- they are discovered, not imported by
+   name -- and run `tools/oracle/record_pairs.py`. 38 of CLVTools' 76
+   per-customer entry points are still called by no generator; the covariate
+   arms of all three families were the largest block and are done, so the next
+   are the dyncov quantities and `gg_LL`.
 2. **Oracle fixtures, expression by expression.** The generators call CLVTools'
    *internal* per-customer Rcpp entry points and dump every model expression at
    several parameter vectors — including points off the optimum and both arms of

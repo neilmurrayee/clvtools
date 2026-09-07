@@ -35,7 +35,13 @@ commitment.
   both sides were fed. The second of those is a gate this project did not have:
   a fixture edited by hand, or left behind by a CLVTools upgrade, was
   previously green. A weekly workflow runs it. The Pareto/NBD without
-  covariates is the first family on it, at 30 paired evaluations.
+  covariates was the first family on it; the covariate arms of all three
+  families followed, which is where the mechanism earned itself. Of the 76
+  per-customer entry points CLVTools exposes, 38 are called by no fixture
+  generator, and the largest block of those was static-covariate machinery --
+  every GGompertz/NBD covariate expression, and all of the BG/NBD's beyond
+  three scale transforms, had no equation-level check at all. Fifteen now do,
+  at 73 paired evaluations in total.
 - `ConvergenceWarning`: every fit now says when it did not converge, and when a
   Hessian cannot be trusted.
 

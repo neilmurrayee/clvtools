@@ -25,7 +25,6 @@ sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "src"))
 
 import pairs  # noqa: E402
-import pairs_pnbd  # noqa: E402,F401 - imported for the pairs it registers
 
 
 def dump(provenance: dict[str, str], field: str, body: dict[str, list[float]]) -> str:
@@ -42,7 +41,7 @@ def dump(provenance: dict[str, str], field: str, body: dict[str, list[float]]) -
 
 
 def main() -> int:
-    registry = pairs.registry()
+    registry = pairs.load_all()
     if not registry:
         print("no pairs registered")
         return 1

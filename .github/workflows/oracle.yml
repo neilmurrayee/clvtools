@@ -123,9 +123,13 @@ jobs:
       # Without `--oracle-live` every live comparison skips, and a job that
       # silently ran no live check at all would look exactly like a passing
       # one -- the same trap `ci.yml` guards with its interpreter assertion.
+      # `-s` so the drift figure this run measures reaches the log. It is the
+      # size of the two platforms' own floating-point disagreement -- these
+      # recordings are made on macOS and checked here on Linux -- and on a
+      # green run it is the only place that number is visible.
       - name: Diff Python against R
         run: |
-          R_LIBS=.Rlib uv run pytest -m pair --oracle-live -rs \
+          R_LIBS=.Rlib uv run pytest -m pair --oracle-live -rs -s \
             | tee run.log
           grep -qE "^[0-9]+ passed" run.log
           if grep -qE "test_python_matches_live_r.*SKIPPED" run.log; then
