@@ -100,6 +100,102 @@ PRELUDES <- list(
     env$vN <- rep(1, nrow(cbs))
     env$.inputs <- list(x = cbs$x, m.x = cbs$Spending)
     env
+  },
+
+  # Time-varying covariates, S6.4.2. The most expensive prelude here and still
+  # under six seconds, because of one observation: the walk structures do not
+  # depend on the parameters. `latentAttrition` is called with `itnmax = 1`, so
+  # the optimiser takes a single step and stops, and what comes back is a
+  # well-formed fitted object whose walks are the real ones. The fit this
+  # family actually needs takes ten minutes and is the reason `dyncov_fit` is
+  # deselected from every ordinary run; none of that is paid here.
+  #
+  # Parameters reach the prediction entry points by `at()` below, which returns
+  # a copy of the fitted object carrying a declared parameter vector. Those
+  # functions take a fitted object rather than free parameters, so without this
+  # they could only ever be checked at whatever optimum a fit happened to
+  # reach -- which is exactly the "one point, and not a chosen one" problem the
+  # oracle fixtures were built to escape.
+  apparel_dyncov = function() {
+    NAMES_COV <- c("High.Season", "Gender", "Channel")
+    data("apparelTrans", envir = environment())
+    data("apparelDynCov", envir = environment())
+    clv <- clvdata(apparelTrans, date.format = "ymd", time.unit = "week",
+                   estimation.split = 104,
+                   name.id = "Id", name.date = "Date", name.price = "Price")
+    dyn <- SetDynamicCovariates(
+      clv, data.cov.life = apparelDynCov, data.cov.trans = apparelDynCov,
+      names.cov.life = NAMES_COV, names.cov.trans = NAMES_COV,
+      name.id = "Id", name.date = "Cov.Date")
+    fit <- latentAttrition(
+      ~ High.Season + Gender + Channel | High.Season + Gender + Channel,
+      family = pnbd, data = dyn, verbose = FALSE,
+      optimx.args = list(hessian = FALSE, itnmax = 1))
+
+    args <- cpp("pnbd_dyncov_getLLcallargs_ind")(fit)
+    cbs <- fit@cbs
+
+    env <- new.env(parent = globalenv())
+    env$cpp <- cpp
+    env$fit <- fit
+    env$args <- args
+    env$x <- cbs$x; env$tx <- cbs$t.x; env$Tc <- cbs$T.cal
+    env$vN <- rep(1, nrow(cbs))
+    env$endDate <- clv@clv.time@timepoint.holdout.end
+
+    # The likelihood entry points take the walks as loose arguments, so a
+    # snippet builds its call by name from `args` plus its own `params`.
+    env$llargs <- function(p, extra = list()) {
+      a <- args
+      a$params <- c(log(p$model), p$life, p$trans)
+      utils::modifyList(a, extra)
+    }
+    # Re-parameterising takes three assignments and a fourth thing that is not
+    # obvious. `pnbd_dyncov_palive` does not read the coefficients at all: it
+    # reads `@LL.data`, the likelihood intermediates computed once at fit time,
+    # so setting the slots alone moves `CET` -- which rebuilds its own alive
+    # covariates -- and leaves `PAlive` sitting at the fitted values. The
+    # symptom is a pair that disagrees by 90% while the likelihood beside it
+    # agrees to 4e-15, and the numbers give it away: `PAlive` came back
+    # identical for two different gamma vectors. `pnbd_dyncov_getLLdata` is the
+    # recomputation CLVTools does for a given parameter vector, so `at()` does
+    # it too and every prediction expression then sees one consistent set.
+    env$at <- function(p) {
+      f <- fit
+      f@prediction.params.model[] <- p$model
+      f@prediction.params.life[]  <- p$life
+      f@prediction.params.trans[] <- p$trans
+      f@LL.data <- cpp("pnbd_dyncov_getLLdata")(f, c(log(p$model), p$life, p$trans))
+      f
+    }
+
+    # The walk arrays are 130,000 rows across seven tables -- too much to
+    # commit as a recording when they are already committed as CSVs and pinned
+    # by `tests/test_pnbd_dyncov_walks.py`. What goes in `.inputs` instead is a
+    # fingerprint of each: its row count and its column sums. That is not the
+    # array, and it is not claimed to be; it is enough that a re-baselined walk
+    # fixture which nobody re-recorded shows up here rather than silently
+    # changing what the likelihood pairs are evaluated on.
+    # `na.rm` and a separate NA count, because zero-repeaters have no real
+    # transaction walk and carry NA in the index tables. A plain colSums makes
+    # every such column NA, which fingerprints nothing; counting them keeps an
+    # NA appearing or disappearing visible in its own right.
+    fingerprint <- function(m) {
+      m <- as.matrix(m)
+      c(NROW(m), colSums(m, na.rm = TRUE), colSums(is.na(m)))
+    }
+    env$.inputs <- list(
+      x = cbs$x, t.x = cbs$t.x, T.cal = cbs$T.cal, d_omega = cbs$d_omega,
+      fp.covdata_aux_life   = fingerprint(args$covdata_aux_life),
+      fp.covdata_real_life  = fingerprint(args$covdata_real_life),
+      fp.covdata_aux_trans  = fingerprint(args$covdata_aux_trans),
+      fp.covdata_real_trans = fingerprint(args$covdata_real_trans),
+      fp.walkinfo_aux_life  = fingerprint(args$walkinfo_aux_life),
+      fp.walkinfo_real_life = fingerprint(args$walkinfo_real_life),
+      fp.walkinfo_aux_trans = fingerprint(args$walkinfo_aux_trans),
+      fp.walkinfo_real_trans = fingerprint(args$walkinfo_real_trans)
+    )
+    env
   }
 )
 

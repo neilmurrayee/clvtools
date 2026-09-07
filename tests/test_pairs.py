@@ -121,8 +121,10 @@ class TestLive:
         for name, inputs in live["preludes"].items():
             committed = pairs.prelude_inputs(name)
             for column, values in inputs.items():
-                assert np.array_equal(committed[column], np.asarray(values, dtype=float)), (
-                    f"prelude {name}: column {column} differs from the committed copy"
+                drift = pairs.max_rel_error_nan_equal(committed[column], values)
+                assert drift == 0.0, (
+                    f"prelude {name}: column {column} differs from the committed "
+                    f"copy by {drift:.3e}"
                 )
 
     def test_how_far_the_recordings_have_drifted(self, live, record_property):
@@ -204,6 +206,46 @@ class TestRegistry:
         for column in ("x", "t.x", "T.cal"):
             np.testing.assert_allclose(
                 recorded[column], cbs[column].to_numpy(float), rtol=1e-14, atol=0
+            )
+
+    def test_the_dyncov_prelude_matches_the_walk_fixtures_python_reads(self):
+        """The fingerprints, recomputed from the committed CSVs.
+
+        ``pairs_dyncov.py`` reads its walk structures from
+        ``tests/fixtures/dyncov_*.csv`` rather than from the prelude, because
+        they are 130,000 rows and already committed. The prelude records a
+        fingerprint of each -- row count, column sums, NA counts -- and live
+        mode holds that to R. On its own that is R against R, which says
+        nothing about the CSVs the Python side actually uses.
+
+        This is the other half, and it needs no R: rebuild each fingerprint
+        from the fixtures and require the recording to agree. A walk fixture
+        re-baselined without re-recording the prelude now fails here rather
+        than quietly changing what the dyncov pairs are evaluated on.
+        """
+        import pairs_dyncov
+
+        recorded = pairs.prelude_inputs("apparel_dyncov")
+        walks = pairs_dyncov.walks()
+        arrays = {
+            "covdata_aux_life": walks.covdata_aux_life,
+            "covdata_real_life": walks.covdata_real_life,
+            "covdata_aux_trans": walks.covdata_aux_trans,
+            "covdata_real_trans": walks.covdata_real_trans,
+            "walkinfo_aux_life": walks.walkinfo_aux_life,
+            "walkinfo_real_life": walks.walkinfo_real_life,
+            "walkinfo_aux_trans": walks.walkinfo_aux_trans,
+            "walkinfo_real_trans": walks.walkinfo_real_trans,
+        }
+        for name, array in arrays.items():
+            m = np.atleast_2d(array)
+            want = np.concatenate(
+                [[m.shape[0]], np.nansum(m, axis=0), np.isnan(m).sum(axis=0)]
+            )
+            np.testing.assert_allclose(
+                recorded[f"fp.{name}"], want, rtol=1e-12, atol=0,
+                err_msg=f"{name}: the committed fixture no longer fingerprints "
+                        f"as the prelude recorded it",
             )
 
     def test_every_case_has_a_recording(self):
