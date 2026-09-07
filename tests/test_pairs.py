@@ -117,14 +117,25 @@ class TestLive:
 
         Without this, a pair compares two implementations of an expression over
         two different datasets and calls the agreement a result.
+
+        Exact for the data itself, and not for the ``fp.`` fingerprints. A raw
+        column is the number R computed and must survive a 17-digit round trip
+        unchanged on any machine. A fingerprint is a *sum* -- over as many as
+        39,754 values -- and floating-point addition is not associative, so two
+        platforms adding the same numbers in the same order through different
+        libm are entitled to differ in the last bits. The first Linux run of
+        `oracle.yml` on this family put that at 7.5e-16 on
+        ``fp.walkinfo_aux_trans``; the bound below is the same
+        :data:`pairs.RECORDING_TOL` the recordings use, six orders above it.
         """
         for name, inputs in live["preludes"].items():
             committed = pairs.prelude_inputs(name)
             for column, values in inputs.items():
                 drift = pairs.max_rel_error_nan_equal(committed[column], values)
-                assert drift == 0.0, (
+                bound = pairs.RECORDING_TOL if column.startswith("fp.") else 0.0
+                assert drift <= bound, (
                     f"prelude {name}: column {column} differs from the committed "
-                    f"copy by {drift:.3e}"
+                    f"copy by {drift:.3e}, above {bound:.0e}"
                 )
 
     def test_how_far_the_recordings_have_drifted(self, live, record_property):
