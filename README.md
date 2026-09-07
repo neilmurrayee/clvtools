@@ -241,15 +241,20 @@ runs it weekly and on any change to the oracle machinery.
 Recording is a script and deliberately not a pytest mode: a suite that can
 rewrite its own expectations is one bad flag away from proving nothing.
 
-**What is on it, and why those.** Twenty-four pairs, 73 evaluations. The
-Pareto/NBD without covariates came first, but the second module answers a
-question the mechanism made countable: of the 76 per-customer entry points
-CLVTools exposes, **38 are called by no generator in `tools/oracle/`**, and the
-largest block of those is the static-covariate machinery — every GGompertz/NBD
-covariate expression, and all of the BG/NBD's beyond three scale transforms.
-They were reachable only through `predict()` and `plot()` output, which is a
-fit away from the equation and cannot be evaluated off the optimum at all.
-Fifteen are now paired.
+**What is on it, and why those.** Thirty-nine pairs, 124 evaluations, across
+four modules: `pairs_pnbd.py`, `pairs_families.py` (BG/NBD, GGompertz/NBD,
+Gamma-Gamma) and `pairs_staticcov.py` (the covariate arm of all three
+latent-attrition families), discovered rather than imported by name.
+
+The Pareto/NBD came first, but what the rest answer is a question the mechanism
+made countable: of the 76 per-customer entry points CLVTools exposes, **38 were
+called by no generator in `tools/oracle/`**, and the largest block was the
+static-covariate machinery — every GGompertz/NBD covariate expression, and all
+of the BG/NBD's beyond three scale transforms. They were reachable only through
+`predict()` and `plot()` output, which is a fit away from the equation and
+cannot be evaluated off the optimum at all. That whole surface is now paired;
+what remains unpinned is the time-varying covariate machinery, which needs a
+prelude that builds walks.
 
 What those pairs assert is a claim, not a detail. CLVTools computes each
 covariate quantity in dedicated C++; this package computes the *no-covariate*
@@ -288,9 +293,13 @@ And the staleness gate was exact equality for a day. That is right on one
 machine and wrong across two: the first Linux run of `oracle.yml` failed 28 of
 73 recordings made on an M-series Mac while every Python-against-live-R
 comparison in the same run passed. Correctly-rounded `lgamma` and `exp` are not
-the *same* correctly-rounded value everywhere. The gate is now 1e-12, far above
-that noise and far below anything staleness produces, and a green live run
-prints the worst drift it actually measured.
+the *same* correctly-rounded value everywhere. It took a second run to find the
+size of that: **5.7e-12**, on the BG/NBD covariate optimum where `a` and `b` are
+4.6e3 and 3.4e4 and the log-beta differencing has little left to give. The gate
+is 1e-10 — that measurement with an order of margin — which still catches a
+one-part-in-a-billion edit to a recording, and a version bump or a hand-edit
+moves things by orders more than either. A green live run prints the worst
+drift it measured, so the margin is visible rather than assumed.
 
 Two oracle classes stand outside R. The papers the models come from —
 Fader, Hardie & Lee (2005) for the Pareto/NBD and the BG/NBD, Fader & Hardie
@@ -372,6 +381,29 @@ its own published likelihood, because rounding to two significant figures is a
 5% move along this direction. So the tests assert the ratio and the likelihood
 and not the coordinates, and `s` is asserted only as a spread — it tilts along
 the same ridge, moving 0.001 for 9e-7 of log-likelihood.
+
+**CLVTools' GGompertz/NBD likelihood loses accuracy as `b` grows, and this
+package's does not.** The paired oracle put the two against each other at
+several `b`, and they stopped agreeing: 3.7e-16 at `b = 0.01`, 2.7e-06 at 0.5,
+7.6e-04 at 6. Agreement at small `b` says both sides evaluate the same
+expression, so what diverges is how well each integrates it. Refining settles
+it — against this package's own integrand at `epsrel = 1e-14`:
+
+| `b` | ours | CLVTools | `b` | ours | CLVTools |
+| --- | --- | --- | --- | --- | --- |
+| 0.01 | 3.7e-16 | 3.7e-16 | 1.0 | 6.7e-16 | 3.4e-09 |
+| 0.1 | 4.3e-16 | 4.0e-12 | 1.5 | 4.0e-16 | 2.3e-07 |
+| 0.5 | 4.4e-16 | 2.7e-06 | 6.0 | 2.9e-16 | 7.6e-04 |
+
+Ours is converged everywhere; the oracle's GSL quadrature is not. This costs
+nothing in practice, for the reason the finding above gives: `bT << 1` is the
+identified region for this family, the fitted `b` on apparel is 8.1e-07, and no
+fit on real data goes near `b = 6`. It is recorded because it is the first case
+where the oracle is the less accurate side, and because a future reader
+comparing at large `b` should know which number to keep.
+`TestGGompertzQuadratureAtLargeB` pins the half that must not regress — that
+ours stays converged — and needs no R to do it. The `ggomnbd.nocov.LL_ind`
+pair's 1e-6 tolerance is CLVTools' accuracy in that range, not ours.
 
 **Three transcription errors in the printed equations.** Eq. (14) writes the
 per-transaction spending density with $z_i^{r-1}$, using the Pareto/NBD's $r$
@@ -836,12 +868,12 @@ which it reported successful convergence on the Gamma-Gamma at a local optimum
 ## Testing
 
 ```bash
-uv run pytest                  # 1,846 tests, including doctests in src/ and docs/
+uv run pytest                  # 2,010 tests, including doctests in src/ and docs/
 uv run pytest -m paper         # 22 numbers printed in the paper
 uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
 uv run pytest -m literature    # 22 numbers published in the CLV literature
-uv run pytest -m oracle        # 480 checks against the R oracle (247 fixtures + 233 pairs)
-uv run pytest -m pair          # 233 paired R/Python checks; 81 run without R
+uv run pytest -m oracle        # 644 checks against the R oracle (247 fixtures + 390 pairs)
+uv run pytest -m pair          # 390 paired R/Python checks; 134 run without R
 uv run pytest -m slow          # 202 full-dataset MLE fits
 uv run pytest -m dyncov_fit    # the time-varying covariate MLE; ~10 minutes
 uv run pytest --cov=clvtools --cov-report=term-missing

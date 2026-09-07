@@ -251,7 +251,14 @@ def bgnbd_scaled(p, d):
 @pair(
     id="bgnbd.staticcov.LL_ind",
     spec="M-05",
-    tol=1e-11,
+    # 1e-9, and the reason is the `mle` point below rather than the expression.
+    # At `a = 4.6e3`, `b = 3.4e4` the likelihood's log-beta ratio differences
+    # two nearly equal quantities, and how much of that cancellation survives
+    # depends on the platform's `lgamma`: this pair agrees to better than 1e-11
+    # on macOS and to 2.6e-11 on a Linux runner, against the same R. A bound
+    # tight enough to be a real check on the expression and loose enough not to
+    # be a check on libm.
+    tol=1e-9,
     r='cpp("bgnbd_staticcov_LL_ind")(vParams = c(log(p$model), p$life, p$trans),'
       " vX = x, vT_x = tx, vT_cal = Tc, mCov_life = mLife, mCov_trans = mTrans)",
     **BGNBD,

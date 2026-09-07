@@ -75,22 +75,26 @@ InputValue = Sequence[float] | Mapping[str, Sequence[float]]
 
 #: How far a committed recording may sit from what live R returns *today*.
 #:
-#: This was exact equality for one day, on the reasoning that both numbers come
-#: from the same expression in the same implementation and only a 17-digit
-#: round trip separates them. That is true on one machine. It is false across
-#: two: the first Linux run of `oracle.yml` failed 28 of 73 cases against
-#: recordings made on an M-series Mac, while every Python-against-live-R
-#: comparison in the same run passed. The difference is libm -- `lgamma`,
-#: `exp`, and the hypergeometric series built on them are correctly rounded to
-#: within an ULP or so, not to the same ULP everywhere.
+#: Calibrated on a runner, not on a laptop, and it took two attempts. It was
+#: exact equality for a day, which is right on one machine and false across
+#: two: the first Linux run of `oracle.yml` failed 28 of 73 recordings made on
+#: an M-series Mac while every Python-against-live-R comparison in the same run
+#: passed. Correctly-rounded `lgamma` and `exp` are correct to within an ULP,
+#: not to the *same* ULP everywhere.
 #:
-#: 1e-12 is chosen to sit far above that noise and far below anything the gate
-#: is for. Staleness means a hand-edited fixture, a generator changed without
-#: being re-run, or a CLVTools release nobody re-baselined, and all three move
-#: values by orders of magnitude more than this. The deliberate-tampering check
-#: that proved the gate works perturbed a log-likelihood by 1e-9 absolute on a
-#: value near -25, which is 4e-11 relative and still caught here with room.
-RECORDING_TOL = 1e-12
+#: 1e-12 was the second attempt, and the next run measured the actual spread:
+#: **5.7e-12**, on `bgnbd.staticcov.LL_ind@mle`, where the fitted `a` and `b`
+#: are 4.6e3 and 3.4e4 and the log-beta differencing has little left to give.
+#: 1e-10 is that measurement with an order of magnitude of margin.
+#:
+#: What the bound is for is unaffected by the loosening. Staleness means a
+#: hand-edited fixture, a generator changed without being re-run, or a CLVTools
+#: release nobody re-baselined, and all three move values by far more than
+#: this: re-recording against a *different* CLVTools would move the fitted
+#: points in the third or fourth digit, not the eleventh. What it no longer
+#: claims to catch is a perturbation smaller than 1e-10 relative, which is a
+#: change nobody makes on purpose and no version bump produces.
+RECORDING_TOL = 1e-10
 
 
 @dataclass(frozen=True)

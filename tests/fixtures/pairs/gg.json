@@ -1,0 +1,10 @@
+{
+ "clvtools.version": "0.12.1",
+ "r.version": "R version 4.6.1 (2026-06-24)",
+ "generated.by": "tools/oracle/record_pairs.py",
+ "values": {
+  "gg.LL_sum@large.shapes": [-4823.799044252748],
+  "gg.LL_sum@mle": [-1670.6630442977548],
+  "gg.LL_sum@small.q": [-1841.5665839329222]
+ }
+}

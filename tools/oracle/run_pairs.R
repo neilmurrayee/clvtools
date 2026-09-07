@@ -82,6 +82,24 @@ PRELUDES <- list(
       trans.Gender = m.trans[, "Gender"], trans.Channel = m.trans[, "Channel"]
     )
     env
+  },
+
+  # Spending. The Gamma-Gamma is fitted on repeat transactions only, so this
+  # CBS is not the one above with a column added: it has fewer customers, the
+  # zero-repeaters having no mean spending to speak of.
+  apparel_spending = function() {
+    data("apparelTrans", envir = environment())
+    d <- clvdata(apparelTrans, date.format = "ymd", time.unit = "week",
+                 estimation.split = 104,
+                 name.id = "Id", name.date = "Date", name.price = "Price")
+    fit <- spending(family = gg, data = d, verbose = FALSE)
+    cbs <- fit@cbs
+    env <- new.env(parent = globalenv())
+    env$cpp <- cpp
+    env$x <- cbs$x; env$mx <- cbs$Spending
+    env$vN <- rep(1, nrow(cbs))
+    env$.inputs <- list(x = cbs$x, m.x = cbs$Spending)
+    env
   }
 )
 
