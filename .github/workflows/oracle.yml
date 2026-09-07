@@ -81,11 +81,19 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libgsl-dev
 
       # `tools/setup_oracle.sh` installs into ./.Rlib and never the system
-      # library, which is what `tests/pairs.py` looks for. The runner's cache
-      # key is the script plus the pinned version, so a bump re-installs.
-      - name: Cache CLVTools
+      # library, which is what `tests/pairs.py` looks for. The cache key is the
+      # script itself, so changing what it installs re-installs.
+      #
+      # Restore and save are separate steps rather than one `actions/cache` on
+      # purpose: the combined action saves in a post step that also runs when
+      # the job failed, and the failure mode here is precisely a broken .Rlib --
+      # `R CMD INSTALL` deletes a half-installed package on its way out, so a
+      # failed run leaves a directory that looks cacheable and is useless.
+      # Caching that would make the next run fail identically with no install
+      # step to blame. `if: success()` is what keeps a bad library out.
+      - name: Restore CLVTools
         id: rlib
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .Rlib
           key: rlib-${{ runner.os }}-${{ hashFiles('tools/setup_oracle.sh') }}
@@ -93,6 +101,23 @@ jobs:
       - name: Install CLVTools
         if: steps.rlib.outputs.cache-hit != 'true'
         run: ./tools/setup_oracle.sh
+
+      # The script ends by loading the package and printing its version, so
+      # reaching here means it installed. Assert it independently anyway: this
+      # is the one thing the whole job depends on.
+      - name: Confirm the oracle loads
+        run: |
+          R_LIBS=.Rlib Rscript -e '
+            suppressMessages(library(CLVTools))
+            stopifnot(packageVersion("CLVTools") == "0.12.1")
+            cat("CLVTools", as.character(packageVersion("CLVTools")), "\n")'
+
+      - name: Save CLVTools
+        if: success() && steps.rlib.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .Rlib
+          key: rlib-${{ runner.os }}-${{ hashFiles('tools/setup_oracle.sh') }}
 
       # Named by marker, so this job is the paired oracle and nothing else.
       # Without `--oracle-live` every live comparison skips, and a job that
