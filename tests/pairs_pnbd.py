@@ -23,21 +23,21 @@ something a run can check.
 from __future__ import annotations
 
 import numpy as np
-from pairs import pair, prelude_inputs
+from pairs import pair
 
 from clvtools.pnbd import aggregate
 
-#: The estimation-period sufficient statistics both sides are evaluated on,
-#: read from the prelude's own recording rather than recomputed or taken from a
-#: second copy. That is what makes the input check in live mode mean something:
-#: the vectors compared against R are literally the ones passed in below, so a
-#: difference between the two implementations can only be the *expression*.
-#: ``tests/test_pairs.py`` also holds this recording to ``cbs_estimation.csv``,
-#: so the paired oracle and the fixture suite describe the same 600 customers.
-_INPUTS = prelude_inputs("apparel")
-X = _INPUTS["x"]
-TX = _INPUTS["t.x"]
-TC = _INPUTS["T.cal"]
+
+def cbs(d):
+    """``(x, t_x, T)`` from the prelude's data.
+
+    Every pair below is handed ``d`` rather than reading a fixture of its own,
+    so the vectors these functions see are literally the ones live mode
+    compares against R. ``tests/test_pairs.py`` also holds that recording to
+    ``cbs_estimation.csv``, so the paired oracle and the 247 fixture-based
+    checks describe the same 600 customers.
+    """
+    return d["x"], d["t.x"], d["T.cal"]
 
 #: S6.2.1's optimum, then the five points chosen to exercise the branches.
 #: Identical to the grid in ``tools/oracle/generate_fixtures.R``, so a pair and
@@ -66,9 +66,9 @@ COMMON = {"family": "pnbd_nocov", "prelude": "apparel", "inputs": GRID}
     r='cpp("pnbd_nocov_LL_ind")(vLogparams = log(p), vX = x, vT_x = tx, vT_cal = Tc)',
     **COMMON,
 )
-def ll_ind(p):
+def ll_ind(p, d):
     """S3.2 eq. 8, per customer."""
-    return aggregate.log_likelihood_ind(X, TX, TC, *p)
+    return aggregate.log_likelihood_ind(*cbs(d), *p)
 
 
 @pair(
@@ -81,9 +81,9 @@ def ll_ind(p):
     r='-cpp("pnbd_nocov_LL_sum")(log(p), x, tx, Tc, vN)',
     **COMMON,
 )
-def ll_sum(p):
+def ll_sum(p, d):
     """The sample log-likelihood S3.2 maximises."""
-    return aggregate.log_likelihood(X, TX, TC, *p)
+    return aggregate.log_likelihood(*cbs(d), *p)
 
 
 @pair(
@@ -94,9 +94,9 @@ def ll_sum(p):
       " vX = x, vT_x = tx, vT_cal = Tc)",
     **COMMON,
 )
-def palive(p):
+def palive(p, d):
     """S4.1: P(alive at T | x, t_x, T)."""
-    return aggregate.probability_alive(X, TX, TC, *p)
+    return aggregate.probability_alive(*cbs(d), *p)
 
 
 @pair(
@@ -112,9 +112,9 @@ def palive(p):
       " dPeriods = 52, vX = x, vT_x = tx, vT_cal = Tc)",
     **COMMON,
 )
-def cet(p):
+def cet(p, d):
     """S4.2: expected transactions over the next 52 weeks."""
-    return aggregate.conditional_expected_transactions(X, TX, TC, HORIZON_WEEKS, *p)
+    return aggregate.conditional_expected_transactions(*cbs(d), HORIZON_WEEKS, *p)
 
 
 @pair(
@@ -126,8 +126,8 @@ def cet(p):
       " vX = x, vT_x = tx, vT_cal = Tc)",
     **COMMON,
 )
-def dert(p):
+def dert(p, d):
     """S4.3: discounted expected residual transactions."""
     return aggregate.discounted_expected_residual_transactions(
-        X, TX, TC, CONTINUOUS_DISCOUNT_FACTOR, *p
+        *cbs(d), CONTINUOUS_DISCOUNT_FACTOR, *p
     )

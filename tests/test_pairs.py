@@ -22,14 +22,16 @@ remember.
 
 from __future__ import annotations
 
+import sys
+
 import numpy as np
 import pairs
-import pairs_pnbd  # noqa: F401 - imported for the pairs it registers
 import pytest
 from conftest import fixture_csv
 
 pytestmark = [pytest.mark.oracle, pytest.mark.pair]
 
+pairs.load_all()
 CASES = pairs.cases()
 
 #: ``id@input`` for each, which is also the recording key -- so a failure names
@@ -67,7 +69,7 @@ class TestReplay:
         want = pairs.recording(pair.family)["values"][pairs.key(pair.id, input_name)]
         if not pair.defined_at(input_name):
             pytest.skip("undefined here; see TestUndefined")
-        got = pair.py(pair.inputs[input_name])
+        got = pairs.evaluate(pair, input_name)
         error = pairs.max_rel_error(got, want)
         assert error <= pair.tol, (
             f"{pairs.key(pair.id, input_name)} ({pair.spec}): "
@@ -84,7 +86,7 @@ class TestLive:
         k = pairs.key(pair.id, input_name)
         if not pair.defined_at(input_name):
             pytest.skip("undefined here; see TestUndefined")
-        error = pairs.max_rel_error(pair.py(pair.inputs[input_name]), live["values"][k])
+        error = pairs.max_rel_error(pairs.evaluate(pair, input_name), live["values"][k])
         assert error <= pair.tol, (
             f"{k} ({pair.spec}): python and live R differ by {error:.3e}, "
             f"tolerance {pair.tol:.0e}"
@@ -94,19 +96,19 @@ class TestLive:
     def test_the_recording_still_matches_live_r(self, live, pair, input_name):
         """The staleness gate: what was committed is what R still produces.
 
-        Exact rather than tolerant, and ``equal_nan`` because an undefined
-        entry must still record as undefined. Both sides are the same
-        expression in the same implementation, so the only thing between them
-        is the 17-digit round trip through ``tools/oracle/run_pairs.R``.
-        Anything at all here means the recording no longer came from this
-        oracle -- a hand-edited fixture, a generator that was changed without
-        being re-run, or a CLVTools upgrade nobody re-baselined.
+        Held to :data:`pairs.RECORDING_TOL`, which is 1e-12 and not exact
+        equality -- see the constant for why, and for what the first Linux run
+        of this job had to say about it. Anything above that bound means the
+        recording no longer came from this oracle: a hand-edited fixture, a
+        generator changed without being re-run, or a CLVTools upgrade nobody
+        re-baselined.
         """
         k = pairs.key(pair.id, input_name)
-        recorded = np.asarray(pairs.recording(pair.family)["values"][k], dtype=float)
-        live_values = np.asarray(live["values"][k], dtype=float)
-        assert np.array_equal(recorded, live_values, equal_nan=True), (
-            f"{k}: the committed recording differs from live R -- re-record with "
+        recorded = pairs.recording(pair.family)["values"][k]
+        drift = pairs.max_rel_error_nan_equal(recorded, live["values"][k])
+        assert drift <= pairs.RECORDING_TOL, (
+            f"{k}: the committed recording differs from live R by {drift:.3e}, "
+            f"above {pairs.RECORDING_TOL:.0e} -- re-record with "
             f"tools/oracle/record_pairs.py, and find out why it drifted"
         )
 
@@ -122,6 +124,27 @@ class TestLive:
                 assert np.array_equal(committed[column], np.asarray(values, dtype=float)), (
                     f"prelude {name}: column {column} differs from the committed copy"
                 )
+
+    def test_how_far_the_recordings_have_drifted(self, live, record_property):
+        """Report the worst drift across every case, so the number is visible.
+
+        The bound this passes under says only that nothing is stale. What a
+        reader of a green run wants to know is how much room is left, which on
+        a machine unlike the one that recorded is the size of the platform's
+        own floating-point disagreement. Recorded as a property so it survives
+        in the JUnit output, and printed so it survives in the log.
+        """
+        worst, where = 0.0, ""
+        for pair, input_name in CASES:
+            k = pairs.key(pair.id, input_name)
+            drift = pairs.max_rel_error_nan_equal(
+                pairs.recording(pair.family)["values"][k], live["values"][k]
+            )
+            if drift > worst:
+                worst, where = drift, k
+        record_property("max_recording_drift", worst)
+        sys.stderr.write(f"\nworst recording drift: {worst:.3e} at {where or 'nothing'}\n")
+        assert worst <= pairs.RECORDING_TOL
 
     def test_the_oracle_is_the_version_the_recording_names(self, live):
         """A CLVTools upgrade is a re-baselining decision, not a surprise."""
@@ -152,7 +175,7 @@ class TestUndefined:
     def test_python_refuses_rather_than_returning_nan(self, pair, input_name):
         """Ours. A NaN that propagates into a CLV is worse than a stack trace."""
         with pytest.raises(ValueError, match="undefined"):
-            pair.py(pair.inputs[input_name])
+            pairs.evaluate(pair, input_name)
 
 
 class TestRegistry:

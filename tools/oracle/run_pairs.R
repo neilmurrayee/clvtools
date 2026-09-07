@@ -49,6 +49,39 @@ PRELUDES <- list(
     env$vN <- rep(1, nrow(cbs))
     env$.inputs <- list(x = cbs$x, t.x = cbs$t.x, T.cal = cbs$T.cal)
     env
+  },
+
+  # The same 600 customers with S6.4's two covariates on both processes. The
+  # design matrices go into `.inputs` one column at a time rather than as
+  # matrices: a matrix flattens column-major on the way out and would have to
+  # be reshaped on the way in, and a reshape that silently transposes is the
+  # kind of error this whole mechanism exists to make impossible.
+  apparel_staticcov = function() {
+    data("apparelTrans", envir = environment())
+    data("apparelStaticCov", envir = environment())
+    d <- clvdata(apparelTrans, date.format = "ymd", time.unit = "week",
+                 estimation.split = 104,
+                 name.id = "Id", name.date = "Date", name.price = "Price")
+    sc <- SetStaticCovariates(d, data.cov.life = apparelStaticCov,
+                              data.cov.trans = apparelStaticCov,
+                              names.cov.life = c("Gender", "Channel"),
+                              names.cov.trans = c("Gender", "Channel"))
+    fit <- latentAttrition(~ Gender + Channel | Gender + Channel,
+                           family = pnbd, data = sc, verbose = FALSE)
+    cbs <- fit@cbs
+    m.life  <- as.matrix(sc@data.cov.life[,  c("Gender", "Channel"), with = FALSE])
+    m.trans <- as.matrix(sc@data.cov.trans[, c("Gender", "Channel"), with = FALSE])
+    env <- new.env(parent = globalenv())
+    env$cpp <- cpp
+    env$x <- cbs$x; env$tx <- cbs$t.x; env$Tc <- cbs$T.cal
+    env$vN <- rep(1, nrow(cbs))
+    env$mLife <- m.life; env$mTrans <- m.trans
+    env$.inputs <- list(
+      x = cbs$x, t.x = cbs$t.x, T.cal = cbs$T.cal,
+      life.Gender  = m.life[, "Gender"],  life.Channel  = m.life[, "Channel"],
+      trans.Gender = m.trans[, "Gender"], trans.Channel = m.trans[, "Channel"]
+    )
+    env
   }
 )
 

@@ -241,13 +241,56 @@ runs it weekly and on any change to the oracle machinery.
 Recording is a script and deliberately not a pytest mode: a suite that can
 rewrite its own expectations is one bad flag away from proving nothing.
 
-The first family on it is the Pareto/NBD without covariates — five expressions
-at six parameter vectors. It found something on its first run. Two grid points
-set `s = 1`, where S4.2's CET divides by `s - 1`; CLVTools returns `NaN` and
-this package raises. The existing fixture tests handle that by leaving those
-points out of the CET grid. A pair instead declares `undefined_at`, which does
-not skip them — it asserts *both* halves, that the oracle returns `NaN` and that
-we refuse, so either side changing reports.
+**What is on it, and why those.** Twenty-four pairs, 73 evaluations. The
+Pareto/NBD without covariates came first, but the second module answers a
+question the mechanism made countable: of the 76 per-customer entry points
+CLVTools exposes, **38 are called by no generator in `tools/oracle/`**, and the
+largest block of those is the static-covariate machinery — every GGompertz/NBD
+covariate expression, and all of the BG/NBD's beyond three scale transforms.
+They were reachable only through `predict()` and `plot()` output, which is a
+fit away from the equation and cannot be evaluated off the optimum at all.
+Fifteen are now paired.
+
+What those pairs assert is a claim, not a detail. CLVTools computes each
+covariate quantity in dedicated C++; this package computes the *no-covariate*
+quantity at per-customer scale parameters. Nothing makes those coincide except
+S3.3's algebra — covariates enter only by scaling `alpha` and `beta`, or `a`
+and `b` — and the pairs are that algebra checked against an independent
+implementation of it. The parameter blocks are named (`p$life`, `p$trans`)
+rather than flat for a reason CLVTools supplies itself: `pnbd_staticcov_PAlive`
+takes trans-then-life while `pnbd_staticcov_DERT` takes life-then-trans, and a
+flat vector would let a transposition through in silence.
+
+**Three things it found.** Two grid points set `s = 1`, where S4.2's CET and
+S4.4's expectation divide by `s - 1`; CLVTools returns `NaN` and this package
+raises. The existing fixture tests handle that by leaving those points out of
+the grid. A pair declares `undefined_at`, which does not skip them — it asserts
+*both* halves, so either side changing reports.
+
+The GGompertz/NBD's covariate CET agrees with CLVTools to 5.1e-07 at the fitted
+optimum, where `b = 3.1e-06`, and to 1e-11 or better away from it. Both sides
+integrate numerically and the integrand's conditioning degrades as `b → 0`,
+which is where this family's optimum on apparel sits. Swept, with everything
+else held at the fitted values:
+
+| `b` | max rel err | `b` | max rel err |
+| --- | --- | --- | --- |
+| 3.1e-06 | 1.47e-07 | 1e-03 | 2.02e-11 |
+| 1e-05 | 2.54e-07 | 1e-02 | 2.61e-11 |
+| 1e-04 | 4.66e-10 | 1e-01 | 1.30e-12 |
+
+Monotone in `b`, and twelve digits clean away from the degenerate end — which
+is what a quadrature difference looks like, and not what a wrong expression
+looks like. That pair's tolerance is 1e-6, the loosest here, set above the
+worst of those rather than at a round number.
+
+And the staleness gate was exact equality for a day. That is right on one
+machine and wrong across two: the first Linux run of `oracle.yml` failed 28 of
+73 recordings made on an M-series Mac while every Python-against-live-R
+comparison in the same run passed. Correctly-rounded `lgamma` and `exp` are not
+the *same* correctly-rounded value everywhere. The gate is now 1e-12, far above
+that noise and far below anything staleness produces, and a green live run
+prints the worst drift it actually measured.
 
 Two oracle classes stand outside R. The papers the models come from —
 Fader, Hardie & Lee (2005) for the Pareto/NBD and the BG/NBD, Fader & Hardie
@@ -793,12 +836,12 @@ which it reported successful convergence on the Gamma-Gamma at a local optimum
 ## Testing
 
 ```bash
-uv run pytest                  # 1,712 tests, including doctests in src/ and docs/
+uv run pytest                  # 1,846 tests, including doctests in src/ and docs/
 uv run pytest -m paper         # 22 numbers printed in the paper
 uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
 uv run pytest -m literature    # 22 numbers published in the CLV literature
-uv run pytest -m oracle        # 348 checks against the R oracle (247 fixtures + 101 pairs)
-uv run pytest -m pair          # 101 paired R/Python checks; 37 run without R
+uv run pytest -m oracle        # 480 checks against the R oracle (247 fixtures + 233 pairs)
+uv run pytest -m pair          # 233 paired R/Python checks; 81 run without R
 uv run pytest -m slow          # 202 full-dataset MLE fits
 uv run pytest -m dyncov_fit    # the time-varying covariate MLE; ~10 minutes
 uv run pytest --cov=clvtools --cov-report=term-missing
