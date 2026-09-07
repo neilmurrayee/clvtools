@@ -26,6 +26,16 @@ commitment.
   paper.
 - Continuous integration on 3.12 and 3.13, and a nightly job for the
   time-varying covariate MLE.
+- **A paired oracle** (`tests/pairs.py`). An R expression and the Python
+  function that must equal it are now declared together, with the inputs and
+  the tolerance, instead of living in a generator and a test module with
+  nothing relating them. `pytest -m pair` replays the pairing against committed
+  recordings and needs no R; `--oracle-live` evaluates the R snippets in a live
+  session and diffs Python against R, the recordings against R, and the inputs
+  both sides were fed. The second of those is a gate this project did not have:
+  a fixture edited by hand, or left behind by a CLVTools upgrade, was
+  previously green. A weekly workflow runs it. The Pareto/NBD without
+  covariates is the first family on it, at 30 paired evaluations.
 - `ConvergenceWarning`: every fit now says when it did not converge, and when a
   Hessian cannot be trusted.
 

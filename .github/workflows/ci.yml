@@ -8,10 +8,12 @@
 # Two properties of this repo are asserted by the workflow rather than stated:
 #
 #   * **It runs without R.** The R package CLVTools is the oracle, but its
-#     output is committed under `tests/fixtures/` (123 files) and `data/`
+#     output is committed under `tests/fixtures/` (125 files) and `data/`
 #     precisely so that the suite never shells out to `Rscript`. No R is
 #     installed below; if that promise is ever broken, this job is where it
-#     breaks.
+#     breaks. The paired oracle (`tests/pairs.py`) keeps that promise too: its
+#     default mode replays committed recordings, and only `--oracle-live`,
+#     which `oracle.yml` passes and this job does not, reaches for R.
 #   * **It runs on every supported Python.** `requires-python = ">=3.12"`, so
 #     the matrix is 3.12 and 3.13, and a step below asserts the interpreter
 #     under test really is the matrix one rather than the 3.12 pinned by the
