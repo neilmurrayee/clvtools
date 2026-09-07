@@ -55,12 +55,12 @@ live in the README.
 ## Commands
 
 ```bash
-uv run pytest                  # 1,846 tests inc. doctests in src/ and docs/; ~5:00 on an M-series
+uv run pytest                  # 2,010 tests inc. doctests in src/ and docs/; ~5:00 on an M-series
 uv run pytest -m paper         # 22 numbers printed in the paper
 uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
 uv run pytest -m literature    # 22 numbers published in the CLV literature
-uv run pytest -m oracle        # 480 checks against the R oracle (247 fixtures + 233 pairs)
-uv run pytest -m pair          # 233 paired R/Python checks, replayed from recordings
+uv run pytest -m oracle        # 644 checks against the R oracle (247 fixtures + 390 pairs)
+uv run pytest -m pair          # 390 paired R/Python checks, replayed from recordings
 R_LIBS=.Rlib uv run pytest -m pair --oracle-live   # ...and diffed against live R
 uv run pytest -m slow          # 202 full-dataset MLE fits
 uv run pytest -m dyncov_fit    # the time-varying covariate MLE; ~10 min, deselected by default

@@ -874,3 +874,61 @@ class TestTheGgomnbdCetIsThePostErratumOne:
         )
         assert np.isfinite(got)
         assert got > 0.0
+
+
+@pytest.mark.oracle
+class TestGGompertzQuadratureAtLargeB:
+    """Spec M-06: where this package and CLVTools part company, and who is right.
+
+    The paired oracle put the GGompertz/NBD likelihood against CLVTools at
+    several ``b``, and the two stopped agreeing as ``b`` grew: 3.7e-16 at
+    ``b = 0.01``, 2.3e-07 at 1.5, 7.6e-04 at 6. Agreement at small ``b``
+    establishes that both sides evaluate the *same* expression, so what
+    diverges is how accurately each integrates it.
+
+    Refining the quadrature settles which. Against this package's own integrand
+    at ``epsrel = 1e-14``, this package's default settings are correct to
+    2.9e-16 through 6.7e-16 at every ``b`` in that sweep, while CLVTools walks
+    away from the refined value in step with the disagreement above. The
+    inaccuracy is the oracle's.
+
+    It costs nothing in practice, and the README explains why: ``bT << 1`` is
+    the identified region for this family, the fitted ``b`` on apparel is
+    8.1e-07, and no fit anywhere near real data reaches ``b = 6``. What is
+    pinned here is the half that must not regress -- that our answer is
+    converged -- and it needs no R to check.
+    """
+
+    #: The sweep the pair recorded, as the tolerance for our own convergence.
+    #: Machine precision, because that is what was measured, not a round number.
+    CONVERGED = 1e-14
+
+    @pytest.mark.parametrize("b", [0.01, 0.1, 0.5, 1.0, 1.5, 3.0, 6.0])
+    def test_our_quadrature_has_converged(self, b):
+        """Refining the integration by four orders of magnitude moves nothing."""
+        import numpy as np
+
+        from clvtools import ggomnbd
+
+        cbs = fixture_csv("cbs_estimation")
+        args = (
+            cbs["x"].to_numpy(float),
+            cbs["t.x"].to_numpy(float),
+            cbs["T.cal"].to_numpy(float),
+            2.0, 40.0, b, 0.8, 6.0,
+        )
+        default = ggomnbd.log_likelihood_ind(*args)
+
+        loose = dict(ggomnbd._QUAD)
+        try:
+            ggomnbd._QUAD.update(limit=20000, epsabs=1e-15, epsrel=1e-14)
+            refined = ggomnbd.log_likelihood_ind(*args)
+        finally:
+            ggomnbd._QUAD.clear()
+            ggomnbd._QUAD.update(loose)
+
+        error = np.max(np.abs(default - refined) / np.maximum(1.0, np.abs(refined)))
+        assert error <= self.CONVERGED, (
+            f"b = {b}: the default quadrature differs from the refined one by "
+            f"{error:.3e}, so this package's own answer is no longer converged"
+        )

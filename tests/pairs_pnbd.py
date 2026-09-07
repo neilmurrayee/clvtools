@@ -1,9 +1,8 @@
 """The Pareto/NBD without covariates, paired expression by expression.
 
 The first family onto the paired oracle, and the one the rest should follow.
-Five expressions -- S3.2's likelihood in both its per-customer and summed
-forms, and the three quantities S4 derives from it -- at six parameter
-vectors, which is 30 paired evaluations.
+Seven expressions -- S3.2's likelihood in both its per-customer and summed
+forms, and the five quantities S4 derives from it -- at six parameter vectors.
 
 The six vectors are the grid ``tools/oracle/generate_fixtures.R`` already
 uses, and they are chosen rather than convenient. ``mle`` is the optimum the
@@ -131,3 +130,36 @@ def dert(p, d):
     return aggregate.discounted_expected_residual_transactions(
         *cbs(d), CONTINUOUS_DISCOUNT_FACTOR, *p
     )
+
+
+@pair(
+    id="pnbd.nocov.expectation",
+    spec="M-03",
+    tol=1e-12,
+    # Read the argument order twice. `pnbd_nocov_expectation` takes
+    # (r, s, alpha_0, beta_0) -- s and alpha transposed relative to every one
+    # of its siblings, which take (r, alpha_0, s, beta_0). CLAUDE.md lists this
+    # among the traps that have already cost time, and it is the single
+    # clearest argument for pairing: the R call and the Python call sit four
+    # lines apart, so the transposition is visible instead of remembered.
+    undefined_at=("alpha.gt.beta", "alpha.lt.beta"),
+    r='cpp("pnbd_nocov_expectation")(r = p[1], s = p[3], alpha_0 = p[2],'
+      " beta_0 = p[4], vT_i = rep(52, length(x)))",
+    **COMMON,
+)
+def expectation(p, d):
+    """S4.4's unconditional expectation at 52 weeks."""
+    return aggregate.expectation(np.full(d["x"].shape, HORIZON_WEEKS), *p)
+
+
+@pair(
+    id="pnbd.nocov.PMF",
+    spec="PMF-01",
+    tol=1e-12,
+    r='cpp("pnbd_nocov_PMF")(r = p[1], alpha_0 = p[2], s = p[3], beta_0 = p[4],'
+      " x = 3, vT_i = Tc)",
+    **COMMON,
+)
+def pmf(p, d):
+    """P(X = 3) over each customer's own observation window."""
+    return aggregate.pmf(3, d["T.cal"], *p)
