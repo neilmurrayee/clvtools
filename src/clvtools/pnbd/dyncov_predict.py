@@ -29,14 +29,21 @@ S6.4.2's table names the column ``DECT`` and its product with spending
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
 
-from clvtools.pnbd.dyncov import log_likelihood_ind, probability_alive
+from clvtools.data import ClvDataDynCov
+from clvtools.pnbd.dyncov import (
+    PnbdDynCovParams,
+    log_likelihood_ind,
+    probability_alive,
+)
 from clvtools.special import kummer_u
+from clvtools.timeunit import TimeUnit
 
 __all__ = [
     "CustomerTerms",
@@ -66,7 +73,7 @@ class CustomerTerms:
     DkT: pd.Series
 
 
-def customer_terms(data, params) -> CustomerTerms:
+def customer_terms(data: ClvDataDynCov, params: PnbdDynCovParams) -> CustomerTerms:
     """Evaluate the likelihood's per-customer terms once. See :class:`CustomerTerms`."""
     walks = data.walks()
     arguments = (
@@ -141,7 +148,9 @@ def _alive_covariates(data, params, upper: pd.Timestamp) -> dict[str, pd.DataFra
     return out
 
 
-def abcd(data, params, prediction_end: pd.Timestamp) -> pd.DataFrame:
+def abcd(
+    data: ClvDataDynCov, params: PnbdDynCovParams, prediction_end: pd.Timestamp
+) -> pd.DataFrame:
     r"""The per-period :math:`A_i, B_i, C_i, D_i` of the prediction window.
 
     One row per customer per period from the period the estimation ends in
@@ -250,7 +259,10 @@ def _last_period(table: pd.DataFrame) -> NDArray[np.bool_]:
 
 
 def conditional_expected_transactions(
-    data, params, prediction_end: pd.Timestamp, periods: float,
+    data: ClvDataDynCov,
+    params: PnbdDynCovParams,
+    prediction_end: pd.Timestamp,
+    periods: float,
     terms: CustomerTerms | None = None,
 ) -> pd.Series:
     r"""``CET`` with time-varying covariates. S6.4.2.
@@ -318,8 +330,12 @@ def conditional_expected_transactions(
 
 
 def discounted_expected_transactions(
-    data, params, prediction_end: pd.Timestamp, periods: float,
-    continuous_discount_factor: float, terms: CustomerTerms | None = None,
+    data: ClvDataDynCov,
+    params: PnbdDynCovParams,
+    prediction_end: pd.Timestamp,
+    periods: float,
+    continuous_discount_factor: float,
+    terms: CustomerTerms | None = None,
 ) -> pd.Series:
     r"""``DECT`` with time-varying covariates. S6.4.2.
 
@@ -376,7 +392,10 @@ def discounted_expected_transactions(
 
 
 def prediction_table(
-    data, params, prediction_end: pd.Timestamp, periods: float,
+    data: ClvDataDynCov,
+    params: PnbdDynCovParams,
+    prediction_end: pd.Timestamp,
+    periods: float,
     continuous_discount_factor: float,
 ) -> pd.DataFrame:
     """``PAlive``, ``CET`` and ``DECT`` per customer, in CLVTools' order."""
@@ -391,13 +410,61 @@ def prediction_table(
     return pd.concat([terms.alive.rename("PAlive"), cet, dect], axis=1)
 
 
+def _new_customer_multipliers(
+    frame: pd.DataFrame,
+    names: Sequence[str],
+    gamma: NDArray[np.float64],
+    which: str,
+    *,
+    start: pd.Timestamp,
+    name_date_cov: str,
+) -> pd.DataFrame:
+    r""":math:`\exp(\gamma'x)` per period, for one of the two processes.
+
+    The prospective customer of S6.3.4 has no history, so both processes reduce
+    to the same shape: take the covariate rows from the period their first
+    transaction falls in onwards, and turn each into the multiplier its process
+    applies over that period. :func:`new_customer_expectation` wants it twice,
+    once per process, and the two calls differ only in which coefficients and
+    which noun go in.
+
+    Both guards are here rather than at the merge because the merge cannot tell
+    what went wrong. A missing column would come back as a coefficient with no
+    covariate; a repeated date becomes a cross product, so the period is
+    counted twice -- on the apparel series one duplicated row moves a
+    prospective customer's expectation by 9%, silently. Spec ``NC-13``, and the
+    same shape ``C-11`` fixed for a cohort.
+    """
+    missing = [n for n in names if n not in frame.columns]
+    if missing:
+        raise ValueError(
+            f"the {which} covariate series is missing {missing!r}, which "
+            f"this fit estimated a coefficient for; it carries "
+            f"{[c for c in frame.columns if c != name_date_cov]!r}"
+        )
+    frame = frame[frame[name_date_cov] >= start].sort_values(name_date_cov)
+    repeated = frame[name_date_cov][frame[name_date_cov].duplicated()]
+    if len(repeated):
+        raise ValueError(
+            f"the {which} covariate series repeats "
+            f"{repeated.iloc[0].date()}; each period needs one row, and a "
+            "repeat is counted twice rather than ignored"
+        )
+    values = np.exp(
+        frame[list(names)].to_numpy(dtype=float) @ np.asarray(gamma, float)
+    )
+    return pd.DataFrame(
+        {name_date_cov: frame[name_date_cov].to_numpy(), "exp_gX": values}
+    )
+
+
 def new_customer_expectation(
-    params,
+    params: PnbdDynCovParams,
     num_periods: float,
     first_transaction: pd.Timestamp,
     cov_life: pd.DataFrame,
     cov_trans: pd.DataFrame,
-    time,
+    time: TimeUnit,
     name_date_cov: str = "Cov.Date",
 ) -> float:
     r"""``E[X(t)]`` for a prospective customer on a given covariate path.
@@ -425,38 +492,13 @@ def new_customer_expectation(
         raise ValueError("the covariate series ends in the first period")
     d_omega = time.elapsed(first_transaction, later[0])
 
-    def multipliers(frame: pd.DataFrame, names, gamma, which: str) -> pd.DataFrame:
-        missing = [n for n in names if n not in frame.columns]
-        if missing:
-            raise ValueError(
-                f"the {which} covariate series is missing {missing!r}, which "
-                f"this fit estimated a coefficient for; it carries "
-                f"{[c for c in frame.columns if c != name_date_cov]!r}"
-            )
-        frame = frame[frame[name_date_cov] >= start].sort_values(name_date_cov)
-        # The tables are merged on the date below, so a repeated date becomes a
-        # cross product and the period is counted twice: on the apparel series
-        # one duplicated row moves a prospective customer's expectation by 9%,
-        # silently. Spec `NC-13`, and the same shape `C-11` fixed for a cohort.
-        repeated = frame[name_date_cov][frame[name_date_cov].duplicated()]
-        if len(repeated):
-            raise ValueError(
-                f"the {which} covariate series repeats "
-                f"{repeated.iloc[0].date()}; each period needs one row, and a "
-                "repeat is counted twice rather than ignored"
-            )
-        values = np.exp(
-            frame[list(names)].to_numpy(dtype=float) @ np.asarray(gamma, float)
-        )
-        return pd.DataFrame(
-            {name_date_cov: frame[name_date_cov].to_numpy(), "exp_gX": values}
-        )
-
-    life = multipliers(
-        cov_life, params.names_cov_life, params.gamma_life, "lifetime"
+    life = _new_customer_multipliers(
+        cov_life, params.names_cov_life, params.gamma_life, "lifetime",
+        start=start, name_date_cov=name_date_cov,
     )
-    trans = multipliers(
-        cov_trans, params.names_cov_trans, params.gamma_trans, "transaction"
+    trans = _new_customer_multipliers(
+        cov_trans, params.names_cov_trans, params.gamma_trans, "transaction",
+        start=start, name_date_cov=name_date_cov,
     )
     table = life.rename(columns={"exp_gX": "Ci"}).merge(
         trans.rename(columns={"exp_gX": "Ai"}), on=name_date_cov, how="inner"

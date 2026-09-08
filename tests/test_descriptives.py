@@ -30,11 +30,6 @@ from clvtools.diagnostics import (
 )
 
 
-@pytest.fixture(scope="module")
-def data(apparel_trans) -> ClvData:
-    return ClvData(apparel_trans, time_unit="week", estimation_split=104)
-
-
 def _oracle_value(text: str):
     """One cell of the oracle's summary table: a date, a number, or nothing."""
     text = text.strip()

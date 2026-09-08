@@ -13,6 +13,14 @@ What is enforced, and why each limit is where it is:
     codebase rather than taken from defaults, so each sits just above what the
     code needs and trips on a regression.
 
+design limits, measured
+    Those thresholds only mean something next to what the code actually
+    scores, and that pairing used to live in a comment. It had gone stale in
+    two places out of four -- 42 statements recorded against an actual 49, and
+    5 returns against an actual 6 -- because nothing re-ran it.
+    :class:`TestDesignLimits` re-measures all five from ruff on every run, so
+    the recorded numbers are either true or the suite is red.
+
 ``ty``
     ``src/clvtools/py.typed`` tells every downstream type checker that the
     annotations in this package are meant to be relied on. That is a promise,
@@ -20,17 +28,28 @@ What is enforced, and why each limit is where it is:
     ``src/`` is what ``py.typed`` covers; the three rules that are off, and
     why, are recorded in ``pyproject.toml`` beside the ruff ignores.
 
+annotation coverage
+    ``ty`` checks that the annotations which exist are consistent, and
+    :meth:`TestTy.test_the_shipped_annotations_resolve` that they evaluate.
+    Neither notices a parameter with no annotation at all -- and a bare
+    parameter is the one thing ``py.typed`` cannot excuse, because a consumer
+    reading the signature gets nothing back. :class:`TestAnnotations` is the
+    half that was missing.
+
 module length
     Counted in *code* lines -- docstrings, comments and blanks excluded.
     Roughly 37% of ``src/`` is docstring, deliberately: the docstrings carry the
     paper. A raw line count would measure how well a module is documented and
     call the best-documented ones the worst, which is exactly backwards.
 
-Two functions carry a ``noqa`` for the argument-count limit. Both are the
+Three functions carry a ``noqa``. Two are for the argument-count limit. Both are the
 paper's equations written out -- the GGom/NBD's covariate likelihood, which is
 the one family with five model parameters, and the dyncov ``F2`` term, which
 runs per customer per likelihood evaluation and so cannot afford a wrapper
-object. Each says so at the site.
+object. The third is ``_validate.finished``, whose ``TypeVar`` ruff would
+rather see written with PEP 695 type parameters -- the one spelling that does
+not resolve under ``get_type_hints()`` on every 3.12 this package supports.
+Each says so at the site.
 """
 
 from __future__ import annotations
@@ -39,13 +58,17 @@ import ast
 import importlib
 import inspect
 import io
+import json
 import pkgutil
+import re
 import subprocess
 import sys
 import tokenize
+import tomllib
 import typing
 from pathlib import Path
 from types import ModuleType
+from typing import ClassVar
 
 import pytest
 
@@ -58,16 +81,25 @@ ROOT = Path(__file__).resolve().parent.parent
 #: Everything that is ours. ``docs/`` holds the executable case study.
 TARGETS = ("src", "tests", "tools", "docs")
 
-#: Measured: the largest module under ``src/`` is ``pnbd/dyncov.py`` at 455
-#: code lines, and the largest anywhere is ``tests/test_predict.py`` at 553.
-#: The limit catches anything that runs away from there.
-#:
-#: ``test_families.py`` reached 697 against this 700 and was split; a gate
-#: three lines from tripping is one the next commit trips for no reason.
-#: :meth:`TestSize.test_the_limit_still_binds` is the other half of that --
-#: re-measure this note when a module is split, and bring the limit down if
-#: the largest module has dropped away from it.
+#: No module carries more than this many code lines. Which module is currently
+#: largest, and by how much it clears the limit, is deliberately not written
+#: down here: the previous note named ``pnbd/dyncov.py`` at 455 and
+#: ``tests/test_predict.py`` at 553, and by the time anyone checked, the real
+#: figures were 527 and 677. :meth:`TestSize.test_the_limit_still_binds` and
+#: :meth:`TestSize.test_the_largest_module_keeps_its_distance` compute both
+#: ends on every run and name the file in the failure.
 MAX_CODE_LINES = 700
+
+#: How much room the largest module must leave under :data:`MAX_CODE_LINES`.
+#:
+#: ``test_families.py`` reached 697 against the 700 and was split, on the
+#: grounds that a gate three lines from tripping is one the next commit trips
+#: for no reason. That was a judgement made once, in prose, and then not
+#: applied again: ``test_diagnostics.py`` was sitting at 677 when this margin
+#: was added, and nothing said so. Splitting it -- the bootstrap half became
+#: ``test_bootstrap.py``, which is a different subject anyway -- left
+#: ``tests/test_pnbd_dyncov.py`` largest at 658.
+MIN_HEADROOM = 25
 
 
 def code_lines(path: Path) -> int:
@@ -188,6 +220,237 @@ class TestTy:
         )
 
 
+def public_signatures() -> dict[str, ast.FunctionDef | ast.AsyncFunctionDef]:
+    """Every public module-level function and method under ``src/``, by name.
+
+    Nested functions are excluded: a closure inside a fit is not part of the
+    surface ``py.typed`` describes, and annotating one documents nothing a
+    caller can reach. Everything else -- module-level functions, methods,
+    properties -- is reachable from outside and is held to the same bar.
+    """
+    found: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = {}
+
+    def walk(node: ast.AST, module: str, in_function: bool, cls: str | None) -> None:
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
+                if not in_function and not child.name.startswith("_"):
+                    qualified = (
+                        f"{module}.{cls}.{child.name}" if cls
+                        else f"{module}.{child.name}"
+                    )
+                    found[qualified] = child
+                walk(child, module, in_function=True, cls=cls)
+            elif isinstance(child, ast.ClassDef):
+                walk(child, module, in_function=in_function, cls=child.name)
+            else:
+                walk(child, module, in_function=in_function, cls=cls)
+
+    for path in sorted((ROOT / "src").rglob("*.py")):
+        module = ".".join(path.relative_to(ROOT / "src").with_suffix("").parts)
+        walk(
+            ast.parse(path.read_text()),
+            module.removesuffix(".__init__"),
+            in_function=False,
+            cls=None,
+        )
+    return found
+
+
+def unannotated(node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[str]:
+    """The parameters, and the return, that carry no annotation.
+
+    ``self`` and ``cls`` are not parameters a caller passes. ``*args`` and
+    ``**kwargs`` are excluded too: the entry points that take them forward
+    them straight to a family's own fit, where the accepted keywords differ
+    by family, and the prose in the docstring says more than a type could.
+    """
+    args = node.args
+    named = [*args.posonlyargs, *args.args, *args.kwonlyargs]
+    missing = [
+        a.arg for a in named
+        if a.annotation is None and a.arg not in ("self", "cls")
+    ]
+    if node.returns is None:
+        missing.append("return")
+    return missing
+
+
+class TestAnnotations:
+    """``py.typed`` promises a signature says something. This is that promise."""
+
+    #: The public signatures allowed to carry an incomplete annotation, each
+    #: with the reason. One entry, and it is structural rather than an
+    #: oversight: see the comment at the site, which is longer than this note.
+    UNANNOTATED: ClassVar[dict[str, str]] = {
+        "clvtools.data.ClvDataDynCov.walks": (
+            "returns `DyncovWalks`, whose module imports `ClvData` from "
+            "`data.py` at module scope so that `build_walks`' own annotation "
+            "resolves. Naming the type here closes that import cycle."
+        ),
+    }
+
+    def test_every_public_signature_is_annotated(self):
+        """No public parameter or return is left bare.
+
+        ``ty`` is satisfied by an absent annotation -- there is nothing for it
+        to contradict -- and so is ``get_type_hints()``, which returns the
+        annotations that are there without noticing the ones that are not.
+        This is the check that the annotation exists at all, which is what a
+        consumer reading the signature actually depends on.
+        """
+        gaps = {
+            name: missing
+            for name, node in public_signatures().items()
+            if name not in self.UNANNOTATED and (missing := unannotated(node))
+        }
+        assert not gaps, (
+            f"these public signatures are missing annotations: {gaps}. "
+            "`py.typed` says the annotations in this package can be relied "
+            "on, so add the type rather than the name to "
+            "TestAnnotations.UNANNOTATED -- that list is for import cycles "
+            "that cannot be broken, and it has one entry."
+        )
+
+    def test_the_exemptions_are_all_still_needed(self):
+        """An exemption for a signature that is now annotated is a stale one.
+
+        The same shape as :meth:`TestSize.test_the_limit_still_binds`: a list
+        nothing checks stops describing the code and starts excusing it. If
+        the cycle behind an entry is ever broken, this fails and the entry
+        goes rather than lingering as folklore.
+        """
+        signatures = public_signatures()
+        unknown = sorted(set(self.UNANNOTATED) - set(signatures))
+        assert not unknown, (
+            f"UNANNOTATED names signatures that no longer exist: {unknown}"
+        )
+        needless = sorted(
+            name for name in self.UNANNOTATED if not unannotated(signatures[name])
+        )
+        assert not needless, (
+            f"these are fully annotated now and need no exemption: {needless}. "
+            "Delete the entry."
+        )
+
+
+#: Every design limit in ``pyproject.toml``, by the ruff rule that enforces it:
+#: the config key to set, and the worst value the code currently scores.
+#:
+#: Setting a limit to zero makes ruff report every function together with its
+#: real value -- ``Too many statements (49 > 0)`` -- so one pass measures all
+#: five. :class:`TestDesignLimits` does exactly that and checks these numbers,
+#: which is why they can be trusted in a way the comment they replace could
+#: not: two of its four figures were wrong when this was written.
+DESIGN_LIMITS = {
+    "C901": ("lint.mccabe.max-complexity", 8),
+    "PLR0911": ("lint.pylint.max-returns", 6),
+    "PLR0912": ("lint.pylint.max-branches", 8),
+    "PLR0913": ("lint.pylint.max-args", 12),
+    "PLR0915": ("lint.pylint.max-statements", 40),
+}
+
+
+def measure_design_limits() -> dict[str, tuple[int, str]]:
+    """The worst value each design rule scores anywhere we wrote code.
+
+    One ruff pass with every limit set to zero, which turns each rule into a
+    report of what the code actually measures rather than a pass/fail. Returns
+    the worst value per rule and where it is, so a failure can point at the
+    function rather than leaving the reader to go looking.
+
+    ``noqa`` is honoured rather than ignored: a function that is explicitly
+    exempt is not what the limit governs, and counting it would misreport the
+    headroom the limit has.
+    """
+    zeroed = [
+        arg
+        for _, (key, _) in sorted(DESIGN_LIMITS.items())
+        for arg in ("--config", f"{key}=0")
+    ]
+    result = subprocess.run(  # noqa: S603 - a fixed argv, no shell
+        [
+            sys.executable, "-m", "ruff", "check", "--no-cache",
+            "--output-format=json", "--select", ",".join(sorted(DESIGN_LIMITS)),
+            *zeroed, *TARGETS,
+        ],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    worst: dict[str, tuple[int, str]] = {}
+    for item in json.loads(result.stdout or "[]"):
+        found = re.search(r"\((\d+) > 0\)", item["message"])
+        code = item.get("code")
+        if found is None or code not in DESIGN_LIMITS:
+            continue
+        value = int(found.group(1))
+        if value > worst.get(code, (0, ""))[0]:
+            where = Path(item["filename"]).relative_to(ROOT)
+            worst[code] = (value, f"{where}:{item['location']['row']}")
+    return worst
+
+
+class TestDesignLimits:
+    """What the code scores against each limit, measured rather than recalled.
+
+    ``pyproject.toml`` carries a threshold per design rule and a sentence
+    saying what the code measured when the threshold was chosen. The threshold
+    is enforced; the sentence was not, and drifted -- it claimed 42 statements
+    against an actual 49, and 5 returns against an actual 6, so the two figures
+    that had gone tight were the two that read as comfortable. These tests are
+    that sentence, executed.
+    """
+
+    def test_the_measured_worst_cases_are_current(self):
+        """:data:`DESIGN_LIMITS` says what the code scores. It has to be right.
+
+        A number here that no longer matches is not a small documentation
+        problem: these are what say whether a limit still has room, and a
+        stale one hides a limit that has quietly gone tight.
+        """
+        measured = measure_design_limits()
+        drifted = {
+            rule: f"recorded {recorded}, measured {measured[rule][0]} "
+            f"at {measured[rule][1]}"
+            for rule, (_, recorded) in DESIGN_LIMITS.items()
+            if rule in measured and measured[rule][0] != recorded
+        }
+        assert not drifted, (
+            f"DESIGN_LIMITS is out of date: {drifted}. Update the numbers -- "
+            "the diff is the record of what grew, which is the point of "
+            "keeping them here rather than in a comment."
+        )
+
+    def test_no_rule_scores_above_its_configured_limit(self):
+        """The measured worst cases sit under the thresholds that enforce them.
+
+        ``TestRuff`` already fails if one does. This says the same thing in
+        terms of the numbers, so that a limit lowered below what the code
+        scores fails with the value and the function that made it impossible
+        rather than with a list of findings.
+        """
+        configured = configured_limits()
+        over = {
+            rule: f"{value} at {where} against a limit of {configured[rule]}"
+            for rule, (value, where) in measure_design_limits().items()
+            if rule in configured and value > configured[rule]
+        }
+        assert not over, f"these exceed their configured limit: {over}"
+
+
+def configured_limits() -> dict[str, int]:
+    """The design limits as ``pyproject.toml`` actually sets them.
+
+    Read rather than restated, so that this file and the configuration cannot
+    disagree about what is being enforced.
+    """
+    with (ROOT / "pyproject.toml").open("rb") as handle:
+        lint = tomllib.load(handle)["tool"]["ruff"]["lint"]
+    out = {}
+    for rule, (key, _) in DESIGN_LIMITS.items():
+        section, name = key.removeprefix("lint.").split(".")
+        out[rule] = lint[section][name]
+    return out
+
+
 class TestSize:
     """The limits ruff has no rule for."""
 
@@ -210,10 +473,34 @@ class TestSize:
         If the largest module drops well below the cap, the cap has stopped
         measuring anything and should come down to meet it.
         """
-        largest = max(code_lines(path) for path in python_files())
+        largest, where = max(
+            (code_lines(path), path.relative_to(ROOT)) for path in python_files()
+        )
         assert largest > MAX_CODE_LINES * 0.75, (
-            f"the largest module is {largest} code lines against a "
+            f"the largest module is {where} at {largest} code lines against a "
             f"{MAX_CODE_LINES} limit; lower MAX_CODE_LINES to keep it binding."
+        )
+
+    def test_the_largest_module_keeps_its_distance(self):
+        """A module close enough to the cap is one the next commit trips.
+
+        The rule that split ``test_families.py`` at 697, applied by something
+        other than whoever happens to look. It was stated once in a comment and
+        then not applied again -- ``test_diagnostics.py`` reached 677 and sat
+        there, because a comment cannot notice anything. :data:`MIN_HEADROOM`
+        is that judgement as a number, and this is what enforces it.
+
+        Split the module rather than shrinking the margin; the point of the
+        margin is that arriving here means the module has two subjects in it,
+        which is what the split will show.
+        """
+        largest, where = max(
+            (code_lines(path), path.relative_to(ROOT)) for path in python_files()
+        )
+        assert largest <= MAX_CODE_LINES - MIN_HEADROOM, (
+            f"{where} is {largest} code lines, leaving "
+            f"{MAX_CODE_LINES - largest} under the {MAX_CODE_LINES} limit, "
+            f"and {MIN_HEADROOM} is the least this gate allows. Split it."
         )
 
 

@@ -185,7 +185,7 @@ def newcustomer_dynamic(
     num_periods: float,
     cov_life: pd.DataFrame,
     cov_trans: pd.DataFrame,
-    first_transaction,
+    first_transaction: str | pd.Timestamp,
     time_unit: str = "week",
 ) -> NewCustomerDynamic:
     """A prospective customer with time-varying covariates.

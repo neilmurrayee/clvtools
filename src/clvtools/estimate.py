@@ -22,15 +22,24 @@ a :class:`~clvtools.data.ClvDataDynCov` the time-varying one.
 
 from __future__ import annotations
 
+from types import ModuleType
 from typing import Any, TypeVar
 
 from clvtools import bgnbd, ggomnbd
 from clvtools.data import ClvData, ClvDataDynCov, ClvDataStaticCov
 from clvtools.gg import GgParams, fit_gg
+from clvtools.inference import Fitted
 from clvtools.pnbd import fit_pnbd, fit_pnbd_correlated, fit_pnbd_staticcov
 from clvtools.pnbd.dyncov import fit_pnbd_dyncov
 
 __all__ = ["latent_attrition", "parse_formula", "spending"]
+
+#: How ``latentAttrition()`` and ``spending()`` name a family: the module
+#: itself -- ``clvtools.pnbd`` -- or its name as a string. ``_family_name``
+#: takes ``__name__`` off the first and passes the second straight through, so
+#: both spellings reach the same lookup in :data:`FAMILIES`.
+Family = ModuleType | str
+
 
 #: The three latent attrition families of Table 4, by the name the paper gives
 #: them, with their plain and time-invariant-covariate estimators.
@@ -312,12 +321,12 @@ def _fit_dyncov(name: str, data: ClvDataDynCov, **kwargs):
 
 
 def latent_attrition(
-    family,
+    family: Family,
     data: ClvData,
     formula: str | None = None,
     use_cor: bool = False,
     **kwargs,
-):
+) -> Fitted:
     """Estimate a latent attrition model. Cf. ``latentAttrition()``.
 
     Parameters
@@ -392,7 +401,7 @@ def latent_attrition(
 
 
 def spending(
-    family, data: ClvData, remove_first_transaction: bool = True, **kwargs
+    family: Family, data: ClvData, remove_first_transaction: bool = True, **kwargs
 ) -> GgParams:
     """Estimate a spending model. Cf. ``spending()``.
 

@@ -31,8 +31,10 @@ path: a converged fit warns about nothing.
 from __future__ import annotations
 
 import warnings
+from typing import Protocol, TypeVar
 
 import numpy as np
+from numpy.typing import ArrayLike
 
 __all__ = [
     "ConvergenceWarning",
@@ -159,7 +161,7 @@ def spending_history(
 
 
 def start_values(
-    start, *, count: int, parameters: str
+    start: ArrayLike, *, count: int, parameters: str
 ) -> np.ndarray:
     """The caller's start vector, checked against what the family expects.
 
@@ -202,7 +204,38 @@ def start_values(
     return values
 
 
-def finished(result, family: str):
+class OptimiserResult(Protocol):
+    """The three attributes :func:`finished` reads off an optimiser result.
+
+    ``scipy.optimize.OptimizeResult`` is what every fit here actually passes,
+    but naming it would be narrower than the function is: nothing below touches
+    anything else, and the docstring's own examples hand it a
+    ``SimpleNamespace``. A structural type says exactly that, and keeps the
+    doctests honest rather than making the annotation a claim they contradict.
+    """
+
+    #: The objective at the point the search returned.
+    fun: float
+    #: Whether the optimiser reports that it converged.
+    success: bool
+    #: The optimiser's own account of why it stopped.
+    message: str
+
+
+#: Preserves the caller's own result type through :func:`finished`, which hands
+#: back exactly what it was given. A ``TypeVar`` rather than PEP 695's
+#: ``def finished[R: OptimiserResult]`` for the reason recorded beside
+#: ``_CovariateData`` in ``estimate.py``: that syntax does not resolve under
+#: ``typing.get_type_hints()`` on every 3.12 this package supports.
+_Result = TypeVar("_Result", bound=OptimiserResult)
+
+
+# The `noqa` below is the third in the package, and this is its reason.
+# PEP 695's `def finished[R: OptimiserResult]` is what UP047 asks for, and
+# it is the one spelling that does not resolve under `get_type_hints()` on
+# every 3.12 this package supports. See the note beside `_Result` above,
+# and the identical one beside `_CovariateData` in `estimate.py`.
+def finished(result: _Result, family: str) -> _Result:  # noqa: UP047
     """Hand back an optimiser result, having said what happened to it.
 
     Raises when the objective is not finite at the returned point, because that
@@ -243,7 +276,7 @@ def finished(result, family: str):
     return result
 
 
-def single_logical(value, name: str) -> bool:
+def single_logical(value: object, name: str) -> bool:
     """One ``True`` or ``False``, refusing everything R's own helper refuses.
 
     Spec `V-05`: CLVTools has a ``check_userinput_single_logical`` applied

@@ -27,11 +27,6 @@ from clvtools.pnbd import fit_pnbd, fit_pnbd_staticcov
 from clvtools.pnbd.aggregate import log_likelihood as pnbd_log_likelihood
 
 
-@pytest.fixture(scope="module")
-def data(apparel_trans) -> ClvData:
-    return ClvData(apparel_trans, time_unit="week", estimation_split=104)
-
-
 def _cbs(data):
     cbs = data.customer_summary()
     return cbs["x"].to_numpy(), cbs["t_x"].to_numpy(), cbs["T"].to_numpy()

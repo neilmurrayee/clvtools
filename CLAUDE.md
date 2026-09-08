@@ -55,7 +55,7 @@ live in the README.
 ## Commands
 
 ```bash
-uv run pytest                  # 2,059 tests inc. doctests in src/ and docs/; ~5:10 on an M-series
+uv run pytest                  # 2,064 tests inc. doctests in src/ and docs/; ~5:10 on an M-series
 uv run pytest -m paper         # 22 numbers printed in the paper
 uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
 uv run pytest -m literature    # 22 numbers published in the CLV literature
@@ -154,14 +154,33 @@ The discipline that makes this port trustworthy, in order of strength:
   quotes, the equation in `.. math::`, then a worked doctest. Match the density
   of the surrounding modules — they are unusually documented on purpose.
 - **Static analysis is a gate, not advice.** `tests/test_code_quality.py` runs
-  `ruff` and a module-size limit inside the ordinary `pytest` run, so there is
-  one way to be green. The thresholds in `pyproject.toml` were measured against
-  this code, not taken from defaults: mccabe 10, 50 statements, 12 branches, 12
-  arguments, 700 *code* lines per module (docstrings excluded — `src/` is 37%
-  docstring on purpose, and a raw line count would punish that). Prefer
-  splitting a function to raising a limit; where the paper's own signature is
+  `ruff`, `ty`, an annotation-coverage gate and a module-size limit inside the
+  ordinary `pytest` run, so there is one way to be green. The thresholds in
+  `pyproject.toml` were measured against this code, not taken from defaults:
+  mccabe 10, 50 statements, 12 branches, 12 arguments, 700 *code* lines per
+  module (docstrings excluded — `src/` is 37% docstring on purpose, and a raw
+  line count would punish that). Prefer splitting a function to raising a
+  limit; where the paper's own signature is
   the reason, a `noqa` with the reason at the site is the escape hatch, and
-  there are two.
+  there are three — two for the argument count, one for `UP047` on
+  `_validate.finished`, whose `TypeVar` ruff would rather see written with PEP
+  695 type parameters that do not resolve under `get_type_hints()` on every
+  3.12 this package supports.
+- **Measure the code; don't write the measurement down.** What the code scores
+  against each limit lives in `DESIGN_LIMITS` in `tests/test_code_quality.py`,
+  and `TestDesignLimits` re-derives all five from ruff on every run. This
+  replaced a comment in `pyproject.toml`, two of whose four figures were wrong
+  by the time anyone checked — it claimed 42 statements against an actual 49
+  and 5 returns against an actual 6, so the two limits that had gone tight read
+  as the roomy ones. `MIN_HEADROOM` is the same idea for module size: the rule
+  that split `test_families.py` at 697, enforced instead of recalled. Any
+  number about this codebase belongs in something that runs.
+- **A public signature is annotated, or it is exempt with a reason.**
+  `py.typed` promises the annotations can be relied on, and `ty` alone does not
+  keep that promise: an absent annotation has nothing to contradict, so it
+  passes. `TestAnnotations` requires every public parameter and return under
+  `src/` to carry a type, and its `UNANNOTATED` list — one entry, for an import
+  cycle that genuinely cannot be broken — is itself checked for staleness.
 - **Deviations get a test, not a comment.** Where the paper misprints an
   equation or CLVTools stops at a worse optimum, that is pinned by a test and
   recorded in the README's Findings section. Add to both.

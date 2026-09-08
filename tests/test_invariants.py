@@ -64,11 +64,6 @@ NAMES = ["Gender", "Channel"]
 
 
 @pytest.fixture(scope="module")
-def data() -> ClvData:
-    return ClvData(load_apparel_trans(), time_unit="week", estimation_split=104)
-
-
-@pytest.fixture(scope="module")
 def zero_cov(data) -> ClvDataStaticCov:
     """The same customers, carrying one covariate that is identically zero.
 

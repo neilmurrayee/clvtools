@@ -17,12 +17,15 @@ nothing in the models needs it.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Iterable, Sequence
+from typing import Protocol
 
 import numpy as np
 import pandas as pd
+from numpy.typing import NDArray
 
 from clvtools.data import ClvData
+from clvtools.gg import GgParams
 
 __all__ = [
     "fitted_data",
@@ -36,6 +39,19 @@ __all__ = [
     "timings_data",
     "tracking_data",
 ]
+
+#: A model's unconditional expectation, already bound to its parameters: the
+#: expected number of repeat transactions one customer makes in ``t`` periods.
+#: Every caller passes a closure over a family's ``expectation`` -- the
+#: docstrings below all spell it ``lambda t: expectation(t, r, alpha, s, beta)``
+#: -- which is why the parameters are not part of the signature.
+Expectation = Callable[[float], float]
+
+#: A model's PMF, bound to its parameters: ``pmf(k, T)`` is the probability of
+#: exactly ``k`` repeat transactions in each customer's observed ``T``, so it
+#: takes the whole ``T`` vector and returns one value per customer.
+Pmf = Callable[[int, NDArray[np.float64]], NDArray[np.float64]]
+
 
 #: Column name for the observed series, matching CLVTools.
 ACTUAL = "Actual"
@@ -67,7 +83,7 @@ def _period_grid(data: ClvData, end: pd.Timestamp) -> pd.DatetimeIndex:
 
 def tracking_data(
     data: ClvData,
-    expectation=None,
+    expectation: Expectation | None = None,
     prediction_end: float | str | pd.Timestamp | None = None,
     cumulative: bool = False,
     model_name: str = "Model",
@@ -187,7 +203,9 @@ def tracking_data(
     ], ignore_index=True)
 
 
-def pmf_table(data: ClvData, pmf, x=range(6)) -> pd.DataFrame:
+def pmf_table(
+    data: ClvData, pmf: Pmf, x: Iterable[float] = range(6)
+) -> pd.DataFrame:
     r"""Each customer's PMF at each of several counts. Cf. ``pmf()``.
 
     Spec `PMF-05`, `absent`: CLVTools' ``pmf()`` generic on a fitted object
@@ -253,7 +271,7 @@ def pmf_table(data: ClvData, pmf, x=range(6)) -> pd.DataFrame:
 
 def pmf_data(
     data: ClvData,
-    pmf,
+    pmf: Pmf,
     max_transactions: int = 10,
     model_name: str = "Model",
 ) -> pd.DataFrame:
@@ -323,7 +341,7 @@ def pmf_data(
 
 def spending_density_data(
     data: ClvData,
-    params,
+    params: GgParams,
     grid: np.ndarray | None = None,
     model_name: str = "Gamma-Gamma",
 ) -> pd.DataFrame:
@@ -400,7 +418,7 @@ def _kernel_density(sample: np.ndarray, grid: np.ndarray) -> np.ndarray:
     return np.exp(-0.5 * z**2).sum(axis=1) / (n * bandwidth * np.sqrt(2 * np.pi))
 
 
-def fitted_data(data: ClvData, expectation) -> pd.DataFrame:
+def fitted_data(data: ClvData, expectation: Expectation) -> pd.DataFrame:
     """The model's expected repeat transactions per period. Cf. ``fitted()``.
 
     Table 2 lists ``fitted()`` among the generics every fitted model offers. It
@@ -635,7 +653,27 @@ def timings_data(
     return pd.concat(blocks, ignore_index=True)
 
 
-def render(frame: pd.DataFrame, title: str | None = None, ax=None):
+class Axes(Protocol):
+    """The five methods :func:`render` calls on the axes it draws into.
+
+    ``matplotlib.axes.Axes`` is what a caller actually passes, but naming it
+    would mean importing matplotlib at module scope, which this package does
+    not do -- it is an optional extra, and nothing in the models needs it.
+    A ``TYPE_CHECKING`` import is not the way out either: ``py.typed`` promises
+    these annotations resolve, and ``TestTy.test_the_shipped_annotations_resolve``
+    holds us to it. A structural type needs no import and says no less.
+    """
+
+    def plot(self, *args: object, **kwargs: object) -> object: ...
+    def set_xlabel(self, label: str, *args: object, **kwargs: object) -> object: ...
+    def set_ylabel(self, label: str, *args: object, **kwargs: object) -> object: ...
+    def set_title(self, label: str, *args: object, **kwargs: object) -> object: ...
+    def legend(self, *args: object, **kwargs: object) -> object: ...
+
+
+def render(
+    frame: pd.DataFrame, title: str | None = None, ax: Axes | None = None
+) -> Axes:
     """Draw one of these frames with matplotlib.
 
     Optional: matplotlib is not a dependency, because nothing in the models
@@ -659,13 +697,14 @@ def render(frame: pd.DataFrame, title: str | None = None, ax=None):
         c for c in ("period.until", "num.transactions", "spending")
         if c in frame.columns
     )
-    if ax is None:
-        _, ax = plt.subplots()
+    # A fresh name rather than reassigning `ax`: the parameter is declared
+    # `Axes | None`, and rebinding it does not narrow that away.
+    axes: Axes = plt.subplots()[1] if ax is None else ax
     for name, group in frame.groupby("variable", sort=False):
-        ax.plot(group[x_column], group["value"], label=str(name))
-    ax.set_xlabel(x_column)
-    ax.set_ylabel("value")
-    ax.legend()
+        axes.plot(group[x_column], group["value"], label=str(name))
+    axes.set_xlabel(x_column)
+    axes.set_ylabel("value")
+    axes.legend()
     if title:
-        ax.set_title(title)
-    return ax
+        axes.set_title(title)
+    return axes

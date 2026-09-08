@@ -28,11 +28,6 @@ from clvtools.estimate import parse_formula
 NAMES_DYN = ["High.Season", "Gender", "Channel"]
 
 
-@pytest.fixture(scope="module")
-def data(apparel_trans) -> ClvData:
-    return ClvData(apparel_trans, time_unit="week", estimation_split=104)
-
-
 class TestFormula:
     """S6.4's ``~ life | trans``."""
 

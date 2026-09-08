@@ -174,11 +174,11 @@ class DelegatesToCovariates(Fitted):
         return self.covariates.reg_lambdas
 
     @property
-    def gamma_life(self):
+    def gamma_life(self) -> NDArray[np.float64]:
         return self.covariates.gamma_life
 
     @property
-    def gamma_trans(self):
+    def gamma_trans(self) -> NDArray[np.float64]:
         return self.covariates.gamma_trans
 
     @property
@@ -208,7 +208,7 @@ class DelegatesToCovariates(Fitted):
         return self.covariates.n_customers
 
     @property
-    def hessian(self):
+    def hessian(self) -> NDArray[np.float64] | None:
         """Curvature over :attr:`names`, from the covariate fit."""
         return self.covariates.hessian
 

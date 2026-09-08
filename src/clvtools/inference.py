@@ -19,7 +19,7 @@ A parameter's log-scale curvature would describe a different quantity.
 from __future__ import annotations
 
 import warnings
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -53,14 +53,24 @@ __all__ = [
     "numerical_hessian",
 ]
 
+#: What ``confint``'s ``parm`` accepts, following R: one parameter name or
+#: 0-based position, a sequence of either, or ``None`` for all of them.
+#: ``np.integer`` is in the union because a position taken out of a numpy array
+#: is not an ``int``, and refusing it there would be an accident of dtype.
+Parm = str | int | np.integer | Sequence[str | int | np.integer] | None
+
+
 #: Parameter-name prefixes CLVTools gives covariate coefficients. Only these
 #: get a z- and a p-value; see :meth:`Fitted.summary`.
 COVARIATE_PREFIXES = ("life.", "trans.", "constr.")
 
 
 def numerical_hessian(
-    fn, at: NDArray[np.float64], step: float = 1e-4, zero_tol: float = 1e-8
-):
+    fn: Callable[[NDArray[np.float64]], float],
+    at: NDArray[np.float64],
+    step: float = 1e-4,
+    zero_tol: float = 1e-8,
+) -> NDArray[np.float64]:
     """Central-difference Hessian of ``fn`` at ``at``.
 
     CLVTools uses ``numDeriv`` for the same purpose, and this follows its two
@@ -318,7 +328,7 @@ class Fitted:
                 )
         return out
 
-    def confint(self, level: float = 0.95, parm=None) -> pd.DataFrame:
+    def confint(self, level: float = 0.95, parm: Parm = None) -> pd.DataFrame:
         r"""Wald confidence intervals. Cf. ``confint()``.
 
         :math:`\hat\theta \pm z_{1-\alpha/2}\,\mathrm{se}(\hat\theta)`, on every
@@ -429,7 +439,9 @@ class LikelihoodRatioTest:
         )
 
 
-def likelihood_ratio_test(restricted, unrestricted) -> LikelihoodRatioTest:
+def likelihood_ratio_test(
+    restricted: Fitted, unrestricted: Fitted
+) -> LikelihoodRatioTest:
     r"""Compare two nested fits. Cf. ``lrtest()`` in S6.5.3.
 
     S6.5.3 uses it on an equality constraint: "A likelihood ratio test helps to

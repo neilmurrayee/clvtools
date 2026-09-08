@@ -1278,6 +1278,17 @@ class ClvDataDynCov(ClvData):
             setattr(other, attribute, list(wanted))
         return other
 
+    # No return annotation, and it is the one public signature in the package
+    # without one. It would be `DyncovWalks`, which lives in
+    # `pnbd/dyncov_walks.py` -- and that module imports `ClvData` from here at
+    # module scope, on purpose, so that `build_walks`' own annotation resolves.
+    # Naming the type here would close that loop: importing `clvtools.data`
+    # first reaches `dyncov_walks` before `ClvData` is defined, and the package
+    # stops importing. `TYPE_CHECKING` is not the escape hatch either, because
+    # `py.typed` promises these annotations evaluate. The cycle is broken at
+    # this end deliberately -- see `walks`' body and the note in
+    # `dyncov_walks.py` -- and this is what breaking it costs.
+    # `TestAnnotations.UNANNOTATED` records the exemption.
     def walks(self):
         """Build the walk structures the likelihood consumes.
 

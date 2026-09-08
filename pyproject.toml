@@ -147,16 +147,23 @@ ignore = [
 ]
 
 # The limits the gate enforces, each set from what the code actually needs.
-# Worst across `src/`, `tests/`, `tools/` and `docs/` as measured: mccabe 8,
-# 42 statements, 8 branches, 5 returns. Prefer splitting a function to raising
-# one of these.
+# Prefer splitting a function to raising one of these.
+#
+# What the code scores against each limit is NOT recorded here. It was --
+# "mccabe 8, 42 statements, 8 branches, 5 returns" -- and two of those four
+# were wrong by the time anyone read them: statements had reached 49 and
+# returns 6, so the two limits that had gone tight were the two the note
+# described as roomy. A measurement in a comment is a measurement that stops
+# being taken. `DESIGN_LIMITS` in `tests/test_code_quality.py` holds the
+# numbers now, and `TestDesignLimits` re-measures all five from ruff on every
+# run, so they are either current or the suite is red.
 #
 # mccabe read 10 against a limit of 10 until the complexity pass that took
 # `latent_attrition`, `predict`, `fit_gg`, `ClvData.__init__` and
 # `fit_static_covariates` apart. A gate with no headroom stops guiding and
 # starts obstructing -- the next branch anyone added would have tripped it --
-# so re-measure this line when a split lands, and lower a limit that has
-# drifted far above the code rather than leaving it decorative.
+# so lower a limit that has drifted far above the code rather than leaving it
+# decorative. The test above is what tells you when that has happened.
 #
 # `max-locals` is deliberately absent: PLR0914 is preview-only in ruff 0.16, so
 # setting it would read like a gate while never firing.

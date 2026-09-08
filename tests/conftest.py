@@ -92,6 +92,25 @@ def apparel_static_cov() -> pd.DataFrame:
 
 
 @pytest.fixture(scope="module")
+def data(apparel_trans):
+    """S6.2's data object: the apparel log, weekly, split at 104 periods.
+
+    The plain counterpart of :func:`static_data`, and extracted for the same
+    reason. Six test modules had built this identically and privately -- three
+    from ``apparel_trans`` and three by calling ``load_apparel_trans()`` again,
+    which reads the CSV a second time to produce the same frame.
+
+    Module scope, which is the scope all six used: it is cheap to build, and
+    one instance per module keeps a mutation in one module from reaching
+    another. A module that needs a different split or unit still defines its
+    own ``data`` and shadows this, as several classes here already do.
+    """
+    from clvtools import ClvData
+
+    return ClvData(apparel_trans, time_unit="week", estimation_split=104)
+
+
+@pytest.fixture(scope="module")
 def static_data():
     """S6.4's covariate data object: Gender and Channel on both processes.
 

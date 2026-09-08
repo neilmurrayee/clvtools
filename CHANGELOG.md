@@ -109,9 +109,55 @@ commitment.
   formula support for bare calls (`log(Gender + 2)`) and interactions
   (`Gender * Channel`, `Gender : Channel`), and single-logical validation on
   every fit's `hessian`.
+- **Complete type annotations on the public API**, and a gate that keeps them
+  that way. `py.typed` already promised the annotations could be relied on, but
+  nothing checked that a given parameter had one: `ty` and `get_type_hints()`
+  are both satisfied by an annotation that is simply absent. Twenty-four public
+  signatures were carrying a bare parameter or return — among them every
+  entry point in `pnbd/dyncov_predict.py`, whose `data` and `params` were the
+  only untyped arguments in signatures where everything else was typed.
+  `latent_attrition()` now declares that it returns a `Fitted`, `render()` and
+  `_validate.finished()` describe what they accept with protocols rather than
+  reaching for an optional or a private dependency, and `diagnostics` exports
+  `Expectation` and `Pmf` for the two callables its frames are built from.
+  One signature stays exempt, with the reason recorded at the site and in the
+  gate: `ClvDataDynCov.walks()` returns a type whose module must import
+  `ClvData` from `data.py`, and naming it would close that import cycle.
 
 ### Changed
 
+- **The design limits are measured rather than described.** `pyproject.toml`
+  carried a sentence saying what the code scored against each limit — "mccabe
+  8, 42 statements, 8 branches, 5 returns" — and two of the four figures were
+  wrong: statements had reached 49 and returns 6, so the two limits that had
+  quietly gone tight were the two the note called roomy. The numbers now live
+  in `DESIGN_LIMITS`, and `TestDesignLimits` re-derives all five from ruff in a
+  single pass on every run; a drifted figure fails the suite and names the
+  function responsible. The same treatment for module size: `MIN_HEADROOM`
+  makes the rule that split `test_families.py` at 697 into something enforced
+  rather than remembered, and the note that used to name the largest modules —
+  wrong by 72 and 124 lines when it was checked — is gone in favour of tests
+  that compute both ends and name the file.
+- **`tests/test_bootstrap.py` split out of `tests/test_diagnostics.py`**, which
+  had reached 677 code lines against the 700-line limit. The two halves shared
+  a data fixture and nothing else: the diagnostic frames of S6.2.2 and S6.2.4
+  are checked against CLVTools' `plot(..., plot = FALSE)` row for row, and
+  S6.3.3's bootstrap cannot be, because it is random. 89 tests before, 89
+  after; the largest module is now `tests/test_pnbd_dyncov.py` at 658.
+- **`new_customer_expectation` split.** It was the most-stressed function in
+  the package: 49 statements against a limit of 50, and at the complexity
+  ceiling too. The multiplier frame it built twice -- once per process, the two
+  calls differing only in which coefficients and which noun went in -- is now
+  `_new_customer_multipliers`, which is also where the two guards belong, since
+  a missing column and a repeated date are both things the later merge cannot
+  diagnose. 40 statements now, and off the complexity list; the statement limit
+  went from one line of headroom to ten.
+- **The shared `data` fixture moved to `tests/conftest.py`.** Six modules had
+  built the same S6.2 data object privately -- three from `apparel_trans` and
+  three by calling `load_apparel_trans()`, which re-reads the CSV to produce a
+  frame equal to the one the session fixture already holds. The plain
+  counterpart of `static_data`, extracted for the same reason and at the same
+  scope. All six already called it `data`, so consolidating was a deletion.
 - A regularized fit's standard errors are differenced on the penalised objective
   that was optimised rather than the unpenalised sum, and warn that they are
   ridge standard errors dominated by the penalty. CLVTools' own answer here is
