@@ -8,7 +8,7 @@
 # Two properties of this repo are asserted by the workflow rather than stated:
 #
 #   * **It runs without R.** The R package CLVTools is the oracle, but its
-#     output is committed under `tests/fixtures/` (125 files) and `data/`
+#     output is committed under `tests/fixtures/` (135 files) and `data/`
 #     precisely so that the suite never shells out to `Rscript`. No R is
 #     installed below; if that promise is ever broken, this job is where it
 #     breaks. The paired oracle (`tests/pairs.py`) keeps that promise too: its
@@ -93,11 +93,12 @@ jobs:
       - name: Lint
         run: uv run ruff check src tests tools docs
 
-      # 1,244 tests including the doctests in `src/` and `docs/paper.md`, plus
+      # 2,059 tests including the doctests in `src/` and `docs/paper.md`, plus
       # the standing bar: 100% line coverage of `src/`, which `--cov-fail-under`
       # turns from a habit into a gate. Both figures are what a run prints --
-      # `1244 passed, 1 deselected` and `TOTAL 2874 0 100%` on 2026-09-03 -- and
+      # `2059 passed, 1 deselected` and `TOTAL 3122 0 100%` on 2026-09-08 -- and
       # a comment that drifts from them is worth correcting, since this file is
-      # where a reader comes to find out what green means.
+      # where a reader comes to find out what green means. It had drifted: this
+      # said 1,244 and 2874 until the paired oracle was measured against it.
       - name: Test
         run: uv run pytest --cov=clvtools --cov-fail-under=100
