@@ -44,6 +44,12 @@ commitment.
   The no-covariate arms of the other families and the time-varying covariate
   machinery followed, so every per-customer expression CLVTools exposes is
   paired: 44 pairs, 139 evaluations, 435 checks.
+- A referee for `scipy.special.hyperu`. The paired oracle found it 90x slower
+  for `1 < s < 2`; following that up against an independent evaluation of the
+  integral representation showed it is also *wrong* there, by up to 6.1e-07.
+  Nothing in `src/` changed -- neither candidate is better everywhere, and the
+  standard `DERT` evaluates three orders below the bad region -- but the fact
+  is now pinned rather than assumed away.
 - `ConvergenceWarning`: every fit now says when it did not converge, and when a
   Hessian cannot be trusted.
 
