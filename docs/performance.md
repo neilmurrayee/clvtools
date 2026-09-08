@@ -48,9 +48,16 @@ first expression-level check that quantity has ever had. It would have been
 `scipy.special.hyperu` takes a slow path for `1 < s < 2`: ~90x at `s = 1.5`,
 which made one call over 600 customers take **449 seconds**. The three
 parameter points the pairs use sit outside that band, and
-`TestTheKummerUSlowBand` keeps them there. The README's findings carry the
-sweep; the short version is that it is a performance boundary and not a
-correctness one, so nothing is lost by stepping around it.
+`TestTheKummerUSlowBand` keeps them there.
+
+It is not only a performance boundary, which is what it looked like at first.
+Refereed against the integral representation of `U(a, a, z)` to about 1e-14,
+`hyperu` is also *wrong* in that band -- 6.1e-07 at worst, against 4.3e-10 for
+the closed form that runs 5,000x faster. `kummer_u` still calls `hyperu` all
+the same, for two reasons the README's findings set out: neither is better
+everywhere, and the standard `DERT` evaluates at `z ~ 0.21`, three orders below
+where the trouble starts, because its delta is the per-period factor rather
+than the annual rate the time-varying `DECT` is handed.
 
 Two of the top three are the GGompertz/NBD, and for one reason: its likelihood
 runs `scipy.integrate.quad` **once per customer per evaluation**, where the

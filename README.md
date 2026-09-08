@@ -411,14 +411,37 @@ points at the arguments `DECT` actually forms, relative to `s = 0.35`:
 A band, not a point: it opens just above 1 and has closed by 2. The cost is not
 theoretical — one `DECT` over 600 customers at `s = 1.5` took **449 seconds**,
 against 7.3 at the fitted `s = 2.01`, and that is how it was found: a paired
-case that would not finish. Accuracy is untouched; the 449-second call agreed
-with CLVTools to 2.4e-08, the same order as the points the suite keeps. The
-band is reachable by a real fit, so this is worth knowing rather than merely
-avoiding. `U(a, a, z) = e^z Γ(1−a, z)` evaluates the same thing ~5,000x faster
-but agrees only to 1e-8, which is `hyperu`'s own accuracy here rather than
-obviously better, so nothing in `src/` changed on that basis.
-`TestTheKummerUSlowBand` keeps the time-varying grid out of the band — a
-structural assertion, not a timing one, because `tests/test_performance.py`
+case that would not finish.
+
+**And it is not only slow there.** This first read as a pure performance
+finding, on the reasoning that `U(a, a, z) = e^z Γ(1−a, z)` computes the same
+thing ~5,000x faster but agreed with `hyperu` only to 1e-8 — which was taken
+for the closed form's error. It is not. Refereed against an independent
+evaluation of the integral representation
+
+$$U(a,a,z) = \frac{1}{\Gamma(a)} \int_0^\infty e^{-zt}\,t^{a-1}(1+t)^{-1}\,dt$$
+
+to about 1e-14, **`hyperu` is the inaccurate one**: worst 6.1e-07 over
+`1 < a < 2` and `z ∈ [0.1, 120]`, against 4.3e-10 for the closed form. At
+`a = 1.25, z = 15` it is 2.8e-07 against 1.3e-14. The error is localised rather
+than uniform — the same `a` at `z = 6` and `z = 30` is fine to 1e-12 — so the
+test asserts that such arguments exist, not that any given one is bad.
+
+Nothing in `src/` changed, and the reason is worth stating rather than
+assuming. Neither implementation dominates: the closed form's own worst case is
+`a → 1` with large `z`, where the recurrence divides by `1 − a → 0` and
+`hyperu` is exact instead. More to the point, **the standard model cannot reach
+the bad region.** `DERT` forms `U(s, s, δ(β + T))` with δ the *per-period*
+factor — 0.00139 for 7.5% a year on weekly data — so `z ≈ 0.21` on the apparel
+fit, three orders below where `hyperu` goes wrong, and the two agree there to
+1e-15. Only the time-varying `DECT` gets near it, because CLVTools passes that
+one the *unscaled annual* rate, 0.0953, which is 68x larger. Switching
+`kummer_u` would trade a defect nobody can reach for a new one at `a → 1`.
+
+`TestTheKummerUSlowBand` records all of it: that the band is slow, that
+`hyperu` loses eight digits somewhere inside it, that the standard model's own
+`z` is nowhere near, and that the time-varying grid stays out. Structural and
+refereed assertions, never a timing one, because `tests/test_performance.py`
 looks at no clock.
 
 **CLVTools' GGompertz/NBD likelihood loses accuracy as `b` grows, and this
@@ -907,7 +930,7 @@ which it reported successful convergence on the Gamma-Gamma at a local optimum
 ## Testing
 
 ```bash
-uv run pytest                  # 2,057 tests, including doctests in src/ and docs/
+uv run pytest                  # 2,059 tests, including doctests in src/ and docs/
 uv run pytest -m paper         # 22 numbers printed in the paper
 uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
 uv run pytest -m literature    # 22 numbers published in the CLV literature

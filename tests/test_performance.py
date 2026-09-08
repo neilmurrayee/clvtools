@@ -713,27 +713,80 @@ class TestTheKummerUSlowBand:
                 f"call. Move it out, or read the class docstring first."
             )
 
-    def test_the_band_is_where_the_measurement_said(self):
-        """``U(s, s, z)`` is finite and equal either side of the band.
+    #: An independent evaluation of the same function, from the integral
+    #: representation :math:`U(a,a,z) = \frac{1}{\Gamma(a)} \int_0^\infty
+    #: e^{-zt} t^{a-1} (1+t)^{-1}\,dt`, valid for ``a > 0`` and ``z > 0``.
+    #: Slow and accurate, which is the opposite of what the model needs and
+    #: exactly what a referee needs. SciPy only, like everything else here.
+    @staticmethod
+    def reference(a: float, z: float) -> float:
+        """``U(a, a, z)`` by quadrature, to about 1e-14."""
+        from scipy import integrate, special
 
-        The guard above is only worth having if the band is a performance
-        boundary and not a correctness one -- otherwise moving ``s`` out of it
-        would be avoiding a wrong answer rather than a slow one. Checked
-        against the identity :math:`U(a, a, z) = e^{z}\\,\\Gamma(1-a, z)`, which
-        holds on both sides to the 1e-7 that ``hyperu`` itself delivers here.
+        value, _ = integrate.quad(
+            lambda t: np.exp(-z * t) * t ** (a - 1.0) / (1.0 + t),
+            0, np.inf, epsabs=1e-16, epsrel=1e-14, limit=800,
+        )
+        return value / special.gamma(a)
+
+    def test_hyperu_is_also_inaccurate_somewhere_in_the_band(self):
+        """The band is not only slow. Somewhere inside it, it is wrong.
+
+        Refereed against :meth:`reference` rather than against the closed form,
+        because two candidates disagreeing says nothing about which is right.
+
+        The claim is deliberately existential. The error is not uniform: at
+        ``a = 1.25`` it is 4.6e-12 at ``z = 6``, **2.8e-07** at ``z = 15``, and
+        2.2e-12 again at ``z = 30``. Asserting a bound at every point would be
+        asserting something false. What is true, and what a user of this
+        package could meet, is that there are reachable arguments where
+        ``hyperu`` loses eight digits.
+
+        Worst seen over ``1 < a < 2``, ``z`` in [0.1, 120] is 6.1e-07 for
+        ``hyperu`` against 4.3e-10 for the closed form -- but the closed form's
+        own worst case is at ``a -> 1`` with large ``z``, where ``hyperu`` is
+        exact instead. Neither dominates everywhere, which is why
+        :func:`~clvtools.special.kummer_u` still calls ``hyperu`` and this
+        records the fact rather than acting on it.
         """
         from scipy import special
 
-        def gamma_upper(s, z):
-            if s > 0:
-                return special.gammaincc(s, z) * special.gamma(s)
-            return (gamma_upper(s + 1.0, z) - np.power(z, s) * np.exp(-z)) / s
+        worst, where = 0.0, ()
+        for a in (1.05, 1.25, 1.5, 1.75, 1.95):
+            for z in (6.0, 10.0, 15.0, 22.0):
+                ref = self.reference(a, z)
+                error = abs(float(special.hyperu(a, a, z)) - ref) / abs(ref)
+                if error > worst:
+                    worst, where = error, (a, z)
+        assert worst > 1e-9, (
+            f"hyperu's worst error over the band is now {worst:.2e} at {where}; "
+            f"if SciPy has fixed this, the README's findings entry needs revisiting"
+        )
 
-        z = np.linspace(5.0, 40.0, 64)
-        for s in (0.9, 1.5, 2.4):
-            got = special.hyperu(s, s, z)
-            assert np.isfinite(got).all(), f"hyperu is not finite at s = {s}"
-            want = np.exp(z) * gamma_upper(1.0 - s, z)
-            assert np.max(np.abs(got - want) / np.abs(want)) < 1e-6, (
-                f"hyperu disagrees with the closed form at s = {s}"
-            )
+    def test_but_the_standard_model_never_evaluates_there(self):
+        """Which is why nothing in `src/` changed on the strength of it.
+
+        ``DERT`` forms ``U(s, s, delta * (beta + T))`` with ``delta`` the
+        *per-period* discount factor -- 0.00139 for 7.5% a year on weekly data
+        -- so ``z`` lands near **0.21** on the apparel fit, three orders below
+        where ``hyperu`` goes wrong. The time-varying ``DECT`` is the one that
+        reaches the bad region, because CLVTools passes it the *unscaled annual*
+        rate, 0.0953, which is 68 times larger.
+
+        Both implementations agree to 1e-15 at the standard model's ``z``, so
+        the accuracy finding above is real and unreachable from `predict()`.
+        """
+        from clvtools.predict import discount_factor
+
+        delta = discount_factor(0.075, time_unit="week")
+        z = delta * (46.9 + 104.0)
+        assert z < 0.5, f"the standard DERT's argument moved to z = {z}"
+
+        from scipy import special
+
+        ref = self.reference(1.25, z)
+        error = abs(float(special.hyperu(1.25, 1.25, z)) - ref) / abs(ref)
+        assert error < 1e-13, (
+            f"hyperu is inaccurate at the z the standard model actually uses "
+            f"({z:.3f}): error {error:.2e}"
+        )
