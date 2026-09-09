@@ -153,6 +153,34 @@ goes, so an `if` whose false arm nothing takes still reads as 100%. `branch =
 true` lives in `[tool.coverage.run]`; don't land an uncovered line or an
 untaken arm.
 
+### Mutation testing: evaluated, and not usable as it stands
+
+Coverage says a line ran, not that a test would have noticed it being wrong,
+and mutation testing is the measure that closes that gap. **mutmut 3.7 does not
+give trustworthy results on this repo** — do not reach for it again without
+reading this first.
+
+Scoped to `timeunit.py` with `tests/test_timeunit.py` and `tests/test_data.py`,
+it reported 228 mutants, 157 killed and 69 survived. Three of those survivors
+were applied by hand, across two functions, and **all three are false**:
+
+- dropping `name="hour"` from `Hours.__init__` raises `TypeError` at import,
+  because `_Fixed` is a frozen dataclass — it errors four test modules outright;
+- `total = None` in `_Calendar._anniversary` fails 19 tests;
+- and all 16 of that function's mutants are reported survived, none killed,
+  which is the signature of a function whose mutants never execute at all.
+
+`use_git_change_detection`, `track_dependencies` and `PYTHONPATH` were each
+ruled out; mutmut manages `sys.path` in-process, so the editable src-layout
+install is not the explanation either. The cause was not found. What matters is
+that the number it prints is not a measurement, and a 69% "mutation score" in a
+report would have been precisely the kind of authoritative-looking, meaningless
+figure the rest of this file exists to prevent. It was backed out rather than
+committed as a gate that lies.
+
+If it is picked up again: sample survivors by hand *before* believing any
+aggregate, which is how this was caught.
+
 ## House style
 
 - **Docstrings carry the paper.** Section number, the paper's own words in
