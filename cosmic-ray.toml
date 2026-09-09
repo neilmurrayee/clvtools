@@ -1,0 +1,33 @@
+# Mutation testing, scoped. Coverage says a line ran; this says the tests would
+# have noticed had it been wrong.
+#
+# Not part of `pytest`, and deliberately not a gate: one module against its own
+# tests is roughly twenty minutes, and a survivor is a question rather than a
+# failure -- most are equivalent mutants that no test could kill. Run it when
+# you want to know whether a module's tests are as strong as its coverage
+# suggests, and read the results by hand.
+#
+#   git worktree add ../mut HEAD && cd ../mut && uv sync
+#   uv pip install cosmic-ray
+#   cp ../clvtools/cosmic-ray.toml .
+#   .venv/bin/python -m cosmic_ray.cli baseline cosmic-ray.toml
+#   .venv/bin/python -m cosmic_ray.cli init cosmic-ray.toml session.sqlite
+#   .venv/bin/python -m cosmic_ray.cli exec cosmic-ray.toml session.sqlite
+#   .venv/bin/python -m cosmic_ray.cli dump session.sqlite
+#
+# **In a worktree, and never in place.** cosmic-ray edits the file on disk and
+# reverts it after each mutant; an interrupted run leaves mutated source behind.
+# A worktree with its own `uv sync` also gives it an editable install pointing
+# at that copy, which is what makes the mutation visible to the tests at all.
+#
+# `module-path` and `test-command` are meant to be edited together: name one
+# module and the tests that actually cover it. Pointing this at all of `src/`
+# and the whole suite is days of compute, not hours.
+[cosmic-ray]
+module-path = "src/clvtools/timeunit.py"
+timeout = 120
+excluded-modules = []
+test-command = ".venv/bin/python -m pytest tests/test_timeunit.py tests/test_data.py -x -q -p no:randomly"
+
+[cosmic-ray.distributor]
+name = "local"

@@ -13,6 +13,7 @@ satisfy.
 
 from __future__ import annotations
 
+import dataclasses
 from itertools import pairwise
 from typing import ClassVar
 
@@ -80,6 +81,31 @@ class TestAgainstOracle:
         got = year.add(pd.Timestamp("2004-02-29"), 1)
         assert got == pd.Timestamp("2005-03-01")
         assert year.elapsed(pd.Timestamp("2004-02-29"), got) == 1.0
+
+    @pytest.mark.parametrize("start,expected", [
+        ("2005-01-31", "2005-03-03"),   # -> February, 28 days
+        ("2005-03-31", "2005-05-01"),   # -> April
+        ("2005-05-31", "2005-07-01"),   # -> June
+        ("2005-08-31", "2005-10-01"),   # -> September
+        ("2005-10-31", "2005-12-01"),   # -> November
+    ])
+    def test_a_31st_rolls_forward_into_every_short_month(self, start, expected):
+        """`_anniversary`'s overflow branch, on all five months it can reach.
+
+        A month that has no 31st rolls the date forward rather than clamping
+        back, and the branch that does it computes the *next* month as
+        ``(month % 12) + 1``. Only the February case was pinned, and February
+        is one of the three short months where an arithmetic slip is invisible:
+        for months 2, 4 and 6 the wrong spelling ``(month % 12) | 1`` gives the
+        same answer, and for 9 and 11 it does not. Under that mutation
+        2005-08-31 + 1 month returns 2005-09-01 instead of 2005-10-01 -- a
+        whole month wrong, with the entire suite still green.
+
+        Found by mutation testing; September and November are the two rows that
+        make this test worth more than the one it grew out of.
+        """
+        month = timeunit.get("month")
+        assert month.add(pd.Timestamp(start), 1) == pd.Timestamp(expected)
 
 
 class TestFixedUnits:
@@ -298,6 +324,33 @@ class TestLookup:
 
     def test_repr_names_the_class(self):
         assert repr(timeunit.get("year")) == "Years()"
+
+    @pytest.mark.parametrize("name,expected", [
+        ("hour", "Hours()"), ("day", "Days()"), ("week", "Weeks()"),
+        ("month", "Months()"), ("year", "Years()"),
+    ])
+    def test_and_it_names_the_class_for_every_unit(self, name, expected):
+        """The fixed units are a dataclass, and a dataclass writes its own.
+
+        ``_Fixed`` carries ``@dataclass(..., repr=False)`` so that the base
+        class's ``__repr__`` stands. Only the calendar units' repr was pinned,
+        and they are not dataclasses -- so dropping ``repr=False`` changed
+        ``repr(Weeks())`` to the generated field dump and nothing failed.
+        Found by mutation testing.
+        """
+        assert repr(timeunit.get(name)) == expected
+
+    @pytest.mark.parametrize("name", ["hour", "day", "week"])
+    def test_a_fixed_unit_is_immutable(self, name):
+        """``frozen=True`` on ``_Fixed``, which nothing was holding it to.
+
+        The units are shared module-level singletons in ``TIME_UNITS``, so a
+        write to one would follow every caller in the process. Frozen is what
+        makes handing the same instance to everybody safe.
+        """
+        unit = timeunit.get(name)
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            unit.days = 99.0
 
     def test_the_base_class_defines_the_interface(self):
         """Subclasses must supply all four operations."""

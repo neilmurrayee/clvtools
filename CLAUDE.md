@@ -55,7 +55,7 @@ live in the README.
 ## Commands
 
 ```bash
-uv run pytest                  # 2,064 tests inc. doctests in src/ and docs/; ~5:10 on an M-series
+uv run pytest                  # 2,083 tests inc. doctests in src/ and docs/; ~5:10 on an M-series
 uv run pytest -m paper         # 22 numbers printed in the paper
 uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
 uv run pytest -m literature    # 22 numbers published in the CLV literature
@@ -153,33 +153,45 @@ goes, so an `if` whose false arm nothing takes still reads as 100%. `branch =
 true` lives in `[tool.coverage.run]`; don't land an uncovered line or an
 untaken arm.
 
-### Mutation testing: evaluated, and not usable as it stands
+### Mutation testing: works, with cosmic-ray and not with mutmut
 
-Coverage says a line ran, not that a test would have noticed it being wrong,
-and mutation testing is the measure that closes that gap. **mutmut 3.7 does not
-give trustworthy results on this repo** — do not reach for it again without
-reading this first.
+Coverage says a line ran, not that a test would have noticed it being wrong.
+`cosmic-ray.toml` carries the configuration and the procedure; it is **not** a
+gate and not part of `pytest` — one module against its own tests is about
+twenty minutes, and a survivor is a question rather than a failure.
 
-Scoped to `timeunit.py` with `tests/test_timeunit.py` and `tests/test_data.py`,
-it reported 228 mutants, 157 killed and 69 survived. Three of those survivors
-were applied by hand, across two functions, and **all three are false**:
+Run it in a **git worktree with its own `uv sync`**, never in place: cosmic-ray
+edits the file on disk and reverts it after each mutant, so an interrupted run
+leaves mutated source behind, and the worktree's own editable install is what
+makes the mutation visible to the tests at all.
 
-- dropping `name="hour"` from `Hours.__init__` raises `TypeError` at import,
-  because `_Fixed` is a frozen dataclass — it errors four test modules outright;
-- `total = None` in `_Calendar._anniversary` fails 19 tests;
-- and all 16 of that function's mutants are reported survived, none killed,
-  which is the signature of a function whose mutants never execute at all.
+`timeunit.py` scored **87.5%** — 585 mutants, 512 killed, 73 survived. Reading
+the survivors by hand is the whole job, because most cannot be killed by any
+test:
 
+- 13 mutate a *type annotation*, which `from __future__ import annotations`
+  never evaluates;
+- most of the `_Calendar.elapsed` cluster changes a value the following
+  `while` loop corrects anyway — the estimate "can overshoot but never
+  undershoot", as the comment there says;
+- `year + (month == 12)` in `_anniversary`'s overflow branch cannot fire at
+  all, because December has 31 days and so never overflows.
+
+Three were real, and are now tests: a 31st rolling into **September or
+November** (the spelling `(month % 12) | 1` gives the right answer for months
+2, 4 and 6 and the wrong one for 9 and 11, so `2005-08-31 + 1 month` returned
+2005-09-01 with the suite green), and `_Fixed`'s `frozen=True` and `repr=False`,
+neither of which anything held it to.
+
+**mutmut 3.7 does not work here — do not reach for it.** It reported 69
+survivors on the same module; three sampled by hand were all false, including
+one that raises `TypeError` at import and errors four test modules. All sixteen
+mutants of one function were reported survived with none killed, which is a
+function whose mutants never execute rather than a weak suite.
 `use_git_change_detection`, `track_dependencies` and `PYTHONPATH` were each
-ruled out; mutmut manages `sys.path` in-process, so the editable src-layout
-install is not the explanation either. The cause was not found. What matters is
-that the number it prints is not a measurement, and a 69% "mutation score" in a
-report would have been precisely the kind of authoritative-looking, meaningless
-figure the rest of this file exists to prevent. It was backed out rather than
-committed as a gate that lies.
-
-If it is picked up again: sample survivors by hand *before* believing any
-aggregate, which is how this was caught.
+ruled out and the cause was not found. The lesson generalises past the tool:
+**sample survivors by hand before believing any aggregate.** That is what
+separated a real finding from a fabricated one here, in both directions.
 
 ## House style
 

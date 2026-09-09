@@ -126,6 +126,19 @@ commitment.
 
 ### Changed
 
+- **Mutation testing, and the three real gaps it found in `timeunit.py`.**
+  Coverage says a line ran, not that a test would have noticed it being wrong.
+  `timeunit.py` scores 87.5% — 585 mutants, 512 killed. Most survivors cannot be
+  killed by any test: 13 mutate a type annotation that `from __future__ import
+  annotations` never evaluates, and much of the `_Calendar.elapsed` cluster
+  changes an estimate the following loop corrects anyway. Three were real. A
+  31st rolling into **September or November** was unpinned — the wrong spelling
+  `(month % 12) | 1` happens to be right for months 2, 4 and 6, so
+  `2005-08-31 + 1 month` could return 2005-09-01 instead of 2005-10-01 with the
+  whole suite green — and `_Fixed`'s `frozen=True` and `repr=False` were held to
+  by nothing, though the units are shared module-level singletons. All three now
+  have tests, each verified to kill the mutant that found it. `cosmic-ray.toml`
+  carries the configuration; it is not a gate, and it is run in a worktree.
 - **Branch coverage turned on, and the four arms it found closed.** The suite
   had reported 100% coverage for as long as anyone had looked, but there was no
   `[tool.coverage]` section, so it was 100% of *lines*. Switching branches on
