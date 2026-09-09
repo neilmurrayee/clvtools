@@ -772,6 +772,19 @@ class TestIdsAndColumnTypesAreAcceptedAsGiven:
         data = ClvData(self._log(ids), time_unit="week", estimation_split=4)
         assert sorted(data.customer_summary()["Id"]) == ["1.5", "2"]
 
+    def test_a_column_of_only_fractional_ids_is_left_entirely_alone(self):
+        """`D-08`, the arm where nothing is whole.
+
+        The test above mixes ``1.5`` with ``2.0``, so the whole-number branch
+        still runs for the ``2.0``. When *no* id is whole there is nothing to
+        re-spell and the column is returned as pandas rendered it -- an arm
+        line coverage could not distinguish, because the same lines run either
+        way. Found by turning branch coverage on.
+        """
+        ids = [1.5, 1.5, 1.5, 2.5, 2.5, 2.5]
+        data = ClvData(self._log(ids), time_unit="week", estimation_split=4)
+        assert sorted(data.customer_summary()["Id"]) == ["1.5", "2.5"]
+
     def test_an_integer_price_gives_the_same_spending_as_a_float_one(self):
         """D-09."""
         ints = ClvData(

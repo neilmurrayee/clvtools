@@ -146,7 +146,12 @@ The discipline that makes this port trustworthy, in order of strength:
 5. **Doctests.** Everything in `src/` and `docs/paper.md` runs, so no printed
    number can drift from what the code returns.
 
-100% line coverage of `src/` is the standing bar; don't land uncovered lines.
+100% **line and branch** coverage of `src/` is the standing bar. Branch
+coverage was off until it was switched on and immediately found four arms line
+coverage had called covered — the same lines run whichever way a condition
+goes, so an `if` whose false arm nothing takes still reads as 100%. `branch =
+true` lives in `[tool.coverage.run]`; don't land an uncovered line or an
+untaken arm.
 
 ## House style
 
@@ -186,7 +191,10 @@ The discipline that makes this port trustworthy, in order of strength:
   recorded in the README's Findings section. Add to both.
 - **Dependencies stay at numpy, scipy, pandas.** matplotlib is a `plot` extra
   used only by `diagnostics.render()`; nothing in `src/` may import it at module
-  scope. R never enters `src/`.
+  scope. R never enters `src/`. The first two are gated by
+  `TestWhatSrcIsAllowedToImport`, which reads the dependency list out of
+  `pyproject.toml` rather than repeating it — they were prose until a review
+  asked what enforced them, and the answer was nothing.
 - **All fits search over log-parameters** — same convention as CLVTools' C++
   entry points. Shared optimiser setup is `clvtools._optimize.options_for`;
   shared static-covariate machinery is `clvtools._staticcov`; the generics every

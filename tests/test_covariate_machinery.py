@@ -404,6 +404,30 @@ class TestTheCallersCapReachesThePolish:
         assert _polish_overrides(None) == {}
         assert _polish_overrides({}) == {}
 
+    def test_a_polish_that_finds_nothing_better_is_discarded(self):
+        """``_search``: "It can only improve the objective".
+
+        Every fit in the suite had a polish that improved on the gradient
+        result, so the arm that keeps the original point was never taken --
+        which line coverage cannot see, because ``if polished.fun <
+        result.fun`` runs either way.
+
+        A flat objective is the honest way to force it: there is nothing better
+        anywhere, so both stages return the same value and the comparison is
+        false. A quadratic bowl is not -- L-BFGS-B stops at 8e-43 rather than
+        exactly zero, Nelder-Mead then finds the zero, and the *improving* arm
+        runs while the assertion still passes. That version of this test was
+        written first and caught by checking which branch it actually reached.
+        """
+        from clvtools._staticcov import SearchSettings, _search
+
+        result = _search(
+            lambda v: 0.0,
+            [np.array([1.0])],
+            SearchSettings(method="L-BFGS-B", maxiter=200),
+        )
+        assert result.fun == 0.0
+
 
 class TestRegularizationWeightsAndConstraintNamesSayWhatIsWrong:
     """Spec X-14 and X-15, six failure claims each, and four landed badly.

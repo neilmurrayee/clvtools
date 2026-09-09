@@ -126,6 +126,21 @@ commitment.
 
 ### Changed
 
+- **Branch coverage turned on, and the four arms it found closed.** The suite
+  had reported 100% coverage for as long as anyone had looked, but there was no
+  `[tool.coverage]` section, so it was 100% of *lines*. Switching branches on
+  dropped it to 99%: a float `Id` column with nothing whole in it, a GGom/NBD
+  fit run from a caller's own start, a Nelder-Mead polish that finds nothing
+  better than the gradient result, and the PMF tail series running out of terms
+  rather than breaking early. All four are arms where the same lines execute
+  either way, which is exactly what line coverage cannot distinguish. Each now
+  has a test, and 100% of both is the standing bar.
+- **`src/`'s allowed imports are gated.** "Dependencies stay at numpy, scipy,
+  pandas" and "nothing in `src/` may import matplotlib at module scope" were
+  rules in CLAUDE.md that nothing enforced, alongside an existing test gating
+  an import rule of exactly the same shape. `TestWhatSrcIsAllowedToImport`
+  reads the dependency list out of `pyproject.toml` rather than repeating it,
+  so declaring a dependency without allowing it here cannot pass.
 - **The design limits are measured rather than described.** `pyproject.toml`
   carried a sentence saying what the code scored against each limit — "mccabe
   8, 42 statements, 8 branches, 5 returns" — and two of the four figures were

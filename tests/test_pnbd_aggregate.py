@@ -409,6 +409,28 @@ class TestPmfResolvesItsSecondTermByTheSeriesTail:
         with pytest.warns(PrecisionWarning, match="could not resolve"):
             _warn_if_unresolved(np.array([-1e-30]), 18, np.array([2.5e-7]))
 
+    def test_and_the_term_cap_is_an_exit_of_its_own(self, monkeypatch):
+        """The sum stops at ``_TAIL_MAX_TERMS`` as well as on its two breaks.
+
+        On every input the suite reaches, a term either goes non-finite or
+        falls below the decay floor long before the 5,000-term cap, so the loop
+        always left early and the cap was never the thing that ended it. Both
+        breaks are inside the loop, so line coverage saw it run and asked no
+        further; the arm that runs out of terms instead is one branch coverage
+        distinguishes.
+
+        Lowering the cap to three also puts it below the decay break, which
+        needs four terms before it can fire, so exhaustion is the only way out.
+        """
+        from clvtools.pnbd import aggregate
+
+        monkeypatch.setattr(aggregate, "_TAIL_MAX_TERMS", 3)
+        value = aggregate._series_tail(
+            k=1, r=1.0, s=1.0, b=1.0, rsk1=4.0, gap=1.0, hi=2.0, T=1.0, shape=(),
+        )
+        assert np.all(np.isfinite(value))
+        assert np.all(value > 0)
+
 
 
 

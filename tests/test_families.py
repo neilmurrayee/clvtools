@@ -379,6 +379,21 @@ class TestGgomnbdProperties:
                 [0, 2], [0.0, 30.0], [104.0, 104.0], start=(1.0, -1.0, 1.0, 1.0, 1.0)
             )
 
+    def test_a_valid_start_is_accepted_and_used(self):
+        """The arm past both start checks, which nothing reached.
+
+        The validation above covers every way a start can be rejected, so the
+        two guards were only ever exercised on their raising side and the fit
+        never ran from a caller's own start. Line coverage saw the guards run
+        and called them covered; branch coverage did not.
+        """
+        fit = ggomnbd.fit_ggomnbd(
+            [1, 2], [10.0, 30.0], [104.0, 104.0],
+            start=(1.0, 1.0, 1.0, 1.0, 1.0), hessian=False,
+        )
+        assert all(np.isfinite(v) for v in fit)
+        assert np.isfinite(fit.log_likelihood)
+
     def test_params_iterate_and_report_criteria(self):
         params = ggomnbd.GgomnbdParams(
             r=1.45, alpha=48.6, b=1e-6, s=0.56, beta=4e-5,

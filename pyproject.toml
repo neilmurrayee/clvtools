@@ -94,6 +94,23 @@ markers = [
   "performance: operation-count invariants -- vectorisation, evaluations, O(n)",
 ]
 
+
+# ---------------------------------------------------------------------------
+# Coverage. `branch = true` is the whole point of this section: line coverage
+# read 100% while four branch arms had never been taken, because the same lines
+# run whichever way the condition goes. A float id column with nothing whole in
+# it, a GGom/NBD fit from a caller's own start, a polish that finds nothing
+# better, and the tail series running out of terms rather than breaking -- all
+# four were invisible until this was switched on, and all four now have a test.
+# 100% of both is the standing bar.
+# ---------------------------------------------------------------------------
+[tool.coverage.run]
+branch = true
+source = ["clvtools"]
+
+[tool.coverage.report]
+show_missing = true
+
 # ---------------------------------------------------------------------------
 # Static analysis. The thresholds below are not defaults picked off a shelf;
 # each was chosen after measuring this codebase, so that it sits just under the

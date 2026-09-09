@@ -451,6 +451,88 @@ def configured_limits() -> dict[str, int]:
     return out
 
 
+class TestWhatSrcIsAllowedToImport:
+    """Two rules CLAUDE.md states and nothing enforced.
+
+    "Dependencies stay at numpy, scipy, pandas" and "nothing in ``src/`` may
+    import matplotlib at module scope" are both load-bearing -- the first is
+    what ``[project].dependencies`` promises an installer, the second is what
+    makes ``plot`` an optional extra rather than a dependency in all but name.
+    Both were prose. ``TestTheImportIsStillLazy`` was already gating an import
+    rule of exactly this shape, so there was a pattern to follow and no reason
+    the other two were not written the same way.
+    """
+
+    #: What `src/` may import from outside the standard library and itself.
+    ALLOWED: ClassVar[frozenset[str]] = frozenset({"numpy", "scipy", "pandas"})
+
+    @staticmethod
+    def _module_scope_imports(path: Path) -> set[str]:
+        """Top-level import names in one file, ignoring imports inside bodies.
+
+        A function-local import is the documented escape hatch for both rules
+        -- ``diagnostics.render`` imports matplotlib inside itself, and the
+        covariate fits import each other locally to break cycles -- so only
+        imports at module scope count.
+        """
+        found: set[str] = set()
+        for node in ast.parse(path.read_text()).body:
+            if isinstance(node, ast.Import):
+                found.update(a.name.split(".")[0] for a in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                found.add(node.module.split(".")[0])
+        return found
+
+    def test_matplotlib_is_never_imported_at_module_scope(self):
+        """It is a `plot` extra; importing it here would make it a dependency.
+
+        ``render()`` imports it inside the function and raises a message naming
+        the extra when it is absent. That only holds while nothing else pulls
+        it in earlier.
+        """
+        offenders = sorted(
+            str(path.relative_to(ROOT))
+            for path in (ROOT / "src").rglob("*.py")
+            if "matplotlib" in self._module_scope_imports(path)
+        )
+        assert not offenders, (
+            f"{offenders} import matplotlib at module scope. It is an optional "
+            "extra: import it inside the function that needs it, as "
+            "`diagnostics.render` does."
+        )
+
+    def test_src_imports_nothing_beyond_the_declared_dependencies(self):
+        """The third-party surface is numpy, scipy and pandas, and nothing else.
+
+        Checked against what ``pyproject.toml`` actually declares rather than
+        against a list repeated here, so adding a dependency in one place and
+        not the other cannot pass.
+        """
+        with (ROOT / "pyproject.toml").open("rb") as handle:
+            declared = tomllib.load(handle)["project"]["dependencies"]
+        names = {re.split(r"[<>=!~\[]", d)[0].strip() for d in declared}
+        assert names == self.ALLOWED, (
+            f"pyproject declares {sorted(names)}; this test knows about "
+            f"{sorted(self.ALLOWED)}. Update ALLOWED deliberately."
+        )
+
+        stdlib = sys.stdlib_module_names
+        unexpected = {}
+        for path in sorted((ROOT / "src").rglob("*.py")):
+            outside = {
+                name
+                for name in self._module_scope_imports(path)
+                if name not in stdlib and name != "clvtools" and name not in names
+            }
+            if outside:
+                unexpected[str(path.relative_to(ROOT))] = sorted(outside)
+        assert not unexpected, (
+            f"these import something outside {sorted(names)}: {unexpected}. "
+            "`src/` may depend on numpy, scipy and pandas; anything else "
+            "belongs behind an extra and a local import."
+        )
+
+
 class TestSize:
     """The limits ruff has no rule for."""
 
