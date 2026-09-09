@@ -55,7 +55,7 @@ live in the README.
 ## Commands
 
 ```bash
-uv run pytest                  # 2,083 tests inc. doctests in src/ and docs/; ~5:10 on an M-series
+uv run pytest                  # 2,091 tests inc. doctests in src/ and docs/; ~5:10 on an M-series
 uv run pytest -m paper         # 22 numbers printed in the paper
 uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
 uv run pytest -m literature    # 22 numbers published in the CLV literature
@@ -165,9 +165,16 @@ edits the file on disk and reverts it after each mutant, so an interrupted run
 leaves mutated source behind, and the worktree's own editable install is what
 makes the mutation visible to the tests at all.
 
-`timeunit.py` scored **87.5%** — 585 mutants, 512 killed, 73 survived. Reading
-the survivors by hand is the whole job, because most cannot be killed by any
-test:
+Three modules have been through it:
+
+| module | mutants | killed | score |
+| --- | --- | --- | --- |
+| `special.py` | 225 | 215 | **95.6%** |
+| `gg.py` | 630 | 576 | **91.4%** |
+| `timeunit.py` | 585 | 512 | **87.5%** |
+
+Reading the survivors by hand is the whole job, because most cannot be killed
+by any test. On `timeunit.py`:
 
 - 13 mutate a *type annotation*, which `from __future__ import annotations`
   never evaluates;
@@ -177,11 +184,28 @@ test:
 - `year + (month == 12)` in `_anniversary`'s overflow branch cannot fire at
   all, because December has 31 days and so never overflows.
 
-Three were real, and are now tests: a 31st rolling into **September or
+Three were real there, and are now tests: a 31st rolling into **September or
 November** (the spelling `(month % 12) | 1` gives the right answer for months
 2, 4 and 6 and the wrong one for 9 and 11, so `2005-08-31 + 1 month` returned
 2005-09-01 with the suite green), and `_Fixed`'s `frozen=True` and `repr=False`,
 neither of which anything held it to.
+
+The other two modules told the same story — a handful of real gaps under a lot
+of equivalent mutants, and every one of them a **guard tested only far from its
+own boundary**:
+
+- `_hyp2f1_series` rejects `z` outside `(0, 1)`, and at exactly `z = 1` the
+  term count is `log(tol) / 0`, so relaxing the comparison to `z <= 1.0` turns
+  a documented `nan` into `OverflowError`. Nothing reached `z = 1`.
+- `expected_mean_spending`'s existence condition `p*x + q - 1 <= 0` was tested
+  at `-0.5` only, which four different wrong thresholds also reject. `q = 1`
+  with `x = 0` puts it exactly on zero, where the formula's denominator is zero
+  too.
+- `_require_positive` was only ever given zero — the one non-positive value
+  that `> 0` and `!= 0` both reject.
+- `frozen=True` and the Hessian's `repr=False` hold across **eight** fitted
+  params classes and nothing tested any of them, so that one is now a
+  convention test that discovers the classes rather than listing them.
 
 **mutmut 3.7 does not work here — do not reach for it.** It reported 69
 survivors on the same module; three sampled by hand were all false, including

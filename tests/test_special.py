@@ -167,6 +167,23 @@ class TestSeriesIsBounded:
         """Beyond ~0.9999 the series would need more terms than it will sum."""
         assert np.isnan(_hyp2f1_series(50.0, 2.0, 0.999999))
 
+    @pytest.mark.parametrize("z", [1.0, 1.5, -0.5])
+    def test_and_z_outside_the_unit_interval_is_nan_rather_than_an_error(self, z):
+        """The guard is ``0.0 < z < 1.0``, and the upper end is load-bearing.
+
+        At exactly ``z = 1``, ``log(z)`` is zero, so the term count is
+        ``log(tol) / 0`` -- infinite -- and ``int(ceil(inf))`` raises
+        ``OverflowError``. The guard turns that into the ``nan`` the docstring
+        promises, which callers already treat as strictly worse than any real
+        likelihood. Nothing reached ``z = 1``, so relaxing the comparison to
+        ``z <= 1.0`` left the suite green while making the function raise.
+
+        Found by mutation testing. ``z = 0`` is not in the list because the
+        early return above takes it, which is why relaxing the *lower* bound is
+        not a defect.
+        """
+        assert np.isnan(_hyp2f1_series(1.0, 2.0, z))
+
     def test_a_pathological_fit_terminates(self):
         """The property that matters: the optimiser finishes, whatever it finds.
 

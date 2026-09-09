@@ -705,3 +705,75 @@ class TestTheRatioTestIsFamilyAgnostic:
             self._result("bgnbd", 1, -5826.0), self._result("pnbd", 2, -5821.0)
         )
         assert np.isfinite(got.statistic)
+
+
+class TestEveryFittedParamsClassKeepsTheSameShape:
+    """Frozen, and with the Hessian out of the repr. Eight classes, one rule.
+
+    Both are conventions every family follows and nothing held any of them to.
+    A fitted object is a result, so freezing it is what makes passing one
+    around safe; and the Hessian is a parameter-by-parameter matrix, so a repr
+    that included it would bury the estimates it exists to show.
+
+    Discovered rather than listed, so a new family is covered the day it is
+    written. Found by mutation testing on ``gg.py``, where flipping either flag
+    left the whole suite green.
+    """
+
+    @staticmethod
+    def _carrying_a_hessian_matrix():
+        """Every dataclass in the package whose ``hessian`` is a matrix.
+
+        ``SearchSettings`` also has a field of that name -- the ``bool`` asking
+        whether to compute one -- which is why the type is what selects here
+        rather than the name alone.
+        """
+        import dataclasses
+        import importlib
+        import pkgutil
+
+        import clvtools
+
+        out = []
+        for found in pkgutil.walk_packages(clvtools.__path__, "clvtools."):
+            module = importlib.import_module(found.name)
+            for name, obj in vars(module).items():
+                if not (isinstance(obj, type) and dataclasses.is_dataclass(obj)):
+                    continue
+                if getattr(obj, "__module__", None) != module.__name__:
+                    continue
+                fields = {f.name: f for f in dataclasses.fields(obj)}
+                hessian = fields.get("hessian")
+                if hessian is None or "ndarray" not in str(hessian.type).lower():
+                    continue
+                out.append((f"{module.__name__}.{name}", obj, hessian))
+        return sorted(out)
+
+    def test_the_discovery_finds_every_family(self):
+        """A convention test that found nothing would pass silently."""
+        names = [n for n, _, _ in self._carrying_a_hessian_matrix()]
+        assert len(names) == 8, names
+        assert any("gg" in n for n in names)
+        assert any("dyncov" in n for n in names)
+
+    def test_each_one_is_frozen(self):
+        import dataclasses
+
+        mutable = [
+            name
+            for name, cls, _ in self._carrying_a_hessian_matrix()
+            if not cls.__dataclass_params__.frozen
+        ]
+        assert not mutable, f"these fitted results are writable: {mutable}"
+        assert dataclasses.FrozenInstanceError is not None
+
+    def test_and_none_of_them_put_the_hessian_in_the_repr(self):
+        shown = [
+            name
+            for name, _, hessian in self._carrying_a_hessian_matrix()
+            if hessian.repr
+        ]
+        assert not shown, (
+            f"these would print the whole Hessian: {shown}. It is a matrix over "
+            "the parameters; a repr carrying it hides the estimates."
+        )

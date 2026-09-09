@@ -235,6 +235,28 @@ class TestExpectedMeanSpending:
         with pytest.raises(ValueError, match=r"p\*x \+ q > 1"):
             gg.expected_mean_spending(0, 0.0, 1.0, 0.5, 50.0)
 
+    def test_and_the_condition_is_tested_at_its_own_boundary(self):
+        r""":math:`px + q - 1 \le 0`, on both sides of the equality.
+
+        The case above sits at :math:`-0.5`, comfortably inside the rejected
+        region -- and comfortably enough that four different thresholds accept
+        it too. Shifting the constant to ``q - 2``, relaxing to ``< 0``,
+        widening to ``<= 1`` or writing ``q // 1`` for ``q - 1`` all still
+        reject that point, so none of them was caught.
+
+        :math:`q = 1` with :math:`x = 0` puts the expression exactly on zero,
+        where the denominator of the formula below would be zero too, so ``<=``
+        rather than ``<`` is what stands between a caller and a division by it.
+        :math:`q = 1.5` is the nearest point that must be *accepted*.
+
+        Found by mutation testing.
+        """
+        with pytest.raises(ValueError, match=r"p\*x \+ q > 1"):
+            gg.expected_mean_spending(0, 0.0, 2.0, 1.0, 80.0)
+        assert float(gg.expected_mean_spending(0, 0.0, 2.0, 1.5, 80.0)) == (
+            pytest.approx(80.0 * 2.0 / (1.5 - 1.0))
+        )
+
 
 class TestFitting:
     def test_reaches_a_local_maximum(self, spending, fitted):
@@ -360,3 +382,17 @@ class TestValidation:
             gg.log_likelihood_ind(1, 10.0, 0.0, 5.654, 56.504)
         with pytest.raises(ValueError, match="strictly positive"):
             gg.spending_pdf(10.0, 3.099, 0.0)
+
+    def test_and_negative_ones_too_not_merely_zero(self):
+        """``> 0``, not ``!= 0``.
+
+        Every case above passes exactly zero, and zero is the one non-positive
+        value both spellings reject. Writing the guard as ``!= 0`` would let
+        every negative parameter through, and nothing would have noticed.
+
+        Found by mutation testing.
+        """
+        with pytest.raises(ValueError, match="strictly positive"):
+            gg.spending_pdf(10.0, 3.099, -1.0)
+        with pytest.raises(ValueError, match="strictly positive"):
+            gg.log_likelihood_ind(1, 10.0, -3.099, 5.654, 56.504)

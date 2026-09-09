@@ -126,6 +126,21 @@ commitment.
 
 ### Changed
 
+- **Mutation testing extended to `special.py` and `gg.py`.** 95.6% and 91.4%
+  respectively. Five more real gaps, and every one the same shape — a guard
+  tested only far from its own boundary. `_hyp2f1_series` rejects `z` outside
+  `(0, 1)`, and at exactly `z = 1` the term count divides by zero, so relaxing
+  the test to `z <= 1.0` turned a documented `nan` into an `OverflowError` with
+  the suite green. `expected_mean_spending`'s existence condition was checked at
+  `-0.5`, comfortably inside the rejected region and comfortably enough that
+  four wrong thresholds reject it too; `q = 1, x = 0` puts it exactly on zero,
+  where the formula's own denominator vanishes. `_require_positive` had only
+  ever been handed zero, the one non-positive value `> 0` and `!= 0` both
+  reject, so writing it the second way would have admitted every negative
+  parameter. And `frozen=True` with the Hessian kept out of the repr is a
+  convention across **eight** fitted params classes that nothing held any of
+  them to — now a test that discovers the classes rather than listing them, so
+  a new family is covered the day it is written.
 - **Mutation testing, and the three real gaps it found in `timeunit.py`.**
   Coverage says a line ran, not that a test would have noticed it being wrong.
   `timeunit.py` scores 87.5% — 585 mutants, 512 killed. Most survivors cannot be
