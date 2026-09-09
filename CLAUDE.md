@@ -55,7 +55,7 @@ live in the README.
 ## Commands
 
 ```bash
-uv run pytest                  # 2,091 tests inc. doctests in src/ and docs/; ~5:10 on an M-series
+uv run pytest                  # 2,101 tests inc. doctests in src/ and docs/; ~5:10 on an M-series
 uv run pytest -m paper         # 22 numbers printed in the paper
 uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
 uv run pytest -m literature    # 22 numbers published in the CLV literature
@@ -165,13 +165,20 @@ edits the file on disk and reverts it after each mutant, so an interrupted run
 leaves mutated source behind, and the worktree's own editable install is what
 makes the mutation visible to the tests at all.
 
-Three modules have been through it:
+Four modules have been through it:
 
 | module | mutants | killed | score |
 | --- | --- | --- | --- |
+| `pnbd/aggregate.py` | 2,455 | 2,373 | **96.7%** |
 | `special.py` | 225 | 215 | **95.6%** |
 | `gg.py` | 630 | 576 | **91.4%** |
 | `timeunit.py` | 585 | 512 | **87.5%** |
+
+Pick a target by what its tests cost, not by what it is worth: the cost is
+(mutants x one test run), so `aggregate.py` at 2,455 mutants against a 2-second
+test file is forty minutes, while `inference.py` at a third the mutants but
+40 seconds a run is most of a day. `-x` in the test command matters for the
+same reason — a killed mutant then stops at the first failure.
 
 Reading the survivors by hand is the whole job, because most cannot be killed
 by any test. On `timeunit.py`:
@@ -206,6 +213,20 @@ own boundary**:
 - `frozen=True` and the Hessian's `repr=False` hold across **eight** fitted
   params classes and nothing tested any of them, so that one is now a
   convention test that discovers the classes rather than listing them.
+
+`aggregate.py` scored highest and still gave up the most interesting finding,
+because a *redundant* path can hide a broken one. `pmf` computes `b1 - b2` and
+falls back to `_series_tail` when `(b1 - b2) / b1` drops below
+`_CANCELLATION_LIMIT`. Corrupting `b2`'s exponent drives that ratio to about
+**-20**, which is below the limit like any severely cancelled value, so the
+series ran and returned the right answer: every mutation of `b1` and `b2`
+survived. A negative ratio is not cancellation — `b2` truncates a series of
+positive terms summing to `b1`, so the difference is positive by construction —
+but the code cannot tell the two apart, and the tests only ever saw the final
+number. Forbidding the fallback at well-conditioned parameters and demanding
+the same answer pins the primary path; narrowing `cancelled` to `(0, 1]` in
+`src/` would be a behaviour change to code the oracle agrees with, so it is
+recorded rather than made.
 
 **mutmut 3.7 does not work here — do not reach for it.** It reported 69
 survivors on the same module; three sampled by hand were all false, including

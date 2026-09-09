@@ -126,6 +126,19 @@ commitment.
 
 ### Changed
 
+- **`pnbd/aggregate.py` mutation-tested: 96.7%**, the highest of the four and
+  the source of the most interesting finding, because a *redundant* path can
+  hide a broken one. `pmf` computes `b1 - b2` and falls back to `_series_tail`
+  when `(b1 - b2) / b1` drops below `_CANCELLATION_LIMIT`. Corrupting `b2`'s
+  exponent drives that ratio to about **-20** — below the limit like any
+  severely cancelled value — so the series ran instead and returned the right
+  answer, and every mutation of `b1` and `b2` survived. A negative ratio is not
+  cancellation: `b2` truncates a series of positive terms summing to `b1`, so
+  the difference is positive by construction. The new test forbids the fallback
+  at well-conditioned parameters and demands the same answer, which pins the
+  primary path; four separately verified mutants die on it. Narrowing
+  `cancelled` to `(0, 1]` in `src/` would be a behaviour change to code the
+  oracle agrees with, so that is recorded rather than made.
 - **Mutation testing extended to `special.py` and `gg.py`.** 95.6% and 91.4%
   respectively. Five more real gaps, and every one the same shape — a guard
   tested only far from its own boundary. `_hyp2f1_series` rejects `z` outside

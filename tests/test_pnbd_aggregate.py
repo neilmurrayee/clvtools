@@ -288,6 +288,58 @@ class TestPmfProperties:
             assert abs(expected - observed) < 0.15 * len(cbs)
 
 
+class TestPmfsSubtractionPathStandsOnItsOwn:
+    """The fallback is a fallback, not the only thing keeping ``pmf`` right.
+
+    ``b1 - b2`` is the primary path and ``_series_tail`` rescues it where
+    cancellation has eaten the answer. The rescue turned out to be so effective
+    that it hid arbitrary corruption of the primary path: mutating the exponent
+    in ``b2``'s terms drives ``(b1 - b2) / b1`` to around -20, which is below
+    :data:`_CANCELLATION_LIMIT` like any severely cancelled value, so the
+    series ran instead and returned the right answer. Every mutation of ``b1``
+    and ``b2`` survived that way.
+
+    What this class pins is the primary path: where it is well conditioned it
+    has to be right on its own, which is what forbidding the fallback and
+    asking for the same answer checks.
+
+    It leaves the wider observation alone deliberately. ``b2`` truncates a
+    series of positive terms whose full sum is ``b1``, so ``b1 - b2`` is the
+    rest of it -- positive, and no larger than ``b1`` -- and a ratio outside
+    ``(0, 1]`` is therefore an arithmetic error rather than cancellation.
+    Treating the two the same is what let the mutants through. Narrowing
+    ``cancelled`` to that range would be a behaviour change to code the oracle
+    agrees with, so it is written down here rather than made.
+
+    Found by mutation testing.
+    """
+
+    #: S6.2.1's estimates. Well away from the cancelling corner: the ratio runs
+    #: from 0.93 at ``k = 0`` down to 0.52 at ``k = 7``, against a limit of 1e-4.
+    MLE: ClassVar[dict] = {
+        "r": 0.5534, "alpha": 10.5802, "s": 0.6061, "beta": 11.6562,
+    }
+
+    @pytest.mark.parametrize("k", [0, 1, 3, 5, 7])
+    def test_the_answer_is_the_same_with_the_fallback_forbidden(self, k, monkeypatch):
+        """At these parameters the series is never reached, so it cannot help."""
+        from clvtools.pnbd import aggregate
+
+        expected = float(pmf(k, 104.0, **self.MLE))
+
+        def refuse(*args, **kwargs):
+            raise AssertionError("_series_tail was reached; it should not be")
+
+        monkeypatch.setattr(aggregate, "_series_tail", refuse)
+        assert float(pmf(k, 104.0, **self.MLE)) == pytest.approx(expected, rel=1e-15)
+
+    @pytest.mark.parametrize("k", [0, 1, 3, 5, 7])
+    def test_and_it_stays_a_probability(self, k):
+        """The one property that survives whichever path produced it."""
+        got = float(pmf(k, 104.0, **self.MLE))
+        assert 0.0 <= got <= 1.0
+
+
 class TestPmfResolvesItsSecondTermByTheSeriesTail:
     """`pmf` was quietly wrong long before it was NaN.
 
