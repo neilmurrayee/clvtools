@@ -55,7 +55,7 @@ live in the README.
 ## Commands
 
 ```bash
-uv run pytest                  # 2,107 tests inc. doctests in src/ and docs/; ~5:10 on an M-series
+uv run pytest                  # 2,111 tests inc. doctests in src/ and docs/; ~5:10 on an M-series
 uv run pytest -m paper         # 22 numbers printed in the paper
 uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
 uv run pytest -m literature    # 22 numbers published in the CLV literature
@@ -180,6 +180,23 @@ Pick a target by what its tests cost, not by what it is worth: the cost is
 test file is forty minutes, while `inference.py` at a third the mutants but
 40 seconds a run is most of a day. `-x` in the test command matters for the
 same reason — a killed mutant then stops at the first failure.
+
+**A mutation score is a property of the (module, test selection) pair, not of
+the module.** `inference.py` scored 82.7% against its own test file, with 122
+survivors — `aic`'s whole formula, `summary`'s z column and p-value, all
+apparently unpinned. Almost none of it was real. AIC is asserted in six places
+across `test_pnbd_fit.py`, `test_families.py` and `test_gg.py`; the summary
+table is printed with its `Pr(>|z|)` column as a doctest in `docs/vignette.md`;
+and the `parm` bound is checked by a `slow` test the selection had excluded.
+Re-running the headline survivors against those files kills them. One gap out
+of 122 was genuine, and it is the one this section's own advice would predict:
+`confint(level=0)` is refused by the code and by no test.
+
+So before believing a single survivor, check the selection can kill a mutant
+you *know* is fatal to the module's headline behaviour. A narrow selection does
+not measure a weak suite; it manufactures one. `inference.py` is the module
+where this bites hardest, because it is verified almost entirely from outside
+itself — which is a fact about the suite worth knowing on its own.
 
 Two things make a slow module affordable. Add the module's own file to the
 selection, because `--doctest-modules` then runs its docstring examples, and

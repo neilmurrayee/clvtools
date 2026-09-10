@@ -126,6 +126,18 @@ commitment.
 
 ### Changed
 
+- **`confint` now refuses `level = 0`**, which the code always rejected and no
+  test asserted. It came out of a mutation run on `inference.py` that is
+  otherwise a cautionary tale: scored against its own test file the module
+  reported 82.7% with 122 survivors, including `aic`'s entire formula and
+  `summary`'s z and p columns. Almost none was real — AIC is asserted in six
+  places across the family test files, the summary table is printed with its
+  `Pr(>|z|)` column as a doctest in `docs/vignette.md`, and the `parm` bound is
+  held by a `slow` test the selection excluded. One survivor of the 122 was
+  genuine. A mutation score is a property of the module *and* the tests it is
+  run against, and `inference.py` is verified almost entirely from outside
+  itself; CLAUDE.md now says to check a selection can kill a known-fatal mutant
+  before trusting anything it reports.
 - **`pnbd/individual.py` mutation-tested: 96.8%**, and 24 of its 26 survivors
   were the same guard. `poisson_pmf` and `nbd_pmf` both special-case
   `t == 0 and x == 0`, where the log form is `0 * log 0` and undefined. The

@@ -201,6 +201,20 @@ class TestGenerics:
         with pytest.raises(TypeError, match="names or positions"):
             fit.confint(parm=[1.5])
 
+    @pytest.mark.parametrize("level", [0.0, 1.0, -0.5, 1.5])
+    def test_confint_refuses_a_level_outside_the_open_unit_interval(self, fit, level):
+        """``0 < level < 1``, and the lower end was held by nothing.
+
+        ``level = 1`` was already refused by a test elsewhere; ``level = 0`` was
+        not, and relaxing the guard to ``0 <= level`` therefore left the suite
+        green. It would not raise at zero -- it would return intervals of zero
+        width, an answer rather than an error.
+
+        Found by mutation testing.
+        """
+        with pytest.raises(ValueError, match="strictly between 0 and 1"):
+            fit.confint(level=level)
+
     def test_vcov_is_symmetric_and_matches_the_errors(self, fit):
         cov = fit.vcov()
         np.testing.assert_allclose(cov.to_numpy(), cov.to_numpy().T, rtol=1e-12)
