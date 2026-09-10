@@ -138,6 +138,21 @@ commitment.
   run against, and `inference.py` is verified almost entirely from outside
   itself; CLAUDE.md now says to check a selection can kill a known-fatal mutant
   before trusting anything it reports.
+- **The BG/NBD's and GGom/NBD's Hessians are now tested at all.** The fixtures
+  carry standard errors for the Pareto/NBD and for the GGom/NBD *with*
+  covariates, and nothing for either plain fit — so those two families returned
+  a Hessian no test ever looked at. Inverting `if hessian:`, so that asking for
+  one skips it, survived the entire suite in both; so did flipping the sign of
+  the objective the BG/NBD's is differenced from, which negates the matrix and
+  turns every standard error into `nan` while `converged` still reads `True`.
+  `TestAFitsHessianIsUsable` pins the properties rather than the numbers, so it
+  needs no new oracle fixture: symmetric, correctly shaped, positive definite,
+  and standard errors finite and positive. The GGom/NBD is exempted from the
+  last two deliberately — it fits `b` to 3e-06 and `beta` to 1e-04, where the
+  likelihood is flat enough that the matrix is genuinely indefinite and two of
+  its standard errors are `nan`; what is asserted there is the warning that
+  says so, which is finding 9's subject. Five mutants across four families were
+  confirmed killed by it.
 - **`pnbd/individual.py` mutation-tested: 96.8%**, and 24 of its 26 survivors
   were the same guard. `poisson_pmf` and `nbd_pmf` both special-case
   `t == 0 and x == 0`, where the log form is `0 * log 0` and undefined. The

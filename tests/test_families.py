@@ -947,3 +947,91 @@ class TestGGompertzQuadratureAtLargeB:
             f"b = {b}: the default quadrature differs from the refined one by "
             f"{error:.3e}, so this package's own answer is no longer converged"
         )
+
+
+@pytest.mark.slow
+class TestAFitsHessianIsUsable:
+    """Every plain fit's Hessian, checked as a matrix rather than as a flag.
+
+    The fixtures carry standard errors for the Pareto/NBD and for the GGom/NBD
+    *with* covariates, and nothing at all for the plain BG/NBD and GGom/NBD --
+    so those two families produced a Hessian that no test ever looked at.
+    Inverting ``if hessian:`` in either fit, so that asking for one skips it,
+    survived the entire suite; so did flipping the sign of the objective the
+    BG/NBD's is differenced from, which negates the matrix and turns every
+    standard error into ``nan``.
+
+    The properties below need no oracle. A Hessian of the negative log
+    likelihood at a maximum is symmetric and positive definite, so its inverse
+    has a positive diagonal and the standard errors are real and finite.
+
+    The GGom/NBD is the exception, and deliberately so: it fits ``b`` to 3e-06
+    and ``beta`` to 1e-04, where the likelihood is flat enough that the matrix
+    comes back indefinite and two of its standard errors are ``nan``. That is
+    finding 9's territory -- what matters there is that the fit *says so*,
+    which :class:`~tests.test_inference.TestAHessianThatCannotBeTrusted` covers
+    and which is asserted here too rather than asserting a conditioning the
+    family does not have.
+
+    Found by mutation testing.
+    """
+
+    #: The families whose Hessian is well conditioned at the optimum.
+    DEFINITE: ClassVar[tuple[str, ...]] = ("pnbd", "bgnbd", "gg")
+    FAMILIES: ClassVar[tuple[str, ...]] = ("pnbd", "bgnbd", "ggomnbd", "gg")
+
+    @staticmethod
+    def _fit(family, xtt, *, hessian):
+        x, t_x, T = xtt
+        if family == "gg":
+            # The spending model takes counts and mean spend, not recency.
+            from clvtools.gg import fit_gg
+
+            rng = np.random.default_rng(0)
+            spend = 30.0 + rng.gamma(shape=4.0, scale=5.0, size=x.size)
+            return fit_gg(x, np.where(x > 0, spend, 0.0), hessian=hessian)
+        fit = {"pnbd": pnbd.fit_pnbd, "bgnbd": bgnbd.fit_bgnbd,
+               "ggomnbd": ggomnbd.fit_ggomnbd}[family]
+        return fit(x, t_x, T, hessian=hessian)
+
+    @pytest.mark.parametrize("family", FAMILIES)
+    def test_asking_for_no_hessian_leaves_it_absent(self, family, xtt):
+        assert self._fit(family, xtt, hessian=False).hessian is None
+
+    @pytest.mark.parametrize("family", FAMILIES)
+    def test_and_asking_for_one_gives_a_symmetric_matrix(self, family, xtt):
+        """Shape and symmetry hold for every family, conditioning aside."""
+        fitted = self._fit(family, xtt, hessian=True)
+        h = fitted.hessian
+        assert h is not None, f"{family} returned no Hessian when asked for one"
+        assert h.shape == (len(fitted.names), len(fitted.names))
+        np.testing.assert_allclose(h, h.T, rtol=1e-8, atol=1e-8)
+
+    @pytest.mark.parametrize("family", DEFINITE)
+    def test_and_it_is_positive_definite_where_the_fit_is_identified(
+        self, family, xtt
+    ):
+        fitted = self._fit(family, xtt, hessian=True)
+        eigenvalues = np.linalg.eigvalsh(fitted.hessian)
+        assert np.all(eigenvalues > 0), (
+            f"{family}'s Hessian is not positive definite: {eigenvalues}. At a "
+            "maximum of the log likelihood the negated Hessian must be, and a "
+            "sign slip in the objective is what makes it not."
+        )
+        errors = fitted.standard_errors()
+        assert set(errors) == set(fitted.names)
+        assert all(np.isfinite(v) and v > 0 for v in errors.values()), errors
+
+    def test_but_the_ggomnbd_says_when_its_own_is_not(self, xtt):
+        """``b`` and ``beta`` fit near zero, and the matrix goes indefinite.
+
+        Finding 9: the failure mode that mattered was reporting ``nan`` beside
+        ``converged = True`` in silence. The warning is the fix, so the warning
+        is what is pinned.
+        """
+        from clvtools._validate import PrecisionWarning
+
+        fitted = self._fit("ggomnbd", xtt, hessian=True)
+        with pytest.warns((PrecisionWarning, UserWarning), match="positive definite"):
+            errors = fitted.standard_errors()
+        assert set(errors) == set(fitted.names)

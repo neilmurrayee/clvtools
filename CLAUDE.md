@@ -55,7 +55,7 @@ live in the README.
 ## Commands
 
 ```bash
-uv run pytest                  # 2,111 tests inc. doctests in src/ and docs/; ~5:10 on an M-series
+uv run pytest                  # 2,123 tests inc. doctests in src/ and docs/; ~5:10 on an M-series
 uv run pytest -m paper         # 22 numbers printed in the paper
 uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
 uv run pytest -m literature    # 22 numbers published in the CLV literature
@@ -170,6 +170,7 @@ Four modules have been through it:
 | module | mutants | killed | score |
 | --- | --- | --- | --- |
 | `pnbd/individual.py` | 820 | 794 | **96.8%** |
+| `bgnbd.py` | 1,600 | 1,454 | 90.9% raw, **99.4%** measured |
 | `pnbd/aggregate.py` | 2,455 | 2,373 | **96.7%** |
 | `special.py` | 225 | 215 | **95.6%** |
 | `gg.py` | 630 | 576 | **91.4%** |
@@ -180,6 +181,15 @@ Pick a target by what its tests cost, not by what it is worth: the cost is
 test file is forty minutes, while `inference.py` at a third the mutants but
 40 seconds a run is most of a day. `-x` in the test command matters for the
 same reason — a killed mutant then stops at the first failure.
+
+**Annotate survivors with coverage before reading them.** `bgnbd.py`'s raw
+90.9% is 146 survivors; eleven of them sit on statements the selection never
+executes, where a mutant cannot be killed by anything. Excluding those gives
+99.4%, and the rest are almost all mutations of a type annotation. Coverage
+records a multi-line statement only at its *first* line, so map each mutant's
+line to its enclosing statement before deciding — comparing against
+`executed_lines` directly called 137 survivors unmeasured when the true number
+was 11.
 
 **A mutation score is a property of the (module, test selection) pair, not of
 the module.** `inference.py` scored 82.7% against its own test file, with 122
@@ -240,6 +250,19 @@ own boundary**:
 - `frozen=True` and the Hessian's `repr=False` hold across **eight** fitted
   params classes and nothing tested any of them, so that one is now a
   convention test that discovers the classes rather than listing them.
+
+`bgnbd.py` and `ggomnbd.py` produced a Hessian **no test ever looked at**. The
+fixtures carry standard errors for the Pareto/NBD and for the GGom/NBD with
+covariates, and nothing for either plain fit, so inverting `if hessian:` — so
+that asking for the Hessian skips it — survived the whole suite in both, and
+so did flipping the sign of the objective the BG/NBD's is differenced from,
+which negates the matrix and makes every standard error `nan`.
+`TestAFitsHessianIsUsable` pins the properties instead, which needs no oracle:
+symmetric, right shape, positive definite, standard errors finite and positive.
+The GGom/NBD is exempted from the last two on purpose — it fits `b` to 3e-06
+and `beta` to 1e-04, the matrix comes back genuinely indefinite, and what is
+asserted there is finding 9's warning rather than a conditioning the family
+does not have.
 
 `individual.py`'s survivors were 24-of-26 the same guard. `poisson_pmf` and
 `nbd_pmf` both special-case `t == 0 and x == 0`, where the log form is
