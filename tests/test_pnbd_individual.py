@@ -60,6 +60,15 @@ class TestLifetime:
         with pytest.raises(ValueError, match="mu must be strictly positive"):
             lifetime_pdf(1.0, 0.0)
 
+    def test_and_a_negative_rate_too_not_merely_zero(self):
+        """``> 0``, not ``!= 0`` -- zero is the one value both spellings catch.
+
+        The same gap as in ``gg.py``, found the same way and in the same shape
+        of guard. Found by mutation testing.
+        """
+        with pytest.raises(ValueError, match="mu must be strictly positive"):
+            lifetime_pdf(1.0, -0.3)
+
 
 class TestGammaHeterogeneity:
     r"""Eqs. (5) and (7) -- the two mixing distributions."""
@@ -74,7 +83,19 @@ class TestGammaHeterogeneity:
 
     @pytest.mark.parametrize(
         "pdf,shape,rate",
-        [(gamma_pdf_mu, MLE["s"], MLE["beta"]), (gamma_pdf_lambda, MLE["r"], MLE["alpha"])],
+        [
+            (gamma_pdf_mu, MLE["s"], MLE["beta"]),
+            (gamma_pdf_lambda, MLE["r"], MLE["alpha"]),
+            # Both fitted shapes land under 2, and `shape - 1` is the exponent
+            # on `x`. For `1 <= shape < 2` that is numerically equal to
+            # `shape % 1`, so writing the exponent the second way is invisible
+            # at `r = 1.449` and was: the mutation survived the whole suite.
+            # A shape above 2 separates them, and one below 1 pins the other
+            # side. Found by mutation testing.
+            (gamma_pdf_lambda, 2.5, MLE["alpha"]),
+            (gamma_pdf_mu, 3.75, MLE["beta"]),
+            (gamma_pdf_lambda, 0.4, MLE["alpha"]),
+        ],
     )
     def test_the_scale_parameter_is_scipys_rate(self, pdf, shape, rate):
         """The paper calls it a scale parameter but writes ``e^{-x * rate}``."""
@@ -138,6 +159,35 @@ class TestTransactionCounts:
 
     def test_poisson_is_one_at_zero_time_and_zero_count(self):
         assert poisson_pmf(0, 0.3, 0.0) == pytest.approx(1.0)
+
+    @pytest.mark.parametrize("pmf,rest", [
+        (poisson_pmf, (0.3,)),                     # poisson_pmf(x, lam, t)
+        (nbd_pmf, (MLE["r"], MLE["alpha"])),       # nbd_pmf(x, t, r, alpha)
+    ])
+    def test_and_no_time_means_no_transactions_for_either(self, pmf, rest):
+        r"""``t = 0``: :math:`P(X=0) = 1`, and every other count is impossible.
+
+        Both distributions special-case ``t == 0 and x == 0``, where the log
+        form is :math:`0 \times \log 0` and undefined. The case was half
+        tested -- the Poisson at ``x = 0`` only, and the NBD not at all -- and
+        together that left the guard almost entirely unpinned: twenty-four
+        separate mutations of those two lines survived, including replacing the
+        returned ``1.0`` with ``0.0``.
+
+        The counts above zero are what pin the *condition* rather than the
+        value: without them ``x >= 0`` and ``x <= 0`` read the same as
+        ``x == 0``, because nothing ever asked for a count the guard should
+        refuse.
+
+        Found by mutation testing.
+        """
+        if pmf is poisson_pmf:
+            at = lambda x: pmf(x, rest[0], 0.0)  # noqa: E731
+        else:
+            at = lambda x: pmf(x, 0.0, *rest)  # noqa: E731
+        assert float(at(0)) == pytest.approx(1.0)
+        assert float(at(1)) == pytest.approx(0.0)
+        assert float(at(5)) == pytest.approx(0.0)
 
     def test_nbd_equals_the_numerical_mixture(self):
         r, alpha, t = MLE["r"], MLE["alpha"], 104.0

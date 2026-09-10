@@ -55,7 +55,7 @@ live in the README.
 ## Commands
 
 ```bash
-uv run pytest                  # 2,101 tests inc. doctests in src/ and docs/; ~5:10 on an M-series
+uv run pytest                  # 2,107 tests inc. doctests in src/ and docs/; ~5:10 on an M-series
 uv run pytest -m paper         # 22 numbers printed in the paper
 uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
 uv run pytest -m literature    # 22 numbers published in the CLV literature
@@ -169,6 +169,7 @@ Four modules have been through it:
 
 | module | mutants | killed | score |
 | --- | --- | --- | --- |
+| `pnbd/individual.py` | 820 | 794 | **96.8%** |
 | `pnbd/aggregate.py` | 2,455 | 2,373 | **96.7%** |
 | `special.py` | 225 | 215 | **95.6%** |
 | `gg.py` | 630 | 576 | **91.4%** |
@@ -179,6 +180,15 @@ Pick a target by what its tests cost, not by what it is worth: the cost is
 test file is forty minutes, while `inference.py` at a third the mutants but
 40 seconds a run is most of a day. `-x` in the test command matters for the
 same reason — a killed mutant then stops at the first failure.
+
+Two things make a slow module affordable. Add the module's own file to the
+selection, because `--doctest-modules` then runs its docstring examples, and
+those are often the only fast exercise of a method the suite otherwise reaches
+by fitting a model (this takes `inference.py` from 73% to 93% coverage).
+And `--deselect` the handful of cases that dominate the clock: four numerical
+double-integrals were 15 of `test_pnbd_individual.py`'s 17 seconds, and keeping
+one of the four holds the cross-check while making the module a 40-minute
+target instead of a three-hour one.
 
 Reading the survivors by hand is the whole job, because most cannot be killed
 by any test. On `timeunit.py`:
@@ -213,6 +223,15 @@ own boundary**:
 - `frozen=True` and the Hessian's `repr=False` hold across **eight** fitted
   params classes and nothing tested any of them, so that one is now a
   convention test that discovers the classes rather than listing them.
+
+`individual.py`'s survivors were 24-of-26 the same guard. `poisson_pmf` and
+`nbd_pmf` both special-case `t == 0 and x == 0`, where the log form is
+`0 * log 0`; the Poisson had one test at `x = 0` and the NBD none at all, which
+left even `return 1.0` -> `return 0.0` alive. Counts above zero are what pin
+the *condition* rather than the value — without them `x >= 0` and `x <= 0` read
+the same as `x == 0`, because nothing ever asked for a count the guard should
+refuse. `x <= 0` stays alive on purpose: it differs only for a negative count,
+which is not a valid input.
 
 `aggregate.py` scored highest and still gave up the most interesting finding,
 because a *redundant* path can hide a broken one. `pmf` computes `b1 - b2` and

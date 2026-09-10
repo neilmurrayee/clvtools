@@ -126,6 +126,19 @@ commitment.
 
 ### Changed
 
+- **`pnbd/individual.py` mutation-tested: 96.8%**, and 24 of its 26 survivors
+  were the same guard. `poisson_pmf` and `nbd_pmf` both special-case
+  `t == 0 and x == 0`, where the log form is `0 * log 0` and undefined. The
+  Poisson had one test there at `x = 0`; the NBD had none at all. Together that
+  left the guard almost entirely unpinned — replacing the returned `1.0` with
+  `0.0` survived the whole suite. Both now assert that no elapsed time means
+  `P(X=0) = 1` and every other count is impossible, and the counts above zero
+  are what pin the condition rather than the value. Two smaller ones came with
+  it: `gamma_pdf_lambda`'s exponent `shape - 1` is numerically equal to
+  `shape % 1` for every shape in `[1, 2)`, and `r = 1.449` is the only shape the
+  density was ever checked at, so the densities now cover a shape above 2 and
+  one below 1; and `_require_positive` had the same zero-only gap already found
+  in `gg.py`.
 - **`pnbd/aggregate.py` mutation-tested: 96.7%**, the highest of the four and
   the source of the most interesting finding, because a *redundant* path can
   hide a broken one. `pmf` computes `b1 - b2` and falls back to `_series_tail`
