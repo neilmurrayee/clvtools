@@ -275,6 +275,31 @@ class TestValidation:
         assert isinstance(got, PnbdParams)
         assert got.n_evaluations > 0
 
+    def test_the_evaluation_counter_counts_one_per_evaluation(self, cbs):
+        """``n_evaluations`` is a count, and nothing pinned its unit.
+
+        Every assertion on it is either ``> 0`` or a comparison between two
+        fits -- and both survive multiplying the increment by any constant,
+        because both sides scale together. So ``evaluations += 1`` could have
+        been ``+= 2`` with the suite green, and the operation-count invariants
+        in ``test_performance.py`` would have been counting in twos.
+
+        Two fits under different caps pin it: the counter's response to raising
+        ``maxfun`` by 30 must be exactly 30. The fixed offset -- scipy reports a
+        handful of evaluations beyond its own budget -- cancels in the
+        difference, which is what keeps this from depending on the platform or
+        the SciPy version.
+
+        Found by mutation testing.
+        """
+        def evaluations(cap):
+            return fit_pnbd(
+                cbs["x"], cbs["t.x"], cbs["T.cal"],
+                options={"maxfun": cap}, hessian=False,
+            ).n_evaluations
+
+        assert evaluations(50) - evaluations(20) == 30
+
 
 class TestNonFiniteStartValuesAreRefusedByName:
     """Spec V-01 and V-02, and the same defect one level apart.

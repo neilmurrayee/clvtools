@@ -208,6 +208,31 @@ class TestDispatch:
         assert hasattr(fit, "correlation")
 
 
+class TestSpendingRefusesAnotherFamily:
+    """S3.5: the Gamma-Gamma is the only spending model the paper gives.
+
+    ``spending`` guards on ``!= "gg"`` and every call in the suite passes
+    ``gg``, so the guard was only ever exercised on the side that does not
+    raise. Relaxing it to ``> "gg"`` therefore left the suite green -- and
+    accepts every family whose name sorts below ``"gg"``, which includes
+    ``bgnbd``: a BG/NBD handed to the spending entry point would have been
+    fitted as a Gamma-Gamma.
+
+    Found by mutation testing.
+    """
+
+    @pytest.mark.parametrize("family", ["bgnbd", "ggomnbd", "pnbd"])
+    def test_only_the_gamma_gamma_is_a_spending_model(self, data, family):
+        import clvtools
+
+        with pytest.raises(ValueError, match="only spending model"):
+            spending(family=getattr(clvtools, family), data=data, hessian=False)
+
+    def test_and_the_name_may_be_given_as_a_string(self, data):
+        with pytest.raises(ValueError, match="only spending model"):
+            spending(family="bgnbd", data=data, hessian=False)
+
+
 class TestGuards:
     """What Table 4 marks as unavailable, refused rather than silently ignored."""
 

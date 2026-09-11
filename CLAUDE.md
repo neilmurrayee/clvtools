@@ -55,7 +55,7 @@ live in the README.
 ## Commands
 
 ```bash
-uv run pytest                  # 2,135 tests inc. doctests in src/ and docs/; ~5:10 on an M-series
+uv run pytest                  # 2,140 tests inc. doctests in src/ and docs/; ~5:10 on an M-series
 uv run pytest -m paper         # 22 numbers printed in the paper
 uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
 uv run pytest -m literature    # 22 numbers published in the CLV literature
@@ -174,6 +174,12 @@ Four modules have been through it:
 | `ggomnbd.py` | 1,958 | 1,746 | 89.2% raw, **91.8%** measured |
 | `predict.py` | 409 | 206 | 50.4% raw — **not a valid score**, see below |
 | `data.py` | 913 | 447 | 49.0% raw — 242 of 466 survivors are annotations |
+| `estimate.py` | 282 | 166 | 58.9% raw — 88 of 116 survivors are signatures |
+| `pnbd/fit.py` | 97 | 53 | 54.6% raw — 35 of 44 survivors are signatures |
+
+Ten of the twenty-two modules have been through it. The remaining twelve are
+mostly the dynamic-covariate trio and `_staticcov.py`, whose tests are minutes
+rather than seconds.
 | `pnbd/aggregate.py` | 2,455 | 2,373 | **96.7%** |
 | `special.py` | 225 | 215 | **95.6%** |
 | `gg.py` | 630 | 576 | **91.4%** |
@@ -193,6 +199,16 @@ records a multi-line statement only at its *first* line, so map each mutant's
 line to its enclosing statement before deciding — comparing against
 `executed_lines` directly called 137 survivors unmeasured when the true number
 was 11.
+
+**A counter needs a test of its unit, not of its sign.** `n_evaluations` was
+asserted as `> 0` and in comparisons between two fits — and every one of those
+survives multiplying the increment by a constant, because both sides scale
+together. `evaluations += 1` could have been `+= 2` with the suite green, and
+the operation-count invariants in `test_performance.py` would have been
+counting in twos. Two fits under different `maxfun` caps pin it: the response
+to raising the cap by 30 must be exactly 30, and the fixed offset cancels in
+the difference, so the test does not depend on the platform or the SciPy
+version.
 
 **Classify survivors before counting them.** `data.py`'s 466 survivors are 242
 type-annotation mutations that `from __future__ import annotations` never

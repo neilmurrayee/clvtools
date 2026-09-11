@@ -138,6 +138,18 @@ commitment.
   run against, and `inference.py` is verified almost entirely from outside
   itself; CLAUDE.md now says to check a selection can kill a known-fatal mutant
   before trusting anything it reports.
+- **`spending()` refuses any family but the Gamma-Gamma**, and the Pareto/NBD's
+  evaluation counter counts in ones. The spending guard is `!= "gg"` and every
+  call in the suite passes `gg`, so it was only ever exercised on the side that
+  does not raise; relaxed to `> "gg"` it accepts every family sorting below
+  `"gg"` — including `bgnbd`, which would then have been fitted as a
+  Gamma-Gamma. And `n_evaluations` was asserted only as `> 0` or in comparisons
+  between two fits, both of which survive multiplying the increment by a
+  constant, so `evaluations += 1` could have been `+= 2` while
+  `test_performance.py`'s operation-count invariants counted in twos. Two fits
+  under different `maxfun` caps pin the unit: the response to raising the cap by
+  30 must be exactly 30, and the fixed offset cancels in the difference. Four
+  mutants confirmed killed.
 - **An estimation period that ends before it starts is refused**, and
   `as_data_frame` is held to the transaction columns. `_resolve_split` guards
   `end <= estimation_start`, and a split of exactly zero — the one value `<=`
