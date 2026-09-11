@@ -138,6 +138,15 @@ commitment.
   run against, and `inference.py` is verified almost entirely from outside
   itself; CLAUDE.md now says to check a selection can kill a known-fatal mutant
   before trusting anything it reports.
+- **`pmf_data` accepts a single bin, and its tail is the remainder.** Two
+  defects hid behind every larger bin count. The guard is
+  `max_transactions < 1` and nothing ever asked for 1, so tightening it to
+  `< 2` — which rejects the smallest legal table — left the suite green. And
+  the tail bin is `len(T) - sum(expected)`; at ten bins the bins below already
+  hold 597 of 600 customers, so writing that subtraction as
+  `len(T) % sum(expected)` returns the same 3, because `a % b` equals `a - b`
+  whenever `b <= a < 2b`. With one bin the head holds 213 and the two disagree:
+  387 against 174. One test at `max_transactions = 1` kills all three mutants.
 - **`spending()` refuses any family but the Gamma-Gamma**, and the Pareto/NBD's
   evaluation counter counts in ones. The spending guard is `!= "gg"` and every
   call in the suite passes `gg`, so it was only ever exercised on the side that

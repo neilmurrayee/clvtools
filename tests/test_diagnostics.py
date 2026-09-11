@@ -242,6 +242,32 @@ class TestPmfProperties:
         for _, group in got.groupby("variable"):
             assert group["value"].sum() == pytest.approx(600.0)
 
+    def test_a_single_bin_is_allowed_and_its_tail_is_the_remainder(self, data):
+        """``max_transactions = 1``: the smallest table the guard permits.
+
+        Two things hide at every larger bin count. The guard is
+        ``max_transactions < 1``, and nothing asked for 1, so tightening it to
+        ``< 2`` — which rejects the smallest legal table — left the suite
+        green. And the tail bin is ``len(T) - sum(expected)``; for ten bins the
+        bins below already hold 597 of 600 customers, so writing the
+        subtraction as ``len(T) % sum(expected)`` gives the same 3, because
+        ``a % b`` equals ``a - b`` whenever ``b <= a < 2b``. With one bin the
+        head holds 213 and the two disagree: 387 against 174.
+
+        Found by mutation testing.
+        """
+        got = diagnostics.pmf_data(data, lambda k, T: pmf(k, T, **FITTED), 1)
+        assert list(got["num.transactions"].unique()) == ["0", "1+"]
+        for _, group in got.groupby("variable"):
+            assert group["value"].sum() == pytest.approx(600.0)
+
+        actual = got[got["variable"] == diagnostics.ACTUAL].set_index(
+            "num.transactions"
+        )["value"]
+        zeroes = float((data.customer_summary()["x"] == 0).sum())
+        assert actual["0"] == pytest.approx(zeroes)
+        assert actual["1+"] == pytest.approx(600.0 - zeroes)
+
     def test_the_observed_counts_are_the_histogram(self, data):
         got = diagnostics.pmf_data(data, lambda k, T: pmf(k, T, **FITTED))
         observed = got[got["variable"] == diagnostics.ACTUAL].set_index(

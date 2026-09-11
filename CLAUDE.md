@@ -55,7 +55,7 @@ live in the README.
 ## Commands
 
 ```bash
-uv run pytest                  # 2,140 tests inc. doctests in src/ and docs/; ~5:10 on an M-series
+uv run pytest                  # 2,141 tests inc. doctests in src/ and docs/; ~5:10 on an M-series
 uv run pytest -m paper         # 22 numbers printed in the paper
 uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
 uv run pytest -m literature    # 22 numbers published in the CLV literature
@@ -176,10 +176,12 @@ Four modules have been through it:
 | `data.py` | 913 | 447 | 49.0% raw — 242 of 466 survivors are annotations |
 | `estimate.py` | 282 | 166 | 58.9% raw — 88 of 116 survivors are signatures |
 | `pnbd/fit.py` | 97 | 53 | 54.6% raw — 35 of 44 survivors are signatures |
+| `diagnostics.py` | 575 | 399 | 69.4% raw |
+| `bootstrap.py` | 282 | 177 | 62.8% raw |
 
-Ten of the twenty-two modules have been through it. The remaining twelve are
-mostly the dynamic-covariate trio and `_staticcov.py`, whose tests are minutes
-rather than seconds.
+Fourteen of the twenty-two modules have been through it. The remaining eight
+are the dynamic-covariate trio, `_staticcov.py`, `pnbd/staticcov.py`,
+`pnbd/correlation.py`, `_validate.py` and `_optimize.py`.
 | `pnbd/aggregate.py` | 2,455 | 2,373 | **96.7%** |
 | `special.py` | 225 | 215 | **95.6%** |
 | `gg.py` | 630 | 576 | **91.4%** |
@@ -199,6 +201,16 @@ records a multi-line statement only at its *first* line, so map each mutant's
 line to its enclosing statement before deciding — comparing against
 `executed_lines` directly called 137 survivors unmeasured when the true number
 was 11.
+
+**A surviving mutant on a line that looks important is still usually
+equivalent.** Of four `diagnostics.py`/`bootstrap.py` survivors that reached
+the whole-suite check, two were: `_period_grid`'s `while when <= end` narrowed
+to `<` produces a byte-identical grid, because the `if points[-1] < end` below
+it appends exactly the point the loop stopped short of; and `bootstrap_data`'s
+`reset_index(drop=True)` can drop its `drop`, because `ClvData` re-selects its
+own columns and the stray `index` never reaches anyone. Both were checked by
+running the real function either way and comparing, which costs a minute and is
+the only thing that tells them from a defect.
 
 **A counter needs a test of its unit, not of its sign.** `n_evaluations` was
 asserted as `> 0` and in comparisons between two fits — and every one of those
