@@ -304,6 +304,64 @@ class TestDiscountFactor:
         with pytest.raises(ValueError, match="must exceed -1"):
             discount_factor(-1.5)
 
+    def test_and_minus_one_exactly_which_is_the_boundary(self):
+        """The guard is ``<= -1``, and -1.5 does not tell it from ``< -1``.
+
+        At exactly -1 the rate wipes out the whole value, and ``log1p(-1)`` is
+        ``-inf``: relaxing the comparison returns an infinite discount factor
+        rather than raising. Found by mutation testing.
+        """
+        with pytest.raises(ValueError, match="must exceed -1"):
+            discount_factor(-1.0)
+
+
+class TestActualsStopAtTheWindowsEnd:
+    """The holdout window is closed at both ends, and only one was tested.
+
+    ``_actuals`` counts what happened between the prediction window's first and
+    last day. Every test compared a window that runs to the end of the data, so
+    nothing distinguished ``Date <= last`` from a condition that is always
+    true: replacing it with one left the whole suite green while every later
+    transaction was counted as though it had fallen inside.
+
+    That overstates ``actual.x`` and ``actual.period.spending``, which are the
+    columns a holdout comparison is *for*.
+
+    Found by mutation testing.
+    """
+
+    @staticmethod
+    def _data():
+        tx = pd.DataFrame({
+            "Id": ["a", "a", "a", "b", "b"],
+            "Date": pd.to_datetime([
+                "2005-01-03", "2005-02-07", "2005-06-06",   # a: one inside
+                "2005-01-10", "2005-05-09",                 # b: none inside
+            ]),
+            "Price": [10.0, 20.0, 99.0, 5.0, 77.0],
+        })
+        return ClvData(tx, time_unit="week", estimation_split=4)
+
+    def test_a_transaction_after_the_window_is_not_counted(self):
+        from clvtools.predict import _actuals
+
+        got = _actuals(
+            self._data(), pd.Timestamp("2005-02-01"), pd.Timestamp("2005-03-01"),
+            pd.Index(["a", "b"], name="Id"),
+        )
+        assert list(got["actual.x"]) == [1, 0]
+        assert list(got["actual.period.spending"]) == [20.0, 0.0]
+
+    def test_and_widening_the_window_does_count_it(self):
+        """The counterpart, so the test above cannot pass by counting nothing."""
+        from clvtools.predict import _actuals
+
+        got = _actuals(
+            self._data(), pd.Timestamp("2005-02-01"), pd.Timestamp("2005-12-31"),
+            pd.Index(["a", "b"], name="Id"),
+        )
+        assert list(got["actual.x"]) == [2, 1]
+
 
 class TestPredictionEnd:
     @staticmethod

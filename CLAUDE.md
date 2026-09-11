@@ -55,7 +55,7 @@ live in the README.
 ## Commands
 
 ```bash
-uv run pytest                  # 2,125 tests inc. doctests in src/ and docs/; ~5:10 on an M-series
+uv run pytest                  # 2,128 tests inc. doctests in src/ and docs/; ~5:10 on an M-series
 uv run pytest -m paper         # 22 numbers printed in the paper
 uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
 uv run pytest -m literature    # 22 numbers published in the CLV literature
@@ -172,6 +172,7 @@ Four modules have been through it:
 | `pnbd/individual.py` | 820 | 794 | **96.8%** |
 | `bgnbd.py` | 1,600 | 1,454 | 90.9% raw, **99.4%** measured |
 | `ggomnbd.py` | 1,958 | 1,746 | 89.2% raw, **91.8%** measured |
+| `predict.py` | 409 | 206 | 50.4% raw — **not a valid score**, see below |
 | `pnbd/aggregate.py` | 2,455 | 2,373 | **96.7%** |
 | `special.py` | 225 | 215 | **95.6%** |
 | `gg.py` | 630 | 576 | **91.4%** |
@@ -191,6 +192,17 @@ records a multi-line statement only at its *first* line, so map each mutant's
 line to its enclosing statement before deciding — comparing against
 `executed_lines` directly called 137 survivors unmeasured when the true number
 was 11.
+
+**Validating a selection needs a mutant from the region the survivors are in.**
+`predict.py`'s selection was validated on `discount_factor` — which its own
+tests cover well — and then scored 50.4%, the lowest of any module. Checking
+the substantive survivors one at a time against the whole suite killed most of
+them: the module is orchestration, and what it orchestrates is asserted from
+`test_families.py`, `test_pnbd_staticcov.py` and the docs. One known-fatal
+mutant is enough to catch a selection that imports nothing; it is not enough to
+catch one that misses two thirds of what verifies the module. No score is
+published for `predict.py` for that reason — only the four survivors that
+survived the whole suite, two of which were real.
 
 **A mutation score is a property of the (module, test selection) pair, not of
 the module.** `inference.py` scored 82.7% against its own test file, with 122

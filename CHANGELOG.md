@@ -138,6 +138,17 @@ commitment.
   run against, and `inference.py` is verified almost entirely from outside
   itself; CLAUDE.md now says to check a selection can kill a known-fatal mutant
   before trusting anything it reports.
+- **`predict.py`: the holdout window is closed at both ends, and `discount_factor`
+  rejects a rate of exactly -1.** `_actuals` counts what happened between the
+  prediction window's first and last day, and every existing test used a window
+  running to the end of the data — so nothing distinguished `Date <= last` from
+  a condition that is always true. Replacing it left the suite green while every
+  later transaction was counted as though it had fallen inside, overstating
+  `actual.x` and `actual.period.spending`, which are the columns a holdout
+  comparison exists for. And `discount_factor`'s guard is `<= -1`, tested only
+  at `-1.5`; at exactly `-1` the rate wipes out the whole value and `log1p(-1)`
+  is `-inf`, so relaxing it returns an infinite discount factor instead of
+  raising. Four mutants confirmed killed, including both window boundaries.
 - **`ggomnbd.py` mutation-tested: 89.2% raw, 91.8% measured**, and its `CET`'s
   overflow branch turned out never to have been evaluated. The function forms
   its denominator directly where `P` is representable and in logs where
