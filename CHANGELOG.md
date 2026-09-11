@@ -138,6 +138,15 @@ commitment.
   run against, and `inference.py` is verified almost entirely from outside
   itself; CLAUDE.md now says to check a selection can kill a known-fatal mutant
   before trusting anything it reports.
+- **A time-varying covariate may belong to one process only**, which S6.4 allows
+  and nothing tested. `ClvDataDynCov.with_covariates` validates a requested name
+  against the *union* of the lifetime and transaction frames' columns; every
+  test passed the same frame for both processes, where the union and the
+  intersection are the same set, so nothing distinguished them. Narrowing it to
+  an intersection survived the whole suite while rejecting every covariate that
+  belongs to only one process. The static case has had a test for this since the
+  covariates went in. Found during the step that *validates a mutation run's
+  test selection*, before the run itself had started.
 - **`predict.py`: the holdout window is closed at both ends, and `discount_factor`
   rejects a rate of exactly -1.** `_actuals` counts what happened between the
   prediction window's first and last day, and every existing test used a window

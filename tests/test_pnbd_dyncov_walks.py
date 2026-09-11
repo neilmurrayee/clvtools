@@ -861,3 +861,58 @@ class TestTheWalkIntervalsAreHalfOpenDays:
         assert np.isfinite(walks.walkinfo_aux_trans[:, :2]).all(axis=1).sum() == 600
         assert walks.covdata_aux_life.shape[0] > 0
         assert walks.covdata_aux_trans.shape[0] > 0
+
+
+class TestTheTwoDynamicProcessesMayTakeDifferentCovariates:
+    r"""S6.4: "The covariates for the transaction process and attrition process
+    may differ".
+
+    The static case has had a test for this since the covariates went in; the
+    time-varying case had none. ``ClvDataDynCov.with_covariates`` validates a
+    requested name against the **union** of the two frames' columns, and every
+    test passed the same frame for both processes -- where the union and the
+    intersection are the same set, so nothing distinguished them. Narrowing it
+    to an intersection survived the whole suite, while rejecting every
+    covariate that belongs to only one of the two processes with "covariates
+    not in the data".
+
+    Found by mutation testing, during the step that validates a mutation-run's
+    test selection rather than during the run itself.
+    """
+
+    @staticmethod
+    def _split_frames():
+        """The apparel covariates, dealt out one column to each process."""
+        from clvtools import load_apparel_dyn_cov
+
+        cov = load_apparel_dyn_cov()
+        return (
+            cov[["Id", "Cov.Date", "Gender"]].copy(),
+            cov[["Id", "Cov.Date", "Channel"]].copy(),
+        )
+
+    @staticmethod
+    def _data(life, trans, names_life, names_trans):
+        from clvtools import ClvData, ClvDataDynCov, load_apparel_trans
+
+        return ClvDataDynCov(
+            ClvData(load_apparel_trans(), time_unit="week", estimation_split=104),
+            data_cov_life=life, data_cov_trans=trans,
+            names_cov_life=names_life, names_cov_trans=names_trans,
+        )
+
+    def test_a_covariate_in_one_frame_only_is_accepted(self):
+        life, trans = self._split_frames()
+        data = self._data(life, trans, ["Gender"], ["Channel"])
+        selected = data.with_covariates(
+            names_life=["Gender"], names_trans=["Channel"]
+        )
+        assert selected.names_cov_life == ["Gender"]
+        assert selected.names_cov_trans == ["Channel"]
+
+    def test_but_one_in_neither_is_still_refused(self):
+        """So the test above cannot pass by accepting everything."""
+        life, trans = self._split_frames()
+        data = self._data(life, trans, ["Gender"], ["Channel"])
+        with pytest.raises(ValueError, match="covariates not in the data"):
+            data.with_covariates(names_life=["Nonesuch"])

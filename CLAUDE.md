@@ -55,7 +55,7 @@ live in the README.
 ## Commands
 
 ```bash
-uv run pytest                  # 2,128 tests inc. doctests in src/ and docs/; ~5:10 on an M-series
+uv run pytest                  # 2,130 tests inc. doctests in src/ and docs/; ~5:10 on an M-series
 uv run pytest -m paper         # 22 numbers printed in the paper
 uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
 uv run pytest -m literature    # 22 numbers published in the CLV literature
@@ -192,6 +192,21 @@ records a multi-line statement only at its *first* line, so map each mutant's
 line to its enclosing statement before deciding — comparing against
 `executed_lines` directly called 137 survivors unmeasured when the true number
 was 11.
+
+**Validate with one mutant per region of the module, not one overall.** On
+`data.py` that took three — one in `ClvData`, one in `ClvDataStaticCov`, one in
+`ClvDataDynCov`. The obvious selection (`test_data.py` plus the module's own
+doctests, 85% coverage) killed the first and missed both others: the dummy
+encoding is held only by `test_pnbd_staticcov.py`, and the dynamic-covariate
+name check by nothing at all. Adding the two files it pointed at took coverage
+to 95% and killed all three. **The validation step found a real gap before the
+run even started** — `ClvDataDynCov.with_covariates` checks a requested name
+against the *union* of the two covariate frames' columns, every test passed the
+same frame for both processes, where union and intersection coincide, and
+narrowing it to an intersection survived the whole suite while rejecting every
+covariate belonging to only one process. S6.4 says the two processes' covariates
+may differ; the static case had a test for that and the time-varying one did
+not.
 
 **Validating a selection needs a mutant from the region the survivors are in.**
 `predict.py`'s selection was validated on `discount_factor` — which its own
