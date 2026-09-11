@@ -138,6 +138,19 @@ commitment.
   run against, and `inference.py` is verified almost entirely from outside
   itself; CLAUDE.md now says to check a selection can kill a known-fatal mutant
   before trusting anything it reports.
+- **`ggomnbd.py` mutation-tested: 89.2% raw, 91.8% measured**, and its `CET`'s
+  overflow branch turned out never to have been evaluated. The function forms
+  its denominator directly where `P` is representable and in logs where
+  `exp(log P)` overflows — the branch that exists to stop the answer becoming
+  `NaN`. Reaching it needs a customer with thousands of transactions, which no
+  fixture holds and no fit produces, so twenty mutations of its single line
+  survived the whole suite, among them a sign flip on `2 log(bs)` worth a factor
+  of `e^58`. `tests/test_ggomnbd_numerics.py` pins it without a reference
+  implementation or a new fixture: the two branches compute the same quantity,
+  so `log CET` cannot have a kink where control passes between them, and over an
+  even grid of `x` straddling the crossover the second difference is 0.003
+  against the 29 that sign flip would add. Also: `fit_ggomnbd` rejects a start
+  value of zero, which the guard always did and only the *negative* case tested.
 - **The BG/NBD's and GGom/NBD's Hessians are now tested at all.** The fixtures
   carry standard errors for the Pareto/NBD and for the GGom/NBD *with*
   covariates, and nothing for either plain fit — so those two families returned

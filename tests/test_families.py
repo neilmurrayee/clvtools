@@ -378,6 +378,13 @@ class TestGgomnbdProperties:
             ggomnbd.fit_ggomnbd(
                 [0, 2], [0.0, 30.0], [104.0, 104.0], start=(1.0, -1.0, 1.0, 1.0, 1.0)
             )
+        # Zero as well as negative: the guard is `<= 0`, and relaxing it to
+        # `< 0` would admit a start of zero, whose logarithm the search takes.
+        # Only the negative case was here. Found by mutation testing.
+        with pytest.raises(ValueError, match="strictly positive"):
+            ggomnbd.fit_ggomnbd(
+                [0, 2], [0.0, 30.0], [104.0, 104.0], start=(1.0, 0.0, 1.0, 1.0, 1.0)
+            )
 
     def test_a_valid_start_is_accepted_and_used(self):
         """The arm past both start checks, which nothing reached.

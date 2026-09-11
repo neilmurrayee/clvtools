@@ -55,7 +55,7 @@ live in the README.
 ## Commands
 
 ```bash
-uv run pytest                  # 2,123 tests inc. doctests in src/ and docs/; ~5:10 on an M-series
+uv run pytest                  # 2,125 tests inc. doctests in src/ and docs/; ~5:10 on an M-series
 uv run pytest -m paper         # 22 numbers printed in the paper
 uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
 uv run pytest -m literature    # 22 numbers published in the CLV literature
@@ -171,6 +171,7 @@ Four modules have been through it:
 | --- | --- | --- | --- |
 | `pnbd/individual.py` | 820 | 794 | **96.8%** |
 | `bgnbd.py` | 1,600 | 1,454 | 90.9% raw, **99.4%** measured |
+| `ggomnbd.py` | 1,958 | 1,746 | 89.2% raw, **91.8%** measured |
 | `pnbd/aggregate.py` | 2,455 | 2,373 | **96.7%** |
 | `special.py` | 225 | 215 | **95.6%** |
 | `gg.py` | 630 | 576 | **91.4%** |
@@ -250,6 +251,17 @@ own boundary**:
 - `frozen=True` and the Hessian's `repr=False` hold across **eight** fitted
   params classes and nothing tested any of them, so that one is now a
   convention test that discovers the classes rather than listing them.
+
+`ggomnbd.py`'s `CET` computes its denominator two ways — directly where `P` is
+representable, and in logs where `exp(log P)` overflows and the `1` beside
+`b s P` stops mattering. **The second branch had never been evaluated**: it
+needs a customer with thousands of transactions, which no fixture holds and no
+fit produces, so twenty mutations of its one line survived, including a sign
+flip worth a factor of `e^58`. What pins it is that the two branches compute
+the same quantity, so `log CET` cannot have a kink where control passes between
+them: over an even grid of `x` straddling the crossover the second difference is
+0.003, against the 29 the sign flip would introduce. No reference
+implementation, and no new fixture.
 
 `bgnbd.py` and `ggomnbd.py` produced a Hessian **no test ever looked at**. The
 fixtures carry standard errors for the Pareto/NBD and for the GGom/NBD with
