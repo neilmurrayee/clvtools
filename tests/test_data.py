@@ -274,6 +274,20 @@ class TestInputValidation:
         with pytest.raises(ValueError, match="longer than zero"):
             ClvData(apparel_trans, time_unit="week", estimation_split=0)
 
+    @pytest.mark.parametrize("split", [-1, -52, "2004-01-01"])
+    def test_and_one_that_ends_before_it_starts(self, apparel_trans, split):
+        """The guard is ``end <= estimation_start``, not ``end ==``.
+
+        A split of exactly zero was the only case tested, and zero is the one
+        value that ``<=`` and ``==`` both reject. A negative number of periods,
+        or a date before the first transaction, ends the estimation period
+        before it begins -- and with the comparison narrowed to equality it is
+        accepted, leaving a window of negative length for everything
+        downstream to divide by. Found by mutation testing.
+        """
+        with pytest.raises(ValueError, match="longer than zero"):
+            ClvData(apparel_trans, time_unit="week", estimation_split=split)
+
 
 class TestSplitSpecification:
     """S6.1: "Alternatively, a date can be provided"."""
@@ -299,6 +313,32 @@ class TestSplitSpecification:
         text = repr(clv)
         assert "600 customers" in text
         assert "2006-12-31" in text
+
+
+class TestAsDataFrameHandsBackTheTransactionsAndNothingElse:
+    """``reset_index(drop=True)``, and what the ``drop`` is for.
+
+    ``as_data_frame`` filters a sample and optionally a set of ids, so the rows
+    it returns carry whatever index positions they had in the full log. The
+    reset makes the result look like a fresh frame; dropping is what keeps the
+    old positions from arriving as a column called ``index``.
+
+    No test looked at the columns, so turning the drop off added that column to
+    every caller's frame and the whole suite stayed green. Found by mutation
+    testing.
+    """
+
+    def test_the_columns_are_exactly_the_transaction_columns(self, apparel_trans):
+        clv = ClvData(apparel_trans, time_unit="week", estimation_split=104)
+        assert list(clv.as_data_frame().columns) == list(apparel_trans.columns)
+
+    def test_and_a_filtered_frame_is_renumbered_from_zero(self, apparel_trans):
+        """Filtering is what leaves a gappy index behind, so filter first."""
+        clv = ClvData(apparel_trans, time_unit="week", estimation_split=104)
+        frame = clv.as_data_frame(sample="holdout", ids=["10", "100"])
+        assert list(frame.columns) == list(apparel_trans.columns)
+        assert list(frame.index) == list(range(len(frame)))
+        assert len(frame) > 0
 
 
 class TestOtherDatasets:

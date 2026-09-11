@@ -55,7 +55,7 @@ live in the README.
 ## Commands
 
 ```bash
-uv run pytest                  # 2,130 tests inc. doctests in src/ and docs/; ~5:10 on an M-series
+uv run pytest                  # 2,135 tests inc. doctests in src/ and docs/; ~5:10 on an M-series
 uv run pytest -m paper         # 22 numbers printed in the paper
 uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
 uv run pytest -m literature    # 22 numbers published in the CLV literature
@@ -173,6 +173,7 @@ Four modules have been through it:
 | `bgnbd.py` | 1,600 | 1,454 | 90.9% raw, **99.4%** measured |
 | `ggomnbd.py` | 1,958 | 1,746 | 89.2% raw, **91.8%** measured |
 | `predict.py` | 409 | 206 | 50.4% raw — **not a valid score**, see below |
+| `data.py` | 913 | 447 | 49.0% raw — 242 of 466 survivors are annotations |
 | `pnbd/aggregate.py` | 2,455 | 2,373 | **96.7%** |
 | `special.py` | 225 | 215 | **95.6%** |
 | `gg.py` | 630 | 576 | **91.4%** |
@@ -192,6 +193,15 @@ records a multi-line statement only at its *first* line, so map each mutant's
 line to its enclosing statement before deciding — comparing against
 `executed_lines` directly called 137 survivors unmeasured when the true number
 was 11.
+
+**Classify survivors before counting them.** `data.py`'s 466 survivors are 242
+type-annotation mutations that `from __future__ import annotations` never
+evaluates, 40 inside the text of a `raise` or a `warnings.warn`, 6 unmeasured,
+and 178 logic — and of those 178, most are again annotations on the
+continuation lines of a multi-line `def`, which a naive regex misses because
+the diff line begins with `self,` rather than a parameter name. Walking the AST
+for `Raise` and `warn` spans, and matching annotations after stripping the
+diff's leading `-`, is what turns an unreadable 466 into a dozen worth chasing.
 
 **Validate with one mutant per region of the module, not one overall.** On
 `data.py` that took three — one in `ClvData`, one in `ClvDataStaticCov`, one in

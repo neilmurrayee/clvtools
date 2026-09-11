@@ -138,6 +138,17 @@ commitment.
   run against, and `inference.py` is verified almost entirely from outside
   itself; CLAUDE.md now says to check a selection can kill a known-fatal mutant
   before trusting anything it reports.
+- **An estimation period that ends before it starts is refused**, and
+  `as_data_frame` is held to the transaction columns. `_resolve_split` guards
+  `end <= estimation_start`, and a split of exactly zero — the one value `<=`
+  and `==` both reject — was all that was tested; a negative number of periods,
+  or a date before the first transaction, was accepted with the comparison
+  narrowed to equality, leaving a window of negative length for everything
+  downstream to divide by. And `as_data_frame` ends in `reset_index(drop=True)`,
+  where the `drop` is what stops the old index positions arriving as a column
+  called `index`; no test looked at the columns, so turning it off added that
+  column to every caller's frame with the suite still green. Three mutants
+  confirmed killed.
 - **A time-varying covariate may belong to one process only**, which S6.4 allows
   and nothing tested. `ClvDataDynCov.with_covariates` validates a requested name
   against the *union* of the lifetime and transaction frames' columns; every
