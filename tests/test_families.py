@@ -1055,13 +1055,23 @@ class TestAFitsHessianIsUsable:
         from clvtools._validate import ConvergenceWarning
 
         fitted = self._fit("ggomnbd", xtt, hessian=True)
-        definite = bool(np.all(np.linalg.eigvalsh(fitted.hessian) > 0))
 
-        if definite:
+        # Three states, and `standard_errors` has something to say in two of
+        # them. Finiteness is checked before the eigenvalues because
+        # `eigvalsh` raises on a NaN matrix rather than reporting one -- which
+        # would make this test error out where the code under test is doing
+        # exactly what it should.
+        if not np.all(np.isfinite(fitted.hessian)):
+            with pytest.warns(ConvergenceWarning, match="non-finite entries"):
+                errors = fitted.standard_errors()
+            definite = False
+        elif np.all(np.linalg.eigvalsh(fitted.hessian) > 0):
             errors = fitted.standard_errors()
+            definite = True
         else:
             with pytest.warns(ConvergenceWarning, match="not positive definite"):
                 errors = fitted.standard_errors()
+            definite = False
 
         assert set(errors) == set(fitted.names)
         # NaN is the allowed answer for a direction that is not identified;
