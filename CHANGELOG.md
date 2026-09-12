@@ -55,6 +55,16 @@ commitment.
 
 ### Fixed
 
+- **A test that only held on macOS.** The new Hessian checks asserted that the
+  GGom/NBD's comes back *indefinite* — true on macOS/arm64, where the fit
+  drives `b` to 2.9e-06 along a ridge flat enough that the matrix is unusable,
+  and false on the Linux CI runners, which stop elsewhere on the same ridge and
+  come back merely ill-conditioned. Eight commits were red on both CI Pythons
+  for it. It now asserts the property that holds wherever the search stops: the
+  standard errors cover every parameter, none is negative or infinite, and if
+  the matrix is not positive definite the fit says so. The warning text itself
+  was already pinned on a hand-built matrix, which is where an assertion no
+  optimiser should have a say in belongs.
 - **The built wheel carried no datasets.** `DATA_DIR` resolved to the repository
   root, which does not exist under `site-packages`, so `load_apparel_trans()`
   raised `FileNotFoundError` on any installed copy — the README's first usage
@@ -141,15 +151,20 @@ commitment.
 - **The dyncov hypergeometric fallback is checked for its value, not just for
   being finite**, and the walk's attrition-covariate guard is tested from both
   sides. `_hyp_alpha_ge_beta` switches to an asymptotic form once SciPy's
-  `hyp2f1` gives up, which happens around `r + s + x = 200` with `z` near 1.
-  A test reached that branch and asserted only `not isnan` — so corrupting the
-  four `gammaln` calls in its constant left the answer perfectly finite and
-  about 700 out in the log, and survived the whole suite.
+  `hyp2f1` returns `nan`, which on SciPy 1.18 happens between `r + s + x` of
+  162 and 182 with `z` near 1. A test reached that branch and asserted only
+  `not isnan` — so corrupting the four `gammaln` calls in its constant left
+  the answer perfectly finite and about 700 out in the log, and survived the
+  whole suite.
   `tests/test_pnbd_dyncov_numerics.py` pins it the same way
   `test_ggomnbd_numerics.py` pins that module's overflow branch: the asymptotic
   form and the branch it replaces compute the same quantity, so a grid of `x`
-  across the boundary cannot have a kink. Separately, `DyncovWalks.customers`
-  checks each covariate vector's length, and the attrition guard was only ever
+  across the boundary cannot have a kink. That the grid still *crosses* the
+  boundary is now asserted rather than assumed: where `hyp2f1` gives up is a
+  property of SciPy's algorithm, not of IEEE-754, so a different build can
+  move it — and off the end of the grid the smoothness check would have
+  compared the fallback with itself and passed. Separately,
+  `DyncovWalks.customers` checks each covariate vector's length, and the attrition guard was only ever
   given too few parameters while the transaction one was only given too many —
   so narrowing either `!=` to the inequality matching its single case survived.
   Both are now tested in both directions.
