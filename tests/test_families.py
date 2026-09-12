@@ -974,11 +974,11 @@ class TestAFitsHessianIsUsable:
 
     The GGom/NBD is the exception, and deliberately so: it fits ``b`` to 3e-06
     and ``beta`` to 1e-04, where the likelihood is flat enough that the matrix
-    comes back indefinite and two of its standard errors are ``nan``. That is
-    finding 9's territory -- what matters there is that the fit *says so*,
-    which :class:`~tests.test_inference.TestAHessianThatCannotBeTrusted` covers
-    and which is asserted here too rather than asserting a conditioning the
-    family does not have.
+    is not usable -- indefinite here, merely ill-conditioned on CI's Linux,
+    because a ridge that flat puts the stopping point at the mercy of the
+    platform's LAPACK. So it is held to the honesty property instead of to a
+    conditioning it does not have: see the test below for why asserting the
+    indefinite branch outright was a macOS-only assertion.
 
     Found by mutation testing.
     """
@@ -1029,16 +1029,47 @@ class TestAFitsHessianIsUsable:
         assert set(errors) == set(fitted.names)
         assert all(np.isfinite(v) and v > 0 for v in errors.values()), errors
 
-    def test_but_the_ggomnbd_says_when_its_own_is_not(self, xtt):
-        """``b`` and ``beta`` fit near zero, and the matrix goes indefinite.
+    def test_but_the_ggomnbd_is_honest_about_its_own_either_way(self, xtt):
+        """Whichever regime the optimiser stops in, the fit says which.
 
-        Finding 9: the failure mode that mattered was reporting ``nan`` beside
-        ``converged = True`` in silence. The warning is the fix, so the warning
-        is what is pinned.
+        The GGom/NBD on this data drives ``b`` and ``beta`` towards zero --
+        2.9e-06 and 1.4e-04 on this author's machine -- along a ridge flat
+        enough that where the search stops is a property of the platform's
+        LAPACK rather than of the model. It stopped somewhere indefinite on
+        macOS/arm64 and somewhere merely ill-conditioned on the Linux CI
+        runners, so an unconditional ``pytest.warns`` here passed locally and
+        failed on both CI Pythons for eight commits.
+
+        What is true on every platform is the honesty property: the errors
+        cover every parameter, none is negative or infinite, and if the matrix
+        is not positive definite then :meth:`standard_errors` warns and says
+        so rather than returning ``nan`` in silence. That is finding 9, and
+        pinning it as a conditional keeps the real assertion -- a fit that
+        cannot be trusted must announce it -- without also asserting the
+        accident of which side of the ridge this machine landed on.
+
+        The warning itself is pinned exactly, on a hand-built matrix that no
+        optimiser gets a say in, by
+        :class:`tests.test_inference.TestAHessianThatCannotBeTrusted`.
         """
-        from clvtools._validate import PrecisionWarning
+        from clvtools._validate import ConvergenceWarning
 
         fitted = self._fit("ggomnbd", xtt, hessian=True)
-        with pytest.warns((PrecisionWarning, UserWarning), match="positive definite"):
+        definite = bool(np.all(np.linalg.eigvalsh(fitted.hessian) > 0))
+
+        if definite:
             errors = fitted.standard_errors()
+        else:
+            with pytest.warns(ConvergenceWarning, match="not positive definite"):
+                errors = fitted.standard_errors()
+
         assert set(errors) == set(fitted.names)
+        # NaN is the allowed answer for a direction that is not identified;
+        # a negative or infinite standard error never is.
+        for name, value in errors.items():
+            assert np.isnan(value) or (np.isfinite(value) and value > 0), (
+                f"{name} came back {value}, which is neither a usable standard "
+                "error nor an admission that there is none"
+            )
+        if definite:
+            assert all(np.isfinite(v) for v in errors.values()), errors

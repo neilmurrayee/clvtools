@@ -927,6 +927,33 @@ builds a microscopic initial simplex at an all-zeros log-parameter start, from
 which it reported successful convergence on the Gamma-Gamma at a local optimum
 34 log-likelihood units below the published one. Both have regression tests.
 
+**A test can assert a numerical accident, and CI is where you find out.** The
+GGom/NBD drives `b` to 2.9e-06 and `beta` to 1.4e-04 on the apparel data, along
+a ridge flat enough that its Hessian is unusable there. A test asserted the
+*particular* way it is unusable — indefinite, so `standard_errors()` warns —
+which held on macOS/arm64 and failed on both CI Pythons, because the Linux
+runners stop at a different point on the same flat ridge and come back merely
+ill-conditioned. The property worth asserting is the one that is true wherever
+the search stops: the errors cover every parameter, none is negative or
+infinite, and if the matrix is not positive definite the fit says so. The exact
+warning is pinned separately on a hand-built matrix, where no optimiser has a
+say. Pinned by
+`test_families.py::TestAFitsHessianIsUsable::test_but_the_ggomnbd_is_honest_about_its_own_either_way`
+and `test_inference.py::TestAHessianThatCannotBeTrusted`.
+
+**A branch test can stop testing its branch without failing.** Two tests pin a
+numerical fallback by requiring the function to stay smooth where control
+passes to it — a kink is what a wrong fallback produces. Both depend on the
+grid straddling the crossover, and neither said so. `ggomnbd`'s is safe: the
+branch turns on `exp(x)` overflowing, an exact IEEE-754 threshold with 2.2
+log-units of margin. The time-varying Pareto/NBD's is not: it turns on SciPy's
+`hyp2f1` returning `nan`, which is an algorithm giving up rather than a
+hardware limit, and it moves between builds. Its grid had one point of slack
+either side, and had the crossover moved off the end the test would have
+compared the fallback with itself and passed. The straddle is now asserted, so
+that failure is loud. Pinned by
+`test_pnbd_dyncov_numerics.py::test_the_fallback_agrees_with_the_branch_it_replaces`.
+
 ## Testing
 
 ```bash
