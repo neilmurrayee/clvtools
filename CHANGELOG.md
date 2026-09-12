@@ -138,6 +138,18 @@ commitment.
   run against, and `inference.py` is verified almost entirely from outside
   itself; CLAUDE.md now says to check a selection can kill a known-fatal mutant
   before trusting anything it reports.
+- **Three validator bounds and a `max` branch, all tested from one side only.**
+  `customer_history` requires `T > 0` and `t_x >= 0`: nothing ever passed a `T`
+  of 1, so tightening the guard to `T <= 1` — which rejects a one-period window
+  — survived, and the only negative recency tried was far from zero, so
+  narrowing `t_x < 0` to `t_x < -1` survived too, admitting every recency
+  between them. `spending_history` needs a customer with both a repeat and a
+  spend, and relaxing its count to `x >= 0` makes every customer qualify on
+  that half, so a dataset of first-time buyers with recorded spend would have
+  been fitted rather than refused. And `correlation_bounds` is a `max` of two
+  terms at each end; at the apparel estimates the upper bound comes from the
+  *second*, so the first was never the maximum in any test — a doctest at
+  reversed parameters puts the other term on top of both bounds.
 - **`pmf_data` accepts a single bin, and its tail is the remainder.** Two
   defects hid behind every larger bin count. The guard is
   `max_transactions < 1` and nothing ever asked for 1, so tightening it to

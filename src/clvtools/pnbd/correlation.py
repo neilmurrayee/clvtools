@@ -93,6 +93,16 @@ def correlation_bounds(
     True
     >>> round(lo, 3), round(hi, 3)
     (-1.042, 34.822)
+
+    Each bound is a ``max`` of two terms, and which one wins depends on the
+    parameters. Here the upper bound comes from :math:`(1-L_A)L_B` and the
+    lower from :math:`L_A L_B`. Reversing the transaction and attrition
+    processes puts the *other* term on top of both, which is the only way the
+    first argument of either ``max`` is exercised at all:
+
+    >>> lo, hi = correlation_bounds(0.2, 50.0, 5.0, 1.0)
+    >>> round(lo, 3), round(hi, 3)
+    (-32.127, 1.036)
     """
     la, lb = _laplace(r, alpha, s, beta)
     upper = 1.0 / max(la * (1.0 - lb), (1.0 - la) * lb)

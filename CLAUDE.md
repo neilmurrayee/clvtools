@@ -55,7 +55,7 @@ live in the README.
 ## Commands
 
 ```bash
-uv run pytest                  # 2,141 tests inc. doctests in src/ and docs/; ~5:10 on an M-series
+uv run pytest                  # 2,146 tests inc. doctests in src/ and docs/; ~5:10 on an M-series
 uv run pytest -m paper         # 22 numbers printed in the paper
 uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
 uv run pytest -m literature    # 22 numbers published in the CLV literature
@@ -178,10 +178,21 @@ Four modules have been through it:
 | `pnbd/fit.py` | 97 | 53 | 54.6% raw — 35 of 44 survivors are signatures |
 | `diagnostics.py` | 575 | 399 | 69.4% raw |
 | `bootstrap.py` | 282 | 177 | 62.8% raw |
+| `pnbd/correlation.py` | 584 | 502 | **86.0%** |
+| `_validate.py` | 228 | 187 | **82.0%** |
+| `pnbd/staticcov.py` | 182 | 98 | 53.8% raw — 69 of 84 survivors are signatures |
+| `_optimize.py` | 137 | 70 | 51.1% raw — see below |
 
-Fourteen of the twenty-two modules have been through it. The remaining eight
-are the dynamic-covariate trio, `_staticcov.py`, `pnbd/staticcov.py`,
-`pnbd/correlation.py`, `_validate.py` and `_optimize.py`.
+Eighteen of the twenty-two modules have been through it. The remaining four
+are the dynamic-covariate trio and `_staticcov.py`, whose tests run in minutes.
+
+**A module of tuning constants cannot be mutation-tested.** `_optimize.py`
+scores 51% and should: most of its survivors move `ftol`, `gtol`, `xatol`,
+`maxfun` or the simplex step, and a tolerance whose neighbours give the same
+answer is a tolerance doing its job. The same goes for every family's default
+start vector, which survives being moved because the optimiser converges from
+either. Read a low score on configuration as a description of the code, not of
+the tests.
 | `pnbd/aggregate.py` | 2,455 | 2,373 | **96.7%** |
 | `special.py` | 225 | 215 | **95.6%** |
 | `gg.py` | 630 | 576 | **91.4%** |

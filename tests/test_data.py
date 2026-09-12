@@ -419,6 +419,45 @@ class TestTheSharedValidatorAndResultHelper:
                 np.array([104.0, 104.0]),
             )
 
+    @pytest.mark.parametrize("t_x,T,ok", [
+        (0.0, 1.0, True),    # T = 1 is a perfectly ordinary window
+        (0.0, 0.0, False),   # T must be strictly positive
+        (-0.5, 104.0, False),  # a recency between -1 and 0
+        (-2.0, 104.0, False),
+    ])
+    def test_the_history_bounds_hold_on_both_sides(self, t_x, T, ok):
+        """``t_x >= 0`` and ``T > 0``, at and around the values that decide it.
+
+        Both guards were exercised from one side only. Nothing ever passed a
+        ``T`` of 1, so tightening the test to ``T <= 1`` -- which rejects a
+        one-period window -- survived; and the only negative recency tried was
+        far from zero, so narrowing ``t_x < 0`` to ``t_x < -1`` survived as
+        well, admitting every recency between them.
+
+        Found by mutation testing.
+        """
+        from clvtools._validate import customer_history
+
+        args = (np.array([1.0]), np.array([t_x]), np.array([T]))
+        if ok:
+            customer_history(*args)
+        else:
+            with pytest.raises(ValueError, match=r"non-negative|strictly positive"):
+                customer_history(*args)
+
+    def test_spending_needs_a_customer_with_both_a_repeat_and_a_spend(self):
+        """``(x > 0) & (z_bar > 0)``, and ``x > 0`` is doing work.
+
+        The Gamma-Gamma conditions on customers who have both repeated *and*
+        spent. Relaxing the count to ``x >= 0`` makes every customer qualify on
+        that half, so a dataset of first-time buyers with recorded spend would
+        have been fitted rather than refused. Found by mutation testing.
+        """
+        from clvtools._validate import spending_history
+
+        with pytest.raises(ValueError, match="no customer has both"):
+            spending_history(np.array([0.0, 0.0]), np.array([25.0, 40.0]))
+
     def test_a_non_finite_objective_is_not_a_fit(self):
         """The other half of finding 5: it used to be returned as estimates.
 
