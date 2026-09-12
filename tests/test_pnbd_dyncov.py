@@ -448,6 +448,14 @@ class TestWalkAssembly:
             dyncov_walks.customers(np.zeros(2), np.zeros(3))
         with pytest.raises(ValueError, match="3 transaction covariates but 4"):
             dyncov_walks.customers(np.zeros(3), np.zeros(4))
+        # Each guard from both sides. The attrition one was only ever given
+        # too few and the transaction one only too many, so narrowing either
+        # `!=` to the inequality that happens to match its one case survived.
+        # Found by mutation testing.
+        with pytest.raises(ValueError, match="3 attrition covariates but 4"):
+            dyncov_walks.customers(np.zeros(4), np.zeros(3))
+        with pytest.raises(ValueError, match="3 transaction covariates but 2"):
+            dyncov_walks.customers(np.zeros(3), np.zeros(2))
 
     def test_weights_repeat_rows(self, dyncov_walks):
         r, alpha, s, beta, g_life, g_trans = dyncov_grid_case("mle")

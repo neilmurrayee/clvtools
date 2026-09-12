@@ -138,6 +138,21 @@ commitment.
   run against, and `inference.py` is verified almost entirely from outside
   itself; CLAUDE.md now says to check a selection can kill a known-fatal mutant
   before trusting anything it reports.
+- **The dyncov hypergeometric fallback is checked for its value, not just for
+  being finite**, and the walk's attrition-covariate guard is tested from both
+  sides. `_hyp_alpha_ge_beta` switches to an asymptotic form once SciPy's
+  `hyp2f1` gives up, which happens around `r + s + x = 200` with `z` near 1.
+  A test reached that branch and asserted only `not isnan` — so corrupting the
+  four `gammaln` calls in its constant left the answer perfectly finite and
+  about 700 out in the log, and survived the whole suite.
+  `tests/test_pnbd_dyncov_numerics.py` pins it the same way
+  `test_ggomnbd_numerics.py` pins that module's overflow branch: the asymptotic
+  form and the branch it replaces compute the same quantity, so a grid of `x`
+  across the boundary cannot have a kink. Separately, `DyncovWalks.customers`
+  checks each covariate vector's length, and the attrition guard was only ever
+  given too few parameters while the transaction one was only given too many —
+  so narrowing either `!=` to the inequality matching its single case survived.
+  Both are now tested in both directions.
 - **Three validator bounds and a `max` branch, all tested from one side only.**
   `customer_history` requires `T > 0` and `t_x >= 0`: nothing ever passed a `T`
   of 1, so tightening the guard to `T <= 1` — which rejects a one-period window

@@ -55,7 +55,7 @@ live in the README.
 ## Commands
 
 ```bash
-uv run pytest                  # 2,146 tests inc. doctests in src/ and docs/; ~5:10 on an M-series
+uv run pytest                  # 2,147 tests inc. doctests in src/ and docs/; ~5:10 on an M-series
 uv run pytest -m paper         # 22 numbers printed in the paper
 uv run pytest -m rdoc          # 22 numbers printed in the R package's docs
 uv run pytest -m literature    # 22 numbers published in the CLV literature
@@ -182,9 +182,30 @@ Four modules have been through it:
 | `_validate.py` | 228 | 187 | **82.0%** |
 | `pnbd/staticcov.py` | 182 | 98 | 53.8% raw — 69 of 84 survivors are signatures |
 | `_optimize.py` | 137 | 70 | 51.1% raw — see below |
+| `pnbd/dyncov_predict.py` | 400 of 2,254 | 382 | **95.5%** (sample) |
+| `pnbd/dyncov.py` | 400 of 3,522 | 356 | **89.0%** (sample) |
+| `pnbd/dyncov_walks.py` | 507 | 401 | **79.1%** |
+| `_staticcov.py` | 492 | 299 | 60.8% raw — no genuine gaps |
 
-Eighteen of the twenty-two modules have been through it. The remaining four
-are the dynamic-covariate trio and `_staticcov.py`, whose tests run in minutes.
+All twenty-two modules have been through it, about 19,000 mutants in total.
+
+Two were **sampled** rather than run whole: `dyncov.py` and `dyncov_predict.py`
+generate 3,522 and 2,254 mutants against selections costing 15 and 25 seconds a
+run, which is fifteen hours each. A uniform random sample of 400 (seed 20260912,
+taken by deleting rows from the session's `work_items` and `mutation_specs`)
+gives a score to within a few points and still surfaces the survivor clusters,
+which is what the survivors are read for. Their scores are labelled as samples
+in the table and should not be compared with a full run's to the decimal.
+
+**A numerical fallback is where the gaps live.** Two of this pass's findings
+are the same defect in different modules: a branch that exists only for the
+hard case, reached by no test or reached and asked only whether its answer was
+finite. `ggomnbd`'s `CET` overflow path was the first; `dyncov`'s
+`_hyp_alpha_ge_beta` is the second, where a test does reach the fallback and
+asserts `not isnan`, so corrupting its four `gammaln` calls leaves the result
+finite and 700 out in the log. Both are pinned the same way, and it needs no
+oracle: an asymptotic form and the branch it replaces compute the same
+quantity, so the function cannot have a kink where control passes between them.
 
 **A module of tuning constants cannot be mutation-tested.** `_optimize.py`
 scores 51% and should: most of its survivors move `ftol`, `gtol`, `xatol`,
